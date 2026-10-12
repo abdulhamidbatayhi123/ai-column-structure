@@ -435,6 +435,16 @@ expensive per step.
 
 ## 7. Open points this document does not settle
 
+- **The gas model (author's decision).** The dilute-solute vapour (this document, Paper 1's
+  limit) or the ideal-gas vapour that Paper 3A uses. They differ by RT in the heat released,
+  4 to 8 %. The recommendation is to keep the dilute solute and state the offset. See
+  INTERFACE_3A.md, last section.
+- **With a 3A potential in `t_mode="kirchhoff"`,** the adsorbed-phase heat capacity follows
+  from the potential and differs from the vapour's. Section 3.3 then generalises: e_a(q,T)
+  and s_a(q,T) come from the Legendre transform of 3A's psi at fixed q, and T(n,a,u) is no
+  longer explicit (one scalar Newton step per cell). Concavity of the cell entropy needs
+  `c_a >= 0` over the cycle domain.
+
 - The exact cycle (adsorption and desorption durations, desorption by heated feed or by
   wall) is fixed in the pre-registration, not here.
 - Whether `c_w` should be the vapour value (33.6) or a value 3A's potential implies (with a

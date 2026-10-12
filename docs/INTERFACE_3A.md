@@ -68,3 +68,32 @@ Either way, 3B's code accepts any potential through one function signature:
 the log of the vapour concentration in equilibrium with the adsorbed phase, so it is the
 isotherm's own input. For the dual-site isotherm it is `log x − ln b_H(T)`. The latent
 decoder outputs this variable, so 3B never inverts an isotherm.
+
+## Check against 3A's design as read on 2026-10-13 (`ai-isotherm-thermo/docs/DESIGN.md`, read only)
+
+3A learns the reduced spreading pressure `psi(s, T)` with `s = ln p`, as a positive sum of
+softplus terms, so that `q* = dpsi/ds` is a sum of sigmoids. Against the requirements above:
+
+| requirement | 3A as designed | note |
+|---|---|---|
+| 1 potential | met: `psi(s, T)`, the grand form | 3B's decoder carries `s_eq` directly, so no inversion is needed |
+| 2 strict monotonicity | met by construction | |
+| 3 Henry limit | met by construction (Henry terms with g = 1) | |
+| 4 smoothness | met: softplus and sigmoid are C-infinity | |
+| 5 energy function, `c_a >= 0` | **to check** | with `t_mode="kirchhoff"` the per-term heat capacities `dc_k` and the capacity expansion `alpha_k` together set `c_a(q, T)`. Nothing in the design keeps it non-negative. 3B needs a check, or a constraint, over the cycle domain |
+| 6 domain | open in 3A | 3B needs about 293 to 383 K |
+| 7 frozen artefact | after 3A's freeze | |
+
+**One modelling difference to decide jointly.** 3A treats water vapour as an ideal gas,
+`mu = mu0(T) + RT ln p`. 3B, following Paper 1's constant gas density, treats it as a dilute
+ideal solute in an incompressible carrier, `mu = phi0(T) + RT ln c`. The isotherm transfers
+exactly through `p = cRT`. But the heat the column releases per mole adsorbed is then 3A's
+isosteric heat minus RT, which is 4 to 8 % lower. That is correct within 3B's gas model, but
+a reader comparing the two papers will see it. Two options:
+(a) keep the dilute-solute model in 3B (Paper 1 stays an exact limit), and state the RT
+    offset in both papers, with 3B reporting isosteric heats by 3A's definition;
+(b) move 3B to an ideal-gas vapour at constant total pressure. That needs the carrier
+    tracked as a species, adds a pV term, and loses the exact Paper 1 limit.
+3B's recommendation is (a). It is the author's decision, and it is listed as an open point
+in `formulation_3B.md`, Section 7.
+
