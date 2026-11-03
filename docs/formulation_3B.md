@@ -264,16 +264,27 @@ fluxes are driven by differences of the entropic variables `w = ∇s = (1/T, −
 
 ```
 [J_n]   [ L_nn       η L_nn          ] [X_n]
-[J_u] = [ η L_nn     L_TT + η² L_nn  ] [X_u]      η = e_w(T_face),  L ⪰ 0 iff L_nn, L_TT ≥ 0.
+[J_u] = [ η L_nn     L_TT + η² L_nn  ] [X_u]       L ⪰ 0 iff L_nn ≥ 0 and L_TT ≥ 0, for any real η.
 ```
 
-With `L_nn = (ε D_L / (R Δz)) · logmean(c_i, c_{i+1})`, the vapour flux is
-`J_n = −ε D_L (c_{i+1} − c_i)/Δz` *exactly* when T is uniform, which is Paper 1's discrete
-Fick term. With non-uniform T it differs only through `e_w(T)/T` at second order in Δz, and
-with `c_w = 0` it is exact everywhere. The 3B reference integrates this Onsager form, not Fick's law on c, so the entropy proof applies to the reference exactly. With `c_w = 0` the two coincide, which is why the Paper 1 limit (Section 6) still reproduces `solver_fd.py`. This works because
-`Δ(μ_v/T) − h Δ(1/T) = R Δ ln c + O(c_w ΔT²)`. The logarithmic mean is the discrete
-chain-rule factor that makes Fick's law an exact gradient flow of the ideal-solute entropy
-(the same construction as entropy-stable Scharfetter-Gummel fluxes).
+Two choices make this block reproduce Paper 1's discrete Fick term *exactly*, at any water
+heat capacity and any temperature difference across the face:
+
+- `η = Δ(φ°/T) / Δ(1/T)`, the discrete-gradient mean of the water's molar energy. By the
+  Gibbs-Helmholtz relation `d(φ°/T)/d(1/T) = e_w`, it tends to `e_w(T)` as ΔT → 0. Since
+  `μ_v/T = φ°(T)/T + R ln(c/c°)`, this gives `X_n + η X_u = −R Δ ln c` with no remainder.
+- `L_nn = (ε D_L / (R Δz)) · logmean(c_i, c_{i+1})`, so that
+  `J_n = L_nn (X_n + η X_u) = −ε D_L (c_{i+1} − c_i)/Δz`, because
+  `logmean(c_i, c_{i+1}) · Δ ln c = Δc`.
+
+The logarithmic mean is the discrete chain-rule factor that makes Fick's law an exact
+gradient flow of the ideal-solute entropy (the construction behind entropy-stable
+Scharfetter-Gummel fluxes). The energy flux is `J_u = η J_n − k_z ΔT/Δz`: the dispersing
+vapour carries its energy, and conduction carries the rest. The production on the face is
+`σ = [R ε D_L Δc Δln c + k_z ΔT² / (T_i T_{i+1})] / Δz² ≥ 0` per unit volume. With `c_w = 0`, η is a
+constant, and the energy carried cancels through water conservation, which is why the
+Paper 1 limit (Section 6) reproduces `solver_fd.py` term by term. The reference integrates
+this form. `verify/consistent_column.py` implements it and `verify/run_checks.py` tests it.
 
 **Conduction.** `L_TT = k_z T_i T_{i+1} / Δz` gives `J_q = −k_z (T_{i+1} − T_i)/Δz` exactly,
 since `Δ(1/T) = −ΔT/(T_i T_{i+1})`.
@@ -355,14 +366,37 @@ in Paper 1, and a 50-cycle rollout costs minutes to hours. A latent model of dim
 d ≈ 16 to 32 can roll out in milliseconds. 3B asks what the structure buys *for such a
 model*, not whether physics can be learned from scratch.
 
-### 5.2 Decoder
+### 5.2 Decoder, and what exactly is stored
 
-`D: z ∈ ℝ^d → (log c, log x, log T)` on a 128-cell grid. This gives `c > 0`,
-`q = Q(x) ∈ (0, q_max)` and `T > 0` by construction, and no inverse-isotherm root is ever
-needed. For a general potential (3A), `log x` is replaced by `ln c_eq`, the log of the
-vapour concentration in equilibrium with the adsorbed phase (INTERFACE_3A.md). E, N and S of a latent state are defined as the physical functionals of its decoded
-fields: `Ê(z) = E(D(z))`, and likewise N̂ and Ŝ. Their latent gradients are vector-Jacobian
-products through the decoder.
+`D: z ∈ ℝ^d → (log c, log x, log T)` on 128 coarse cells, **plus two outlet channels
+`(log c_out, log T_out)`**. This gives `c > 0`, `q = Q(x) ∈ (0, q_max)` and `T > 0` by
+construction, and no inverse-isotherm root is ever needed. For a general potential (3A),
+`log x` is replaced by `ln c_eq`, the log of the vapour concentration in equilibrium with the
+adsorbed phase (INTERFACE_3A.md).
+
+What the reference stores per snapshot, and why:
+
+- **Coarse cells are block averages of the conserved variables** (n, a, u) of the 2000-cell
+  solution, converted to (log c, log x, log T) through the thermodynamics of Section 3.3.
+  They are not averages of c, q and T. Block averages of conserved variables keep the totals
+  N and E exact, so the coarse data carry the fine solution's balances.
+- **The outlet state is stored separately**, as the fine solver's last-cell (c, T). A coarse
+  outlet cell is the wrong port. In `verify/run_checks.py` (V4: 400 → 40 cells, one
+  temperature-swing cycle), the water-rate balance evaluated with the coarse last cell is
+  off by 4.0 %, and the energy balance by 0.5 %. With the stored fine outlet both close to
+  10⁻¹⁵.
+- **The wall heat is computed from the coarse temperatures.** Its coarse-graining error is
+  3×10⁻⁵ of the energy rate in V4, because block temperatures and averages of fine
+  temperatures differ by at most 0.016 K there. That is the reference's own balance floor at
+  the learning resolution, and the pre-registration's violation threshold is set above it.
+- **The coarse-grained entropy inequality held** in V4: `dS_c/dt − Φ_S ≥ 0` at all 602
+  snapshots, with either outlet. Arm S is therefore not forced to contradict its training
+  data. This is checked again at 2000 → 128 cells in the pilot (pre-registration, Section 9).
+  If it fails there, the pre-registration's handling applies.
+
+E, N and S of a latent state are the physical functionals of its decoded fields:
+`Ê(z) = E(D(z))`, and likewise N̂ and Ŝ. Their latent gradients are vector-Jacobian products
+through the decoder.
 
 ### 5.3 Structured latent dynamics (arm S)
 
@@ -373,9 +407,9 @@ P(z) = I − B (BᵀB)⁻¹ Bᵀ,   B = [∇Ê, ∇N̂]                  (projec
     ∇Ê · Π = P_E(z,u),   ∇N̂ · Π = P_N(z,u),   ∇Ŝ · Π ≥ Φ_S(z,u)
 ```
 
-Here `P_E`, `P_N` and `Φ_S` are the physical port fluxes of Section 4.4. They are evaluated
-on the decoded inlet and outlet cells and on the decoded temperature field for the wall,
-with the known feed u(t). The projection is closed form: two equalities plus one inequality
+Here `P_E`, `P_N` and `Φ_S` are the physical port fluxes of Section 4.4. The inlet uses the
+known feed u(t), the outlet uses the decoded outlet channels, and the wall uses the decoded
+coarse temperatures (Section 5.2). The projection is closed form: two equalities plus one inequality
 with an active set, solved as a 3 × 3 system. It is differentiable almost everywhere.
 Consequences, exact in continuous time:
 
@@ -419,19 +453,39 @@ expensive per step.
   stays fair, but the absolute accuracy is set by the autoencoder. The pre-registration
   gates on it.
 
-## 6. Verification ladder for the new reference (before any data are used)
+## 6. Verification ladder for the new reference
 
-1. **Paper 1 limit.** With `c_w = 0` the new u-form solver reproduces `solver_fd.py` at
-   N_z = 2000 on Paper 1's verification cases (`verify_solver.py`) to within the solver
-   tolerance. This is the strongest single test, because Paper 1's solver is already
-   verified.
-2. **Balances.** Water and energy closure over a full cycle to machine precision
-   (telescoping), and the entropy inequality of Section 4.4 per step with
-   `min σ_i ≥ −tolerance`.
+The first four checks have been run on small grids as design verification
+(`verify/run_checks.py`, results in `verify/results_run_checks.json`, 2026-11-03). They are
+not study data. They use one MOF-303-like material (q_max 24.5 mol kg⁻¹, ΔH −52 kJ mol⁻¹,
+step at RH 0.12, n = 3, f_H 0.17), feed at RH 0.40 and 303 K, v = 0.1 m s⁻¹, and
+desorption at 353 K.
+
+| check | what it tests | result |
+|---|---|---|
+| V1 Paper 1 limit | `c_w = 0` against `solver_fd.py`, N = 200, one stoichiometric time | max difference 7×10⁻¹⁰ in c/c_in, 6×10⁻⁹ in q/q_max, 1.5×10⁻⁷ K in T (temperature rise 16.7 K); passed |
+| V2 balances and signs | two temperature-swing cycles, `c_w = 33.6`, N = 120 | water-rate identity 6×10⁻¹⁵, energy-rate identity 3×10⁻¹⁶, entropy identity `dS/dt = Φ_S + Σσ` 3×10⁻¹⁶ (relative to Σ\|w·ẋ\|); every production term ≥ 0 (worst −7×10⁻²², round-off); passed |
+| V3 concavity | relative-coordinate Hessians at 200 random states | stream entropy and cell entropy negative semidefinite (largest eigenvalue ratio −2×10⁻⁵ and −3×10⁻¹⁰); passed |
+| V4 coarse-graining | 400 → 40 cells over one cycle | coarse entropy inequality held at all 602 snapshots; balances exact only with the stored fine outlet (Section 5.2); passed with that design change |
+
+Writing the check code exposed two of my own errors, both caught by the bookkeeping
+identity before any result was used. The code had a wrong sign in the enthalpy mean η and in
+the LDF production, and the face production was not divided by Δz. The formulation's text
+was right in the first two cases. Section 4.2 now states the face production per unit
+volume.
+
+Still to do at the study's resolution, before any data are used:
+
+1. **Paper 1 limit at N_z = 2000** on Paper 1's verification cases (`verify_solver.py`).
+2. **Integrated closure** over full cycles with the production solver's tolerances.
+   Trapezoidal closure on 401 output points already gives 1×10⁻⁵ to 8×10⁻⁵ at N = 120,
+   limited by the quadrature, not by the solver.
 3. **Grid convergence.** The same `grid_convergence()` criterion as Paper 1, for c, q and T
    over cycle 1 and cycle 50.
 4. **Cyclic steady state.** Convergence of per-cycle water uptake to a fixed point, with the
    convergence cycle recorded per trajectory.
+5. **Coarse-graining at 2000 → 128 cells** on the pilot trajectories: the entropy
+   inequality, and the wall-heat floor that sets the violation threshold.
 
 ## 7. Open points this document does not settle
 

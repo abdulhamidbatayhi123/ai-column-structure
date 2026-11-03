@@ -1,6 +1,6 @@
 # Paper 3B: literature review and the exact gap
 
-Compiled 2026-10-12 to 13. The review rests on four source journals. A source counts only if
+Compiled 2026-10-12 to 13 and updated 2026-11-03. The review rests on five source journals. A source counts only if
 its live page (an abstract page, a full text, or a bibliographic record with an abstract)
 was fetched in the session that cites it. Snippets from search results are leads, labelled
 SEEN-ONLY, and nothing below rests on one without saying so. No archived copies were used.
@@ -11,6 +11,7 @@ SEEN-ONLY, and nothing below rests on one without saying so. No archived copies 
 | A: metriplectic ML | `research/lit_A_metriplectic_ml.md` | 43 (T1 to T43) | 2024 to 2026 GENERIC, metriplectic, port and Onsager learning |
 | B: thermodynamic column models | `research/lit_B_thermo_column_models.md` | 33 (30 with abstract or text) | non-ML GENERIC, IPHS and port-based models of columns, reactors, exchangers |
 | C: sorption surrogates and rollouts | `research/lit_C_sorption_surrogates_rollouts.md` | 39 (C1 to C39) | learned adsorption models; what structure buys over long rollouts |
+| D: update, 2026-11-03 | `research/lit_D_update_2026-11-03.md` | 23 (N1 to N23) | anything new since 2026-10-01; citers of the anchor papers; search hit counts logged |
 
 The sources this review leans on most were re-checked live on 2026-10-13 against arXiv,
 Crossref, OpenAlex or Zenodo (title, authors, date). That covers 2610.05570, 2606.08343,
@@ -18,7 +19,9 @@ Crossref, OpenAlex or Zenodo (title, authors, date). That covers 2610.05570, 260
 2609.04530, 1204.3841 and 2302.11002, Baaiu et al. 2008 and 2009 and Peng et al. 2007, Walton
 and LeVan 2005, Schwamberger and Schmidt 2013, Myers and Monson 2014, Dytrych and Dlaskova
 2025, Glover et al. 2026, Mukherjee and Bhattacharyya 2024, Bermejo et al. 2025, Li et al.
-2019, and Staudt et al. 2026.
+2019, and Staudt et al. 2026. On 2026-11-03: 2606.15053, 2604.04266, 2607.10965, 2610.20614,
+2610.05570v1, the v9 record of 2606.08343, An et al. 2026 (Crossref), and the HAL record of
+the Mousa thesis (tel-05363400).
 
 ## 1. Structure-preserving learning is mature, and its latent versions all learn the entropy
 
@@ -42,12 +45,19 @@ times lower than its baselines, for example 2.47×10⁻³ against 1.70×10⁻² 
 on Couette flow (journal C, C17). Two caveats travel with that number: it is the best of 10
 runs, and an ablation found that one of its losses added nothing.
 
-**In every latent model found, the energy and entropy are learned in latent coordinates
-without physical meaning.** The magnetisation paper says explicitly that its learned
-potential is not the Gibbs free energy (journal A, T11). That matters for two reasons:
+**In every latent GENERIC or metriplectic model found, the energy and entropy are learned
+in latent coordinates without physical meaning.** That now includes a fracture application
+of tLaSDI (arXiv:2610.20614). The magnetisation paper says explicitly that its learned
+potential is not the Gibbs free energy (journal A, T11). The nearest exception in spirit is
+Physics-conforming Latent Twins (Chung, Bu, Verma, arXiv:2606.15053, CMAME 2026): its latent
+flow preserves or dissipates *prescribed* quantities carried over from the physical state.
+It does not fix a thermodynamic energy-entropy pair, has no GENERIC degeneracy and has no
+ports. That matters for two reasons:
 - "respects the second law" is then a statement about a surrogate quantity;
 - learning the entropy has a documented failure: in Poisson-GENERIC operators, a
   learned-entropy ablation "injects energy on every reversible-irreversible problem" (T5).
+  That sentence is in the v1 abstract of arXiv:2610.05570 (4 October 2026) and the v2 full
+  text. The v2 abstract reports a learned-energy ablation instead, so cite v1.
 
 Fixing a trusted energy is partly anticipated outside latent models:
 - the fixed structural energy terms of Poisson-GENERIC (T5);
@@ -59,9 +69,12 @@ None of these is a latent model with E and S fixed from the physics of the decod
 
 **Transport is the documented weak spot.** GENERIC-FNO loses accuracy "on pure transport"
 (T4). Poisson-GENERIC shows that its friction class provably cannot represent transport, so
-transport must enter through a Lie-Poisson reversible operator (T5). No fetched paper shows a
-learned metriplectic latent model of an advection-dominated *open* system with inflow and
-outflow ports and a quantified rollout error. The nearest is a thermodynamics-informed
+transport must enter through a Lie-Poisson reversible operator (T5). GENERIC-FNO's latest version (v9, 1 November 2026) also limits its
+guarantees to "closed conservative-dissipative dynamics". No fetched paper shows a learned
+metriplectic latent model of an advection-dominated *open* system with inflow and outflow
+ports and a quantified rollout error. The nearest learned distributed-port model is
+conservative and learns its Hamiltonian (Beckers and Colombo, arXiv:2604.04266, boundary
+control of port-Hamiltonian PDEs). The nearest is a thermodynamics-informed
 MeshGraphNet for open flow around obstacles (Bermejo et al. 2025, T16). Its E and S are
 learned, it is full-field, and its abstract does not say how boundary fluxes are treated.
 
@@ -127,11 +140,18 @@ From most to least structure (journal C, Part 1):
   - Ceccanti et al. 2026: a DeepONet for cyclic TVSA, which assumes isothermal operation
     (arXiv:2601.09491).
   - Bilal et al. 2026: a non-isothermal chromatography surrogate.
+  - An, Wald, Chen, King 2026: a neural surrogate of a temperature-vacuum swing (TVSA)
+    direct-air-capture cycle, trained on about 120,000 cycle-resolved simulations of a
+    lumped state-transition model (Front. Environ. Eng., doi:10.3389/fenve.2026.1881554).
+    It is cycle-level, not a column field, and has no energy or entropy structure.
 - **A strong non-learned competitor:** a differentiable mechanistic VPSA model that reaches
   the cyclic steady state about 20 times faster (Glover, Papathanasiou, Pini, Comput. Chem.
   Eng. 2026, doi:10.1016/j.compchemeng.2026.109904).
 
-No learned sorption model reports zero unphysical outputs over many cycles. **No learned
+Differentiable mechanistic simulators keep getting stronger: diff-soup (Degnan-Morgenstern
+and Bazant, arXiv:2610.37333) puts a neural closure inside a stiff packed-bed solver on GPU.
+That strengthens the case for arm C. No learned sorption model reports zero unphysical
+outputs over many cycles. **No learned
 adsorption, sorption or chromatography model that is thermodynamically structured by
 construction was found** in journals A and C. The searches covered GENERIC, metriplectic,
 port-Hamiltonian, Onsager, entropy-stable and "thermodynamically consistent", crossed with
@@ -157,6 +177,9 @@ balance-constraint paper, but it must be read before the novelty sentence is fin
 - **Function-space operators:** Poisson-GENERIC's 61 of 72 seed-level wins.
 - **Data efficiency:** constrained Hamiltonian and Lagrangian forms improved it on a double
   pendulum over 10 to 10,000 trajectories (arXiv:2012.02334).
+- **Robustness to poor data:** on 1-D advection, latent fields that preserve conservation
+  degraded less when the training data were degraded (Prakash and Klasky,
+  arXiv:2607.10965).
 
 **Against, or qualifying:**
 - **One-step accuracy is traded away.** The same benchmark was best on rollout error in 60 of
@@ -177,7 +200,7 @@ balance-constraint paper, but it must be read before the novelty sentence is fin
 
 ## 5. The exact gap
 
-> No published work, as of 2026-10-13 within the sources searched, learns a reduced (latent)
+> No published work, as of 2026-11-03 within the sources searched (journals A to D), learns a reduced (latent)
 > model of a **non-isothermal adsorption column** whose **energy and entropy are fixed from
 > the adsorbent's and the gas's thermodynamics** (not learned), with the **inlet, outlet and
 > wall as ports**, and **tests, against the same model without structure and under a
@@ -190,7 +213,7 @@ Each qualifier is load-bearing. Here is what each one excludes:
 |---|---|
 | non-isothermal | the isothermal port-based column models of Baaiu et al. 2008 and 2009 |
 | learned, latent | the non-ML IPHS, GENERIC and port-based formulations |
-| E and S fixed from thermodynamics | tLaSDI, the thermodynamics-aware reduced models, the magnetisation operator, GENERIC-FNO (all learn them) |
+| E and S fixed from thermodynamics | tLaSDI and its fracture application, the thermodynamics-aware reduced models, the magnetisation operator, GENERIC-FNO (all learn them); Physics-conforming Latent Twins (prescribed invariants, not a thermodynamic E and S) |
 | adsorption column with ports | port-metriplectic networks and thermodynamics-informed graph networks (no sorption, E and S learned) |
 | tested what structure buys, pre-declared | every sorption surrogate found (unstructured, penalised, or balance-only, none tested this way) |
 
@@ -203,18 +226,25 @@ supporting results, not the headline:
 
 ## 6. What could still sink the novelty claim
 
-1. Mousa et al. 2025 (above), which needs library access.
-2. The full texts of Baaiu et al. 2008 and 2009. If they contain a non-isothermal extension
-   that the abstracts do not mention, the formulation is no longer new. The learned-model
-   claim would still stand.
-3. ACS, Wiley and ChemRxiv pages refused access during the search:
+1. **Resolved: Mousa et al. 2025 is no threat.** The Comput. Chem. Eng. article is still
+   closed, but the first author's thesis is open on HAL (tel-05363400, 2025-10-10, abstract
+   read live 2026-11-03). It lists the article as its own and describes neural networks
+   corrected by data reconciliation on mass and energy balances and reaction equilibria,
+   for a flash drum, a distillation column and reactors. There is no adsorption and no
+   entropy structure.
+2. **Open: the full texts of Baaiu et al. 2008 and 2009.** HAL holds no file and all three
+   records are closed. If they contain a non-isothermal extension that the abstracts do not
+   mention, the formulation is no longer new. The learned-model claim would still stand.
+   This needs library access (Taylor & Francis and Elsevier).
+3. **Open: pages refused during the searches.**
    - Döppel, Bracconi and Maestri 2026, ACS Eng. Au (hard atom balances in a catalytic
      reactor surrogate, SEEN-ONLY);
    - Myers 2002 (adsorbed-phase thermodynamics, SEEN-ONLY);
    - the HARMONIA full text.
-4. Semantic Scholar refused requests all session (HTTP 429), and OpenAlex's daily limit ran
-   out late in the search. So the citation sweep is good but not exhaustive. A final
-   citation-gate sweep before submission is required anyway.
+4. **The sweep is good but not exhaustive.** Semantic Scholar refused requests in every
+   sweep (HTTP 429). Journal D logs every search with its hit count, and the two searches
+   closest to the gap returned none. A final citation-gate sweep before submission is still
+   required.
 
 ## 7. How the review changed the design
 
