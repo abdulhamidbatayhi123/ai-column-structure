@@ -14,11 +14,12 @@ Paper 1 means the repository `ai-mof-cof-dynamics` (manuscript Section 2, `solve
    fixed entropy. They are the special case in which water carries no heat capacity
    (`c_w = 0`). The heat term `-ΔH dq/dt` is then exactly right, not approximately right.
    The `q_st = -ΔH + RT` statement in Paper 1 (line 404) belongs to a different gas model
-   (ideal-gas vapour at constant total pressure). The two models differ by RT, which is 4 to
-   8 % of the heat released over Paper 1's ranges. That is a modelling choice, not an internal
+   (ideal-gas vapour at constant total pressure). The two models differ by RT, which is 4.0 to
+   8.4 % of the heat released over the temperatures 3B's cycles visit (288 to 383 K, ΔH −60
+   to −38 kJ mol⁻¹). That is a modelling choice, not an internal
    error. Section 3.4 has the details.
-2. **The physically important omission is the heat capacity of the water.** At saturation the
-   adsorbed water holds 27 to 101 % as much heat capacity as the solid if it is given the
+2. **The physically important omission is the heat capacity of the water.** At saturation (an
+   upper bound; at the loadings a cycle actually reaches it is lower) the adsorbed water holds 27 to 101 % as much heat capacity as the solid if it is given the
    vapour's molar heat capacity (33.6 J mol⁻¹ K⁻¹). With a liquid-like value (75) it holds 60
    to 225 %. Paper 1 sets this to zero. This changes the thermal wave and the temperature
    rise, so the 3B reference uses `c_w > 0`, and Paper 1's model becomes its verified
@@ -37,7 +38,8 @@ Paper 1 means the repository `ai-mof-cof-dynamics` (manuscript Section 2, `solve
    the alternative.
 4. **Every dissipative mechanism in the column has a proof of non-negative entropy
    production**, including first-order upwind advection, which is exactly a tanks-in-series
-   mixing process. So the full-order discrete reference is consistent at *any* grid size.
+   mixing process (first-order upwind only, Section 4.3). So the full-order discrete reference
+   is consistent at *any* grid size.
    This has a consequence for the paper: a coarse, consistent finite-volume solver is a
    non-learned competitor that the latent model must beat on cost and accuracy
    (pre-registration, arm C).
@@ -113,8 +115,11 @@ Assumptions carried by the state, all inherited from Paper 1 and stated rather t
 
 The vapour is treated as a dilute ideal solute in an incompressible carrier, the reading
 under which Paper 1's constant ρ_g is exact. Per mole of water, the internal energy equals
-the enthalpy (no flow-work term), and the molar heat capacity is `c_w` (taken equal in gas
-and adsorbed phase, see 3.4):
+the enthalpy (no flow-work term), and the molar heat capacity is `c_w`. That c_w is the same
+in the gas and the adsorbed phase is not a separate choice. It *follows* once μ_a is defined
+from μ_v through an isotherm with a temperature-independent ΔH (Section 3.2 gives
+`e_a = q (e_w + ΔH)`). An adsorbed-phase heat capacity different from c_w requires changing
+the isotherm's temperature dependence (Section 3.4, last row):
 
 ```
 e_w(T) = e_0 + c_w (T − T_0)
@@ -192,7 +197,7 @@ ranges (q_max 8 to 30 mol kg⁻¹, ΔH −60 to −38 kJ mol⁻¹, feed 288 to 3
 | difference | size | treatment in 3B |
 |---|---|---|
 | water heat capacity omitted (`c_w = 0`) | adsorbed water at saturation holds 0.27 to 1.01 × the solid's heat capacity at c_w = 33.6 J mol⁻¹ K⁻¹, and 0.60 to 2.25 × at a liquid-like 75 | **included**: primary reference uses c_w = 33.6 (keeps Paper 1's isotherm exact); c_w = 0 is the verification limit |
-| flow work of the vapour (ideal gas versus dilute solute) | RT/\|ΔH\| = 4.1 to 7.7 % of the heat released (298 to 353 K) | not included; the dilute-solute model is kept for continuity with Paper 1 and stated as a limitation |
+| flow work of the vapour (ideal gas versus dilute solute) | RT/\|ΔH\| = 4.0 to 8.4 % of the heat released (288 to 383 K, the temperatures 3B's cycles visit) | not included; the dilute-solute model is kept for continuity with Paper 1 and stated as a limitation |
 | enthalpy carried by vapour in the gas stream | vapour/carrier stream heat capacity 0.9 to 4.3 % (RH 0.2 to 0.9 at 303 K) | included automatically once c_w > 0 |
 | liquid-like heat capacity of the adsorbed phase (c_a ≠ c_v) | would make ΔH temperature-dependent (Kirchhoff), about 4 % over a 50 K swing | not in the primary reference, because it changes the isotherm's T-dependence; it belongs to 3A's potential (INTERFACE_3A.md) |
 
@@ -214,6 +219,7 @@ The full-order discrete system is
 ```
 dx/dt = L ∇E + M(x) ∇S + F_flow(x; v, c_in, T_in) + F_wall(x; T_w)          (G)
 with L = 0,  M = Mᵀ ⪰ 0,  M ∇E = 0,  M ∇N = 0.
+M holds dispersion, conduction and LDF. Convection (F_flow) and the wall (F_wall) are ports.
 ```
 
 ### 4.1 Why L = 0, and where convection goes instead
@@ -225,18 +231,26 @@ kinetic energy that drives it.
 
 In this column the velocity is prescribed and has no balance equation. Continuum advection
 by a fixed velocity is still entropy-preserving in the interior, and it is reversed by
-reversing v. In that sense it is "reversible". But it is not generated by the energy:
-E = Σ u_i Δz is linear in the state, so ∇E is a constant vector. Writing advection as
-`L(x) ∇E` would need a state-dependent L built to reproduce the upwind fluxes, with no
-physical Hamiltonian behind it. The Poisson-GENERIC operators of arXiv:2610.05570 take this
-route for transport (a Lie-Poisson L), and they note that their friction class cannot
-represent transport. 3B does not take it, for two reasons:
+reversing v. In that sense it is "reversible". But a Poisson operator for it is not
+available for free. E = Σ u_i Δz is linear in the state, so ∇E is constant, and any
+state-dependent vector field can be written as `L(x) ∇E` with some antisymmetric L. The
+real obstruction is the degeneracy condition `L ∇S = 0`. The naive construction
+`L = (a e_uᵀ − e_u aᵀ)/|e_u|²`, with `a` the advection field, reproduces advection but gives
+`L ∇S = a Σ(1/T_i) ≠ 0`. A valid L needs a genuinely constructed bracket, which is what the
+Poisson-GENERIC operators of arXiv:2610.05570 build for transport (a Lie-Poisson L). They
+also note that their friction class cannot represent transport. 3B does not take that
+route, for two reasons:
 
-1. **Upwind convection is not reversible at the discrete level.** It is exactly a cascade of
-   perfectly mixed tanks: each cell receives a stream at its upstream neighbour's state and
-   releases a stream at its own state. The mixing produces entropy (Section 4.3). That is a
-   *directed* exchange, so it is neither `M ∇S` with a symmetric M nor energy-conserving
-   reversible motion.
+1. **Upwind convection is not reversible at the discrete level, and 3B chooses not to split
+   it.** First-order upwind is exactly a cascade of perfectly mixed tanks: each cell
+   receives a stream at its upstream neighbour's state and releases a stream at its own
+   state. The mixing produces entropy (Section 4.3). It *can* be split, by the standard
+   entropy-stable decomposition, into an entropy-conservative flux (a Tadmor-type mean,
+   skew) and a dissipative flux with a positive semi-definite coefficient (symmetric). That
+   split would give the latent model's transport term a physical counterpart. 3B does not
+   use it in the primary design. The split is scheme-specific, and it would build one
+   discretisation's numerical dissipation into the learned model. It is recorded as a
+   variant for future work (Section 7).
 2. **The flow is an input.** In a temperature-swing cycle the operator chooses v, the feed
    and the wall temperature. Treating the flow as a port keeps every input on the boundary
    of the model, where a controller would act.
@@ -302,8 +316,9 @@ m_i = T_i r_i / (μ_v − μ_a) = T_i (1−ε) ρ_p k (q*(c,T) − q) / (μ_v(c,
 `T (1−ε) ρ_p k ∂q*/∂μ`. So **the LDF law is an Onsager flux with a positive, state-dependent
 coefficient, by virtue of the isotherm's monotonicity alone.** Non-equilibrium thermodynamics
 already writes uptake as a flux driven by the difference in chemical potential (Santamaria-Holek,
-Grzywna, Rubi, arXiv:1204.3841). What is shown here is that the *concentration-difference*
-LDF used in practice is of that form whenever the isotherm is increasing. That answers the
+Grzywna, Rubi, arXiv:1204.3841). The observation here, a one-line sign argument, is that the
+*concentration-difference* LDF used in practice is of that form whenever the isotherm is
+increasing. It is not a contribution of the paper. It answers the
 claim of a 2025 preprint (HARMONIA, Dytrych and Dlaskova, ChemRxiv,
 doi:10.26434/chemrxiv-2025-c860f, read only as an abstract record) that standard
 isotherm-plus-LDF couplings can violate the second law. For a single adsorbate with an
@@ -311,15 +326,18 @@ increasing isotherm they cannot. Violations need a non-monotone isotherm, an iso
 mismatch, or multicomponent couplings, none of which 3B has. It does not touch u, so the
 heat of adsorption appears through T(n,a,u), not as a source term.
 
-**Wall.** Treat the wall as a heat bath at T_w with energy U_w and entropy U_w/T_w. Then
-`W_i = h_a (T_i − T_w)` with `h_a = 4h_w/D_in` is the Onsager flux
-`L_w,i (1/T_w − 1/T_i)` with `L_w,i = h_a T_i T_w ≥ 0`. Production
-`h_a (T_i − T_w)² / (T_i T_w) ≥ 0`. When T_w(t) is switched in a temperature-swing cycle,
-the bath is an input port.
+**Wall: a port, not a block of M.** The wall heat `W_i = h_a (T_i − T_w)`, with
+`h_a = 4h_w/D_in`, leaves the bed through a port to a bath at the input temperature T_w(t).
+The bath is not in the state, and in the latent model it cannot be, so the wall belongs in
+F_wall and not in M. The film between bed and wall still produces entropy,
+`σ_wall,i = W_i (1/T_w − 1/T_i) = h_a (T_i − T_w)² / (T_i T_w) ≥ 0`. It is booked in σ, and
+the port carries the entropy flux `W_i/T_w` (Section 4.4). Read with the bath as an extra
+state, the same expression is an Onsager flux `L_w (1/T_w − 1/T_i)` with
+`L_w = h_a T_i T_w ≥ 0`. That reading justifies the sign, but the model keeps the port.
 
-**Degeneracy.** Every block moves water between n and a, or between neighbouring cells, and
-moves energy between neighbouring cells or into the bath. So each block's columns sum to
-zero against `∇E` (all ones on u, plus the bath) and against `∇N` (all ones on n and a).
+**Degeneracy.** Every block of M moves water between n and a, or between neighbouring cells,
+and moves energy between neighbouring cells. So each block's columns sum to zero against
+`∇E` (all ones on u) and against `∇N` (all ones on n and a).
 That gives `M ∇E = 0` and `M ∇N = 0`. With L = 0 the other GENERIC condition, `L ∇S = 0`,
 holds trivially.
 
@@ -334,8 +352,12 @@ convective terms are exactly this. Its entropy production is
 ```
 
 by concavity of the gas-stream entropy `s_g`. It is the entropy of mixing an incoming parcel
-into a well-mixed tank, a Bregman divergence. Summed over cells, the interior stream
-entropies telescope, leaving the port terms.
+into a well-mixed tank, a Bregman divergence of −s_g. Summed over cells, the interior stream
+entropies telescope, leaving the port terms. `s_g` is strictly concave in (c, e_g) because
+`ρ_g C_pg + c c_w > 0` and `∂μ_v/∂c = RT/c > 0` (checked numerically, Section 6, V3).
+The proof needs the outflowing stream to be at the cell's own state, which is true for
+**first-order upwind only**. It fails for MUSCL or van Leer reconstructions (Paper 1's
+optional scheme), whose face states differ from the cell states.
 
 ### 4.4 The balances the structure guarantees
 
@@ -361,8 +383,8 @@ and the balance functionals E, N, S. Learned: an autoencoder (shared by every ar
 once per seed and frozen) and the latent dynamics.
 
 The full-order system (G) is already known exactly. The reason to learn anything is cost:
-the verified reference needs N_z = 2000 cells and about 17 worker-seconds per breakthrough
-in Paper 1, and a 50-cycle rollout costs minutes to hours. A latent model of dimension
+the verified reference needs N_z = 2048 cells (Paper 1 verified 2000) and Paper 1 measured
+about 17 worker-seconds per breakthrough at 2000, and a 50-cycle rollout costs minutes to hours. A latent model of dimension
 d ≈ 16 to 32 can roll out in milliseconds. 3B asks what the structure buys *for such a
 model*, not whether physics can be learned from scratch.
 
@@ -376,23 +398,49 @@ adsorbed phase (INTERFACE_3A.md).
 
 What the reference stores per snapshot, and why:
 
-- **Coarse cells are block averages of the conserved variables** (n, a, u) of the 2000-cell
-  solution, converted to (log c, log x, log T) through the thermodynamics of Section 3.3.
-  They are not averages of c, q and T. Block averages of conserved variables keep the totals
-  N and E exact, so the coarse data carry the fine solution's balances.
+- **The reference is solved on N_z = 2048 cells**, not 2000. 2000/128 = 15.625, so no
+  block-average partition onto 128 cells exists for 2000. 2048 = 16 × 128 is finer than
+  Paper 1's verified 2000, so grid convergence still holds.
+- **Coarse cells are block averages of the conserved variables** (n, a, u) over 16 fine
+  cells, converted offline to (log c, log x, log T) through Section 3.3 (one monotone root
+  per stored value). They are not averages of c, q and T, nor of their logarithms: q = Q(x)
+  is strongly nonlinear across the step, so averaging (log c, log x, log T) would conserve
+  neither N nor E. Block averages of conserved variables keep N and E exact.
+- **The bed starts pre-wetted, not dry.** Every trajectory starts at equilibrium with a trace
+  humidity `c_0 = 10⁻⁴ c_in` at T_ads, so log c and log x are finite at t = 0. (A dry bed
+  gives −∞.) The trace is stated in the paper. Its loading is about 3×10⁻⁶ of the
+  cycle's working capacity for the MOF-303-like isotherm (7×10⁻⁵ mol kg⁻¹ against a swing of
+  20.2 mol kg⁻¹ between 303 and 353 K), because it sits on the Henry branch.
 - **The outlet state is stored separately**, as the fine solver's last-cell (c, T). A coarse
   outlet cell is the wrong port. In `verify/run_checks.py` (V4: 400 → 40 cells, one
   temperature-swing cycle), the water-rate balance evaluated with the coarse last cell is
   off by 4.0 %, and the energy balance by 0.5 %. With the stored fine outlet both close to
   10⁻¹⁵.
-- **The wall heat is computed from the coarse temperatures.** Its coarse-graining error is
-  3×10⁻⁵ of the energy rate in V4, because block temperatures and averages of fine
-  temperatures differ by at most 0.016 K there. That is the reference's own balance floor at
-  the learning resolution, and the pre-registration's violation threshold is set above it.
-- **The coarse-grained entropy inequality held** in V4: `dS_c/dt − Φ_S ≥ 0` at all 602
-  snapshots, with either outlet. Arm S is therefore not forced to contradict its training
-  data. This is checked again at 2000 → 128 cells in the pilot (pre-registration, Section 9).
-  If it fails there, the pre-registration's handling applies.
+- **The exact fine wall heat per block is stored too**, `Σ_{i∈I} h_a (T_i − T_w) Δz`. The
+  models compute their wall port from decoded coarse temperatures, because that is all a
+  model has. With c_w > 0, T(n,a,u) is nonlinear, so the coarse-temperature wall heat
+  differs from the exact one by a covariance term. In V4 it was 3×10⁻⁵ of the energy rate,
+  with block temperatures within 0.016 K of averaged fine temperatures. That is the
+  reference's own self-consistency floor at the learning resolution. The pre-registration's
+  violation threshold is set from it, measured on the pilot.
+- **The coarse-grained entropy inequality is not guaranteed in general.** A four-cell
+  conduction counterexample breaks it: fine T = (350, 300 | 340, 300) gives coarse means
+  325 and 320. The only flux across the coarse face runs from the 340 K cell to the 300 K
+  cell, so from the cooler coarse cell into the hotter one, and `dS̄/dt < 0` with no port
+  flux. At the coarse level, advection is also no longer a single Bregman divergence when the
+  outflow differs from the block state. Coarse-graining a non-monotone sub-cell profile can
+  break the second law at the coarse level.
+  **Empirically, it held with margin.** In V4 (400 → 40 cells, one temperature-swing cycle)
+  `dS̄/dt − Φ_S ≥ 0` held at all 602 snapshots. The independent review's adsorption runs
+  (512 and 1024 → 128 cells) found the coarse production at least as large as the fine one
+  throughout. The LDF, film and mixing production dominates the sub-cell effects. Arm S is
+  therefore not expected to contradict its data, but this is an empirical property. It is
+  a reference gate: `min_t (dS̄/dt − Φ_S)` is computed on every stored trajectory with the
+  stored ports (pre-registration, Section 6). Any violation beyond τ is reported, and arm S
+  is declared knowingly over-constrained there.
+- **Reference constants are fixed at e_0 = 0 and s_0 = 0** in all code. Their values cancel
+  in exact arithmetic, but a large e_0 makes the cell entropy's Hessian ill-conditioned, and
+  any coarse-port residual picks up e_0 and s_0 multiples.
 
 E, N and S of a latent state are the physical functionals of its decoded fields:
 `Ê(z) = E(D(z))`, and likewise N̂ and Ŝ. Their latent gradients are vector-Jacobian products
@@ -409,13 +457,30 @@ P(z) = I − B (BᵀB)⁻¹ Bᵀ,   B = [∇Ê, ∇N̂]                  (projec
 
 Here `P_E`, `P_N` and `Φ_S` are the physical port fluxes of Section 4.4. The inlet uses the
 known feed u(t), the outlet uses the decoded outlet channels, and the wall uses the decoded
-coarse temperatures (Section 5.2). The projection is closed form: two equalities plus one inequality
-with an active set, solved as a 3 × 3 system. It is differentiable almost everywhere.
-Consequences, exact in continuous time:
+coarse temperatures (Section 5.2). The projection is closed form: two equalities plus one
+inequality with an active set. It is differentiable almost everywhere. Consequences, exact
+in continuous time whenever the projection is well posed:
 
 ```
 dN̂/dt = P_N,    dÊ/dt = P_E,    dŜ/dt − Φ_S = (Pᵀ∇Ŝ)ᵀ A Aᵀ (Pᵀ∇Ŝ) + (∇Ŝ·Π − Φ_S) ≥ 0.
 ```
+
+**When the projection is ill posed, and what is done.** Three cases exist:
+(i) `B = [∇Ê, ∇N̂]` can be rank-deficient, so `(BᵀB)⁻¹` does not exist;
+(ii) near the equilibrium with the feed and the wall, which long adsorption steps approach,
+the decoded state is nearly uniform. There `P∇Ŝ → 0`, and the inequality's slack goes to
+zero with it. At an exactly uniform state, `∇S = (1/T)∇E − (μ/T)∇N` in field space, and the
+inequality reduces to a Bregman term plus the film production, both ≥ 0, so the state is
+feasible but the correction `δ/|P∇Ŝ|` is ill-conditioned;
+(iii) away from uniform states, `∇Ŝ ∈ span(B)` is a measure-zero set with an ill-conditioned
+neighbourhood, where the QP can be infeasible.
+The implementation therefore:
+- builds P with a pseudo-inverse and a declared rank tolerance;
+- applies the inequality correction as `Π ← Π + λ P∇Ŝ` with
+  `λ = max(0, δ)/(|P∇Ŝ|² + κ)` and a declared κ;
+- counts every step at which κ binds or B is rank-deficient.
+
+Those counts belong to the verification hypothesis H3a. They are defects, never successes.
 
 The internal metriplectic term and the port projection are separable, so they can be
 ablated separately (pre-registration, arms S-M and S-Π). That decomposition is how the paper
@@ -432,6 +497,15 @@ enforced. It can fail by O(h^5) when production is near zero, and the count is r
 its tolerance. A discrete-gradient integrator (exact for all three) is the documented
 alternative if the count is not negligible. It is implicit and roughly 3 to 5 times more
 expensive per step.
+
+**One discrete balance definition for every arm.** The violation metric of the
+pre-registration is `|N̂_{k+1} − N̂_k − Q_RK4[P_N]|`, with the RK4 quadrature taken on each
+arm's *own* stages, and likewise for Ê. With snapshot trapezoids instead, S would show
+O(h³) residuals that are quadrature artefacts, and the comparison would be unfair to S.
+
+**Near-dry cells stiffen the metriplectic term.** The entropic variable `−μ_v/T` grows like
+`−R ln c` in dry cells, so `P A Aᵀ P ∇Ŝ` can be stiff there. The pilot checks the RK4 step
+against it (pre-registration, Section 9).
 
 ### 5.5 What the latent guarantee does not cover
 
@@ -488,6 +562,12 @@ Still to do at the study's resolution, before any data are used:
    inequality, and the wall-heat floor that sets the violation threshold.
 
 ## 7. Open points this document does not settle
+
+- **A physically structured transport term (variant, not in the primary design).** The
+  entropy-stable split of upwind convection into a skew, entropy-conservative part and a
+  symmetric dissipative part (Section 4.1) could replace the free port term `G_θ` with a
+  transport term that has a physical counterpart. That is a natural follow-up if the primary
+  study shows that the free transport term is where S's errors concentrate.
 
 - **The gas model (author's decision).** The dilute-solute vapour (this document, Paper 1's
   limit) or the ideal-gas vapour that Paper 3A uses. They differ by RT in the heat released,

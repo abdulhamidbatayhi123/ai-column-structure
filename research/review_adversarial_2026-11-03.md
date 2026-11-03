@@ -15,10 +15,10 @@ could be stronger or is overstated. "Checked, correct" is stated where an item h
 ## Top 5
 
 1. **[F20, ERROR] The 1e-6 balance-violation threshold flags the reference itself.** The
-   128-cell averages of the 2000-cell reference do not close the water balance when the
-   outlet flux is taken on the coarse outlet cell. Measured: the residual is about 1e-4 of
-   v·c_in (ratio 4, 512→128) and grows with the coarsening ratio. That is two orders above
-   the pre-registered 1e-6 threshold. Arm S is forced to satisfy a balance the truth does not
+   128-cell averages of the fine reference do not close the water balance when the outlet
+   flux is taken on the coarse outlet cell. Measured: up to 2e-4 of v·c_in, and 1e-4 of
+   throughput cumulatively. The value is the same for 512→128 and 1024→128, because it is set
+   by the coarse cell width. That is about 200× the pre-registered 1e-6 threshold. Arm S is forced to satisfy a balance the truth does not
    satisfy. H3b's "drift" for a perfect model is not zero. Fix: store conservative block
    averages of (n, a, u) on an integer partition (N_z = 2048), plus the fine outlet face state.
    Then decode the outlet face as its own output (F21).
@@ -269,9 +269,12 @@ k_LDF = 0.05 s⁻¹, adsorption to 1.15 t_st). With N_fine = 512 → 128 (ratio 
   the outlet carries vapour; the cumulative residual / throughput is 9.7e-5;
 - the coarse energy residual is up to 5.8 W m⁻², which is v·ρ_gC_pg times a 0.05 K mismatch
   between the outlet cell and the block average;
-- [ratio 8 result: see F20-addendum below].
-The residual scales with (ratio − 1)/2, so at ratio 16 expect roughly 5× the ratio-4 value,
-of order 1e-3. Both are 100–1000× the pre-registered 1e-6 threshold.
+- with N_fine = 1024 → 128 (ratio 8) the numbers are almost the same: |r_N|/(v c_in) up to
+  2.2e-4, cumulative 1.04e-4 of throughput, energy residual up to 6.5 W m⁻². The fine model
+  closes to 3e-16.
+So the residual is set by the coarse cell width (≈ v ∂_z c · ΔZ/2 with ΔZ = L/128), not by
+the fine grid. Expect the same ≈ 2e-4 at 2048 → 128. That is about 200× the pre-registered
+1e-6 threshold (this is one adsorption step; desorption steps were not run).
 Consequences.
 (a) The violation metric scores the truth as violating, so it cannot separate arms
 honestly. A model that is more faithful to the data violates more.
@@ -324,8 +327,8 @@ The advective part is also not a Bregman divergence at the coarse level. With
 outflow g_out ≠ g(x̄_I), σ̄_adv,I = (v/ΔZ)[D(g_in, ḡ_I) − D(g_out, ḡ_I)], which is negative
 when the front sits in the downstream part of the block.
 Measured, though: in the adsorption run above, the global coarse production
-dS̄/dt − Φ̄_S stayed positive at every snapshot (min 0.117 W K⁻¹ m⁻² against the fine 0.116;
-coarse ≥ fine throughout). The LDF, film and mixing production dominates. Because s_0 enters
+dS̄/dt − Φ̄_S stayed positive at every snapshot, at both ratio 4 and ratio 8 (min 0.117 W K⁻¹ m⁻²
+against the fine 0.116; coarse ≥ fine throughout). The LDF, film and mixing production dominates. Because s_0 enters
 as s_0·r_N, the residual is reference-dependent at the 1e-5 W K⁻¹ m⁻² per J mol⁻¹ K⁻¹ level.
 Implications. For arm S the global inequality is probably compatible with the data in
 practice, but that is an empirical property. Fix: add to the reference gate the computed
@@ -473,7 +476,9 @@ H2 block 9 × 3.33 + 5 × 3.33 = 46.6 h ✓. Total 121.5 h ✓.
   per cycle comes from Paper 1's breakthrough benchmark. A single timing with a MOF-303-like
   steep isotherm (n = 4) using Paper 1's own scheme and tolerances (rtol 1e-6, atol 1e-10)
   took 199 s at **512** cells for 1.15 t_st (14,693 RHS evaluations, 3,995 LU
-  factorisations). Extrapolated to 2048 cells this is ≥ 800 s per half-cycle. That is
+  factorisations). The same solve at 1024 cells took 467 s. The
+  cost is roughly linear in N_z, so at 2048 cells expect about 1000 s per adsorption step,
+  against 25 s budgeted per cycle. That is
   illustrative only (my k_LDF and v), but the risk is real. The reduction order (compute §6)
   covers training only, and data cost is never reducible because sets are "generated once".
   Fix: time the reference with the frozen MOF-303-like isotherm before the freeze, and add a

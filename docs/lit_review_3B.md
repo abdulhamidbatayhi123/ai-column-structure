@@ -217,12 +217,15 @@ Each qualifier is load-bearing. Here is what each one excludes:
 | adsorption column with ports | port-metriplectic networks and thermodynamics-informed graph networks (no sorption, E and S learned) |
 | tested what structure buys, pre-declared | every sorption surrogate found (unstructured, penalised, or balance-only, none tested this way) |
 
-**Two smaller results come with the formulation and are new as far as found.** They are
-supporting results, not the headline:
-1. **Paper 1's non-isothermal column is consistent:** it is the exact `c_w = 0` member of a
-   thermodynamically consistent family.
-2. **Concentration-difference LDF produces entropy** whenever the isotherm is increasing.
-   This answers the HARMONIA claim for single adsorbates.
+**What the formulation adds is supporting material, not a second headline.**
+1. **Paper 1's non-isothermal column is the exact `c_w = 0` member of a thermodynamically
+   consistent family.** This is verified numerically to 10⁻⁹ (formulation, Section 6).
+   Consistency of heats and heat capacities as a principle is known (Walton and LeVan 2005;
+   Schwamberger and Schmidt 2013). The exact reduction for this model is the new part.
+2. **Concentration-difference LDF produces entropy whenever the isotherm is increasing.**
+   This is a one-line sign argument, presented as an observation that answers the HARMONIA
+   claim for single adsorbates, not as a contribution. Non-equilibrium treatments of sorption
+   kinetics already use chemical-potential driving forces (arXiv:1204.3841).
 
 ## 6. What could still sink the novelty claim
 
