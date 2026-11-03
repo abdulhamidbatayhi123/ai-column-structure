@@ -97,3 +97,26 @@ a reader comparing the two papers will see it. Two options:
 3B's recommendation is (a). It is the author's decision, and it is listed as an open point
 in `formulation_3B.md`, Section 7.
 
+## Re-check on 2026-11-03 (3A's `PREREG_P3A.md` draft and `docs/DESIGN.md`, read only)
+
+3A now has a pre-registration draft (not frozen). Three points bear on 3B.
+
+1. **Temperature domain.** 3A's MOF-303 data are isotherms at 10, 25, 35 and 50 °C (283 to
+   323 K). 3B's desorption runs at 333 to 363 K, and its OOD test at up to 383 K. So 3B would
+   use a 3A potential 10 to 60 K outside its data. That is exactly the temperature
+   extrapolation 3A tests, which makes the dependency scientifically interesting but
+   unsafe to assume. **Revised decision rule:**
+   - 3A's potential becomes 3B's *primary* constitutive layer only if 3A's frozen results
+     support its extrapolation over at least the gap 3B needs (40 K above the warmest
+     training isotherm), by 3A's own pre-registered verdict;
+   - otherwise the dual-site fallback stays primary, and the 3A potential enters as a
+     secondary arm, with the extrapolation declared beside every result that uses it.
+2. **Heat capacity sign** (requirement 5). 3A's Kirchhoff mode (`dc_k`) is a secondary model
+   in its pre-registration, fitted only where at least four training temperatures exist.
+   Nothing yet keeps the implied adsorbed-phase heat capacity non-negative. 3B will check
+   `c_a(q, T) ≥ 0` over its cycle domain before using any Kirchhoff potential, and will fall
+   back to the van't Hoff mode if the check fails.
+3. **Gas model.** 3A treats the vapour as an ideal gas (DESIGN.md, Section 2). 3B keeps the
+   dilute solute (working decision, pre-registration Section 2). The RT offset, 4.0 to 8.4 %
+   of the heat released over 3B's temperatures, is stated in both papers.
+
