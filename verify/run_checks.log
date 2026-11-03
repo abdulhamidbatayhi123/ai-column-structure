@@ -26,7 +26,7 @@
     "max_rel_diff_q": 5.820640876315653e-09,
     "max_abs_diff_T_K": 1.4875479337206343e-07,
     "T_rise_K": 16.66517321536503,
-    "wall_s": 33.7
+    "wall_s": 16.1
   },
   "V2_cycle": {
     "N": 120,
@@ -75,7 +75,7 @@
         "water_change_mol_m2": -591.977449501547
       }
     ],
-    "wall_s": 176.0
+    "wall_s": 77.1
   },
   "V3_concavity": {
     "samples": 200,
@@ -84,8 +84,10 @@
     "note": "largest eigenvalue / largest |eigenvalue| of the relative-coordinate Hessian; <= ~1e-4 means negative semidefinite up to finite-difference error"
   },
   "V4_coarse_graining": {
-    "sigma_c_min_over_scale_coarse_outlet": 0.0,
-    "sigma_c_min_over_scale_fine_outlet": 0.0,
+    "sigma_c_min_over_scale_coarse_outlet": 0.012129026889471628,
+    "sigma_c_min_over_scale_fine_outlet": 0.011776797879988712,
+    "wall_heat_floor_over_energy_rate": 3.30752164038402e-05,
+    "max_abs_blockT_minus_mean_fineT_K": 0.01586890591380552,
     "water_rate_rel_coarse_outlet": 0.04025650666159093,
     "water_rate_rel_fine_outlet": 4.852287435445934e-16,
     "energy_rate_rel_coarse_ports": 0.0052049426425903,
@@ -94,6 +96,6 @@
     "N_fine": 400,
     "N_coarse": 40,
     "snapshots": 602,
-    "wall_s": 52.0
+    "wall_s": 27.5
   }
 }

@@ -88,7 +88,7 @@ softplus terms, so that `q* = dpsi/ds` is a sum of sigmoids. Against the require
 `mu = mu0(T) + RT ln p`. 3B, following Paper 1's constant gas density, treats it as a dilute
 ideal solute in an incompressible carrier, `mu = phi0(T) + RT ln c`. The isotherm transfers
 exactly through `p = cRT`. But the heat the column releases per mole adsorbed is then 3A's
-isosteric heat minus RT, which is 4 to 8 % lower. That is correct within 3B's gas model, but
+isosteric heat minus RT, which is 4.1 to 8.4 % lower. That is correct within 3B's gas model, but
 a reader comparing the two papers will see it. Two options:
 (a) keep the dilute-solute model in 3B (Paper 1 stays an exact limit), and state the RT
     offset in both papers, with 3B reporting isosteric heats by 3A's definition;
@@ -117,6 +117,6 @@ in `formulation_3B.md`, Section 7.
    `c_a(q, T) ≥ 0` over its cycle domain before using any Kirchhoff potential, and will fall
    back to the van't Hoff mode if the check fails.
 3. **Gas model.** 3A treats the vapour as an ideal gas (DESIGN.md, Section 2). 3B keeps the
-   dilute solute (working decision, pre-registration Section 2). The RT offset, 4.0 to 8.4 %
+   dilute solute (working decision, pre-registration Section 2). The RT offset, 4.1 to 8.4 %
    of the heat released over 3B's temperatures, is stated in both papers.
 

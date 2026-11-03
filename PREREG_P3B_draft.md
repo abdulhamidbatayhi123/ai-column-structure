@@ -2,7 +2,8 @@
 
 Status: **DRAFT, not frozen.** First written 2026-10-12. Revised 2026-11-03 after an
 independent adversarial review (`research/review_adversarial_2026-11-03.md`, findings F1 to
-F36) and after design-verification runs on small grids (`verify/`). Nothing in this document
+F36), a second-round check of the revision (`research/review_round2_2026-11-03.md`), and
+design-verification runs on small grids (`verify/`). Nothing in this document
 has been run as a study. It becomes binding only when the author approves it, it is committed
 as `PREREG_P3B.md`, and the commit hash is recorded in the freeze log. The freeze happens
 *after* the pilot (Section 9) and *before* any confirmatory data are generated. Every
@@ -103,9 +104,12 @@ touched once, after every model is frozen.
 **Data-cost contingency** (if the pilot's reference timing exceeds the budget by more than
 2×, compute §1), applied in this order before the freeze:
 1. N_z = 1024, if it passes Paper 1's grid-convergence criterion for this isotherm on the
-   pilot;
-2. long-test cycles cut from 60 to 40, with H1 read at cycle 30 instead of 50;
-3. the train pool cut to 192 trajectories (the H2 sizes are unchanged).
+   pilot (blocks of 8 fine cells);
+2. long-test and long-validation cycles cut from 60 to 40. H1 is then read at cycle 30
+   instead of 50, survival curves run to cycle 40, and the long-validation decoder check
+   (Section 6.1) uses cycles 20 to 40;
+3. the train pool cut to 192 trajectories. "Full data" then means 192 everywhere it appears;
+   the H2 sizes are unchanged.
 
 ## 3. Arms
 
@@ -123,7 +127,8 @@ arms are matched on:
 | arm | dynamics | role |
 |---|---|---|
 | **U** | `dz/dt = f_θ(z, u(t))`, an unconstrained MLP | the same model without structure (control) |
-| **U+F** | U with the physical features S computes as extra inputs: Ê, N̂, Ŝ, P_E, P_N, Φ_S; no constraint | separates *information* from *structure* (review F27) |
+| **U+F** | U with every physical feature S computes as extra inputs: the values Ê, N̂, Ŝ, P_E, P_N, Φ_S and the latent gradients ∇Ê, ∇N̂, ∇Ŝ; no constraint. Run at full data and at size 32 | separates *information* from *structure* (review F27) |
+| U-long (secondary) | U trained for as many iterations as S's wall-clock allows, full data, 3 seeds | separates structure from compute (F27) |
 | **U+proj** | U trained as U, then rolled out with S's Gauss-Newton balance projection after every step; no retraining | separates *structure in training* from *projection at rollout* (F28) |
 | **P** | U plus soft penalties on the water-balance residual, the energy-balance residual and negative total entropy production of the decoded state; weight chosen on validation from {10⁻³, 10⁻², 10⁻¹, 1} | Paper 1's L4 question, in its strongest configuration |
 | **S** | formulation, Section 5.3: metriplectic internal term plus projected port term, RK4 with constraint projection | the structured model |
@@ -138,7 +143,8 @@ exist, and the paper says so. Second-order entropy-stable schemes are not includ
 Bregman proof covers first-order upwind only (formulation, Section 4.3), and an unproven
 competitor would weaken the comparison's guarantee.
 
-**Seeds:** 5 per learned arm and training size. A seed fixes the autoencoder
+**Seeds:** 5 per learned arm at full data and at training size 32 (where H2 is tested), and
+3 at sizes 16, 64 and 128 (descriptive learning curve). A seed fixes the autoencoder
 initialisation, the dynamics initialisation and the mini-batch order. All learned arms with
 the same seed share the same autoencoder and data order, so comparisons are paired.
 **The dimension d is fixed once, from the full-data autoencoders** (Section 6.1), and kept for
@@ -161,7 +167,8 @@ every training size.
     stages and P_N computed from its own decoded outlet (formulation, Section 5.4). It is
     normalised by the cycle's feed water, `∫ v c_in dt`.
   - **energy**: the same with P_E. It is normalised by a reference-invariant scale, the heat
-    of the water cycled plus the wall heat, `|ΔH| W_k + ∫ |wall heat| dt`. Absolute energy
+    of the water cycled plus the wall heat, `|ΔH| W_k^ref + ∫ |wall heat^ref| dt`, both from
+the reference, so the denominator is the same for every arm. Absolute energy
     throughput is not used: it depends on the temperature origin and on e_0 (F34).
   - **threshold** for both: `10 ×` the reference's own self-consistency floor. That floor is
     the 99.9th percentile of the same residual computed on the stored pilot data, with the
@@ -193,12 +200,15 @@ variance decomposition (trajectory, seed) is reported. The paper states that inf
 over trajectories for these training runs, with seed variance shown beside it. Holm
 correction is applied across the three primary tests (H1, H2, H4) at family α = 0.05.
 
-**Verdict words for a directional hypothesis** (H1, H2, H5):
-- **SUPPORTED**: (a) Holm-adjusted p < 0.05, (b) holds, and the observed median ratio ≤ 0.8;
-- **SMALL**: (a) and (b) hold, but the median ratio is between 0.8 and 1. The effect is real
-  but below the declared minimum. It is reported as such, never as "no effect" (F35);
-- **REFUTED**: the median ratio ≥ 1.0 and the bootstrap interval excludes 0.8;
-- **INCONCLUSIVE**: anything else, printed with the power of the decision rule (Section 7).
+**Verdict words for a directional hypothesis** (H1, H2, H5), assigned in this order (the
+first that applies wins):
+1. **SUPPORTED**: (a) Holm-adjusted p < 0.05, (b) holds, and the observed median ratio ≤ 0.8;
+2. **SMALL**: (a) and (b) hold, and the median ratio lies in (0.8, 1). The effect is real
+   but below the declared minimum. It is reported as such, never as "no effect" (F35);
+3. **REFUTED**: the bootstrap 95 % interval of the median ratio lies entirely above 0.8.
+   A benefit of the declared size is then ruled out, whatever the point estimate. (Requiring
+   the observed median to be ≥ 1 would make this verdict a coin flip under a true null.);
+4. **INCONCLUSIVE**: anything else, printed with the power of the decision rule (Section 7).
 
 **H1 (long-rollout stability, primary).** At cycle 50, S has lower working-capacity error
 than U.
@@ -211,15 +221,24 @@ over cycles 1 to 6 of the in-distribution test.
 - Statistic: the mean of `e_1` to `e_6`.
 - Secondary: the full learning curve (16 to 256), and the *data multiplier*: the smallest
   training size at which U matches S-at-32, by log-linear interpolation.
-- If the size-32 autoencoder fails the decoder gate's threshold (Section 6.1), H2 is
-  reported as **NOT TESTABLE AT 32** and the learning curve stays descriptive.
+- If the size-32 autoencoder fails the decoder gate's thresholds (Section 6.1), H2 is
+  reported as **NOT TESTABLE AT 32**, the learning curve stays descriptive, H2 leaves the
+  Holm family, and in the headline list H2 counts as INCONCLUSIVE.
 
-**Attribution to structure** (applies to H1 and H2 when SUPPORTED or SMALL). The same test is
-run for S against U+F and for S against U+proj (one-sided, not Holm-corrected, reported
-with intervals). The paper attributes a benefit to **the structure** only if S also beats
-U+F. It attributes it to **the structure in training**, rather than a projection at rollout,
-only if S also beats U+proj. Otherwise it names what the evidence supports: "physical
-features", "projection at rollout", or both.
+**Attribution to structure** (applies to H1 and H2 when SUPPORTED or SMALL). The same
+statistic is computed for S against U+F and for S against U+proj (H2: at size 32). "S beats
+X" means conditions (a) and (b) of the unit-of-analysis paragraph both hold for S against X,
+one-sided, without Holm correction. The labels:
+- **"the structure"** if S beats U+F;
+- **"the structure in training"**, in addition, if S beats U+proj;
+- if S does not beat U+F, and U+F itself beats U by the same definition: **"the physical
+  features, not the constraint"**;
+- if S does not beat U+F and U+F does not beat U: **"not separable from the physical
+  features at this power"**;
+- the analogous wording for U+proj ("projection at rollout", or "not separable from
+  projection at rollout at this power").
+
+The compute-matched U-long is reported beside it as a secondary contrast.
 
 **H3 (admissibility).**
 - **H3a (verification, not a finding).** S has zero balance violations above threshold, an
@@ -268,42 +287,58 @@ the three. The cost comparison uses the measured wall-clock per cycle.
 
 ### Headline: an ordered decision list (fixed in advance; the first matching row wins)
 
-Let A = (H1 SUPPORTED or H2 SUPPORTED), and A_s = (H1 or H2 is SMALL, and neither is
-SUPPORTED).
+Definitions, after the verdict words above:
+- A = H1 SUPPORTED or H2 SUPPORTED;
+- A_s = not A, and H1 or H2 is SMALL;
+- R = H1 REFUTED and H2 REFUTED;
+- H2 NOT TESTABLE counts as INCONCLUSIVE.
+
+A, A_s and R exclude each other. H4 takes one of EQUIVALENT, S BETTER, S WORSE, or
+"unresolved" (INCONCLUSIVE, or demoted under the margin rule).
 
 | order | condition | headline |
 |---|---|---|
 | 1 | a reference, decoder or competence gate failed (Section 6) | the gate outcome, as written in Section 6; no other headline |
-| 2 | A and H4 ∈ {EQUIVALENT, S BETTER} | **"Structure pays."** |
-| 3 | A and H4 = S WORSE | **"Structure pays, at a price in accuracy."** |
-| 4 | A and H4 = INCONCLUSIVE (or H4 demoted) | **"Structure pays in [H1 and/or H2]; its accuracy cost is unresolved at this power."** |
-| 5 | A_s | **"Structure helps, but less than the declared minimum."** |
-| 6 | H1 REFUTED and H2 REFUTED and H4 ∈ {EQUIVALENT, S BETTER} | **"Structure buys admissibility only."** |
-| 7 | H1 REFUTED and H2 REFUTED and H4 = S WORSE | **"Structure costs accuracy and buys only admissibility."** |
-| 8 | not A, and H4 = S BETTER | **"Structure improves short-horizon accuracy but not stability or data efficiency at this power."** |
-| 9 | anything else | **"No measurable benefit at this power"**, with the power of each decision rule |
+| 2 | A, H4 ∈ {EQUIVALENT, S BETTER} | **"Structure pays."** |
+| 3 | A, H4 = S WORSE | **"Structure pays, at a price in accuracy."** |
+| 4 | A, H4 unresolved | **"Structure pays in [H1 and/or H2]; its accuracy cost is unresolved at this power."** |
+| 5 | A_s, H4 ∈ {EQUIVALENT, S BETTER} | **"Structure helps, but less than the declared minimum."** |
+| 6 | A_s, H4 = S WORSE | **"Structure helps less than the declared minimum, at a price in accuracy."** |
+| 7 | A_s, H4 unresolved | **"Structure helps less than the declared minimum; its accuracy cost is unresolved."** |
+| 8 | R, H4 = EQUIVALENT | **"Structure buys admissibility only."** |
+| 9 | R, H4 = S BETTER | **"Structure improves short-horizon accuracy but buys neither long-rollout stability nor data efficiency."** |
+| 10 | R, H4 = S WORSE | **"Structure costs accuracy and buys only admissibility."** |
+| 11 | R, H4 unresolved | **"Structure buys neither long-rollout stability nor data efficiency; its accuracy cost is unresolved."** |
+| 12 | none of A, A_s, R; H4 = S BETTER | **"Structure improves short-horizon accuracy; stability and data efficiency are unresolved at this power."** |
+| 13 | none of A, A_s, R; H4 = S WORSE | **"Structure costs accuracy; its benefits are unresolved at this power."** |
+| 14 | anything else | **"No measurable benefit at this power"**, with the power of each decision rule |
 
-Two qualifiers are appended to rows 2 to 5:
-- the attribution (structure, structure in training, physical features, projection at
-  rollout), decided by the attribution rule above;
+Every combination of the H1 and H2 verdicts with an H4 outcome falls in exactly one of rows
+2 to 14. Two qualifiers are appended to rows 2 to 7:
+- the attribution (above);
 - the arm C line. If C is non-inferior to S on `ε_W,50` at any grid and no slower, the paper
   states that **a coarse consistent solver makes the learned model unnecessary for this
   column.**
 
-"Admissibility only" appears only when both benefits are *refuted*, never when they are
-merely untested at this power (F32). Admissibility of S is by construction (H3a), so it is
-never itself presented as a finding.
+"Admissibility only" appears only when both benefits are *refuted* and accuracy is
+equivalent, never when they are merely unresolved (F32). Admissibility of S is by
+construction (H3a), so it is never itself presented as a finding.
 
 ## 6. Gates (checked before the dynamics comparison, blind to arms)
 
 **6.1 Decoder gate.** The smallest d in {16, 24, 32} whose frozen full-data autoencoders (all
 5 seeds) meet all of the following on validation fields:
 - mean field nRMSE ≤ 0.02;
-- outlet-channel relative error (c_out, T_out) ≤ 0.02;
-- decoded N and E relative error ≤ 0.005.
+- outlet channels, in scale-invariant form: RMSE of c_out/c_in ≤ 0.02, and RMSE of
+  (T_out − T_ads)/(T_des − T_ads) ≤ 0.02. A relative error on absolute kelvin would allow
+  about 6 K;
+- decoded inventories, against the cycle's swing: |N̂ − N| ≤ 0.01 W_ref, and
+  |Ê − E| ≤ 0.01 (|ΔH| W_ref + ∫|wall heat| dt). Relative errors on E itself would depend on
+  the reference constants T_0 and e_0.
 
 If the pilot shows the cyclic steady state arrives after cycle 6, the same thresholds must
-also hold on the long-validation trajectories at cycles 40 to 60. If no d passes, the study
+also hold on the long-validation trajectories at cycles 40 to 60 (20 to 40 under data-cost
+contingency 2). If no d passes, the study
 stops and reports **"not testable with this decoder class"**. The gate uses reconstruction
 only, so it cannot favour an arm.
 
@@ -317,14 +352,19 @@ only, so it cannot favour an arm.
 
 **6.3 Reference gate** (formulation, Section 6). It requires:
 - the Paper 1 limit at N_z = 2048;
-- water and energy closure of the stored coarse data with the stored ports to 10⁻¹⁰;
-- non-negative fine production at every step;
+- closure at three levels (formulation, Section 6, item 2):
+  - rate identities in float64 to 10⁻¹²;
+  - integrated closure with cumulative-flux ODE states to 10 × rtol;
+  - the stored float32 data against the stored cumulative ports to 10⁻⁵ relative;
+- non-negative fine production at every step, on cells above the entropy floor
+  (formulation, Section 5.2), with the share of cells below the floor reported;
 - Paper 1's grid-convergence criterion;
 - the cyclic-steady-state cycle recorded per trajectory;
 - `min_t (dS̄/dt − Φ_S)` on every stored trajectory (both steps of every cycle).
 
-If any coarse production is negative beyond τ_S, it is reported, and arm S is declared
-knowingly over-constrained on those trajectories.
+If any coarse production is negative beyond τ_ref (the reference's own noise floor,
+formulation Section 5.2, not arm S's τ_S), it is reported, and arm S is declared knowingly
+over-constrained on those trajectories.
 
 ## 7. Power
 
@@ -363,7 +403,9 @@ A null result is INCONCLUSIVE with its printed power, never "no effect".
 
 ## 9. The pilot (before the freeze)
 
-The pilot uses its own 16 trajectories and 2 seeds and is never reused. Only pooled variance
+The pilot uses its own 16 trajectories and 2 seeds and is never reused. Within the pilot,
+12 trajectories (cycles 1 to 6) train, and 4 trajectories (cycles 1 to 10) validate and
+supply the variance and steady-state checks. Only pooled variance
 and timing are read, by a script that prints only those. Error values are never looked at by
 arm.
 

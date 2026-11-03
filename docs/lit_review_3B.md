@@ -219,7 +219,7 @@ Each qualifier is load-bearing. Here is what each one excludes:
 
 **What the formulation adds is supporting material, not a second headline.**
 1. **Paper 1's non-isothermal column is the exact `c_w = 0` member of a thermodynamically
-   consistent family.** This is verified numerically to 10⁻⁹ (formulation, Section 6).
+   consistent family.** This is verified numerically to better than 10⁻⁸ (formulation, Section 6).
    Consistency of heats and heat capacities as a principle is known (Walton and LeVan 2005;
    Schwamberger and Schmidt 2013). The exact reduction for this model is the new part.
 2. **Concentration-difference LDF produces entropy whenever the isotherm is increasing.**

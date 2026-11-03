@@ -1,7 +1,8 @@
 # Paper 3B: the thermodynamic formulation of the column
 
-Status: design draft, 2026-10-12. Nothing here has been run. Magnitude estimates are hand
-calculations from Paper 1's parameter ranges and are labelled as such.
+Status: design draft, first written 2026-10-12, revised 2026-11-03. No study data exist.
+The formulation's claims were checked numerically on small grids as design verification
+(Section 6, `verify/`). Magnitude estimates that are hand calculations are labelled as such.
 
 Paper 1 means the repository `ai-mof-cof-dynamics` (manuscript Section 2, `solver_fd.py`,
 `isotherm.py`). It is read here and never edited.
@@ -14,9 +15,10 @@ Paper 1 means the repository `ai-mof-cof-dynamics` (manuscript Section 2, `solve
    fixed entropy. They are the special case in which water carries no heat capacity
    (`c_w = 0`). The heat term `-ΔH dq/dt` is then exactly right, not approximately right.
    The `q_st = -ΔH + RT` statement in Paper 1 (line 404) belongs to a different gas model
-   (ideal-gas vapour at constant total pressure). The two models differ by RT, which is 4.0 to
-   8.4 % of the heat released over the temperatures 3B's cycles visit (288 to 383 K, ΔH −60
-   to −38 kJ mol⁻¹). That is a modelling choice, not an internal
+   (ideal-gas vapour at constant total pressure). The two models differ by RT, which is 4.1 to
+   8.4 % of the heat released over the temperatures 3B's cycles visit (293 to 383 K) and
+   Paper 1's ΔH range (−60 to −38 kJ mol⁻¹), and 4.7 to 6.1 % for the MOF-303-like material
+   (ΔH = −52 kJ mol⁻¹). That is a modelling choice, not an internal
    error. Section 3.4 has the details.
 2. **The physically important omission is the heat capacity of the water.** At saturation (an
    upper bound; at the loadings a cycle actually reaches it is lower) the adsorbed water holds 27 to 101 % as much heat capacity as the solid if it is given the
@@ -27,11 +29,11 @@ Paper 1 means the repository `ai-mof-cof-dynamics` (manuscript Section 2, `solve
 3. **The Poisson (reversible) operator is set to zero, by choice, and the reason is stated.**
    The only candidate for reversible dynamics in this column is advection. In the continuum,
    advection by a fixed velocity preserves entropy and is undone by reversing the velocity.
-   But here the velocity is imposed, not a state variable with its own balance. The energy is
-   linear in the state, so its gradient is constant, and the energy does not generate the
-   advection. A Poisson operator could reproduce advection only as a state-dependent
-   construction (the Lie-Poisson route of arXiv:2610.05570) with no physical Hamiltonian
-   behind it. The design therefore treats convection as a *port-driven exchange* between
+   But here the velocity is imposed, not a state variable with its own balance, and a
+   Poisson operator that reproduces it is not available for free. The obstruction is the
+   degeneracy condition `L ∇S = 0`: the naive antisymmetric construction reproduces
+   advection but violates it. A valid L needs a genuinely constructed bracket (the
+   Lie-Poisson route of arXiv:2610.05570). The design therefore treats convection as a *port-driven exchange* between
    neighbouring open cells (Section 4.1), and the internal structure is `L = 0` plus a
    friction operator. The honest name is a *port-metriplectic system with an empty
    Poisson part*, not "GENERIC" without qualification. Section 4.1 has the argument and
@@ -154,7 +156,7 @@ Three properties follow, and each is needed later:
 
 - `∂²f_a/∂q² = R T X'(q)/X(q) > 0`. The adsorbed-phase free energy is strictly convex in
   loading *because* the isotherm is strictly increasing. This is the thermodynamic stability
-  that makes the LDF entropy production non-negative (Section 4.3).
+  that makes the LDF entropy production non-negative (Section 4.2).
 - The molar internal energy of adsorbed water is `e_w(T) + ΔH`, independent of loading. The
   heat released per mole adsorbed at fixed total energy is exactly `−ΔH`.
 - `X(q)` is the only implicit object. It is a scalar monotone root per cell (a few Newton
@@ -197,7 +199,7 @@ ranges (q_max 8 to 30 mol kg⁻¹, ΔH −60 to −38 kJ mol⁻¹, feed 288 to 3
 | difference | size | treatment in 3B |
 |---|---|---|
 | water heat capacity omitted (`c_w = 0`) | adsorbed water at saturation holds 0.27 to 1.01 × the solid's heat capacity at c_w = 33.6 J mol⁻¹ K⁻¹, and 0.60 to 2.25 × at a liquid-like 75 | **included**: primary reference uses c_w = 33.6 (keeps Paper 1's isotherm exact); c_w = 0 is the verification limit |
-| flow work of the vapour (ideal gas versus dilute solute) | RT/\|ΔH\| = 4.0 to 8.4 % of the heat released (288 to 383 K, the temperatures 3B's cycles visit) | not included; the dilute-solute model is kept for continuity with Paper 1 and stated as a limitation |
+| flow work of the vapour (ideal gas versus dilute solute) | RT/\|ΔH\| = 4.1 to 8.4 % of the heat released over 293 to 383 K (the temperatures 3B's cycles visit) and Paper 1's ΔH range; 4.7 to 6.1 % for the MOF-303-like material | not included; the dilute-solute model is kept for continuity with Paper 1 and stated as a limitation |
 | enthalpy carried by vapour in the gas stream | vapour/carrier stream heat capacity 0.9 to 4.3 % (RH 0.2 to 0.9 at 303 K) | included automatically once c_w > 0 |
 | liquid-like heat capacity of the adsorbed phase (c_a ≠ c_v) | would make ΔH temperature-dependent (Kirchhoff), about 4 % over a 50 K swing | not in the primary reference, because it changes the isotherm's T-dependence; it belongs to 3A's potential (INTERFACE_3A.md) |
 
@@ -343,7 +345,7 @@ holds trivially.
 
 ### 4.3 Convection and the inlet and outlet ports
 
-For cell i the flow term is `F_flow,i = (v/Δz) (g_{i−1} − g_i)`, with `g = (c, ρ_g C_pg T + c e_w(T))`
+For cell i the flow term is `F_flow,i = (v/Δz) (g_{i−1} − g_i)`, with `g = (c, ρ_g C_pg (T − T_0) + c e_w(T))`
 the gas stream's water and energy per unit volume of flow, and `g_0` the feed. Paper 1's
 convective terms are exactly this. Its entropy production is
 
@@ -380,7 +382,7 @@ property (Section 5.2).
 
 Fixed, never learned: s(n,a,u), u, the isotherm or 3A's potential, the port flux formulas,
 and the balance functionals E, N, S. Learned: an autoencoder (shared by every arm, trained
-once per seed and frozen) and the latent dynamics.
+once per seed and per training size, then frozen) and the latent dynamics.
 
 The full-order system (G) is already known exactly. The reason to learn anything is cost:
 the verified reference needs N_z = 2048 cells (Paper 1 verified 2000) and Paper 1 measured
@@ -419,8 +421,10 @@ What the reference stores per snapshot, and why:
 - **The exact fine wall heat per block is stored too**, `Σ_{i∈I} h_a (T_i − T_w) Δz`. The
   models compute their wall port from decoded coarse temperatures, because that is all a
   model has. With c_w > 0, T(n,a,u) is nonlinear, so the coarse-temperature wall heat
-  differs from the exact one by a covariance term. In V4 it was 3×10⁻⁵ of the energy rate,
-  with block temperatures within 0.016 K of averaged fine temperatures. That is the
+  differs from the exact one by a covariance term. In V4 it was at most 3.3×10⁻⁵ of the
+  energy rate (normalised by |dE/dt| + |wall heat|), with block temperatures within 0.016 K of
+  averaged fine temperatures (`results_run_checks.json`, keys
+  `wall_heat_floor_over_energy_rate` and `max_abs_blockT_minus_mean_fineT_K`). That is the
   reference's own self-consistency floor at the learning resolution. The pre-registration's
   violation threshold is set from it, measured on the pilot.
 - **The coarse-grained entropy inequality is not guaranteed in general.** A four-cell
@@ -431,13 +435,24 @@ What the reference stores per snapshot, and why:
   outflow differs from the block state. Coarse-graining a non-monotone sub-cell profile can
   break the second law at the coarse level.
   **Empirically, it held with margin.** In V4 (400 → 40 cells, one temperature-swing cycle)
-  `dS̄/dt − Φ_S ≥ 0` held at all 602 snapshots. The independent review's adsorption runs
+  `dS̄/dt − Φ_S` stayed positive at all 602 snapshots. Its smallest value was +0.012 of the
+  scale |dS̄/dt| + |Φ_S| with the stored fine outlet, and +0.012 with the coarse outlet
+  (`sigma_c_min_over_scale_*` in the JSON). The independent review's adsorption runs
   (512 and 1024 → 128 cells) found the coarse production at least as large as the fine one
   throughout. The LDF, film and mixing production dominates the sub-cell effects. Arm S is
   therefore not expected to contradict its data, but this is an empirical property. It is
   a reference gate: `min_t (dS̄/dt − Φ_S)` is computed on every stored trajectory with the
-  stored ports (pre-registration, Section 6). Any violation beyond τ is reported, and arm S
+  stored ports (pre-registration, Section 6). Any violation beyond τ_ref is reported, and arm S
   is declared knowingly over-constrained there.
+- **Entropy diagnostics have a floor.** The solver integrates Fick's flux, which is linear
+  and defined at any c, but the entropy, μ_v/T and μ_a/T need c > 0 and q > 0. Undershoots
+  ahead of sharp fronts can make c ≤ 0 in a few cells. All entropy diagnostics (the
+  production signs, `dS̄/dt − Φ_S`, the violation metric) are therefore evaluated on cells with
+  `c > 10⁻⁸ c_in` and `q > 10⁻⁸ q_max`. The cells below the floor are counted and reported per
+  trajectory, and their share is a reference-gate quantity.
+- **τ_ref** is the reference's own numerical noise floor for entropy production: 10 × the
+  99.9th percentile of |dS/dt − Φ_S − Σσ| over the pilot's float64 solver output. It is a
+  property of the data. Arm S's tolerance τ_S is a separate quantity.
 - **Reference constants are fixed at e_0 = 0 and s_0 = 0** in all code. Their values cancel
   in exact arithmetic, but a large e_0 makes the cell entropy's Hessian ill-conditioned, and
   any coarse-port residual picks up e_0 and s_0 multiples.
@@ -477,7 +492,11 @@ neighbourhood, where the QP can be infeasible.
 The implementation therefore:
 - builds P with a pseudo-inverse and a declared rank tolerance;
 - applies the inequality correction as `Π ← Π + λ P∇Ŝ` with
-  `λ = max(0, δ)/(|P∇Ŝ|² + κ)` and a declared κ;
+  `λ = max(0, δ)/(|P∇Ŝ|² + κ)` and a declared κ, where δ = Φ_S − ∇Ŝ·Π is the deficit;
+- after the correction a residual deficit `δ κ/(|P∇Ŝ|² + κ)` remains. It is counted as an
+  entropy violation whenever it exceeds τ_S;
+- defines "κ binds" as `|P∇Ŝ|² < 10 κ`, the regime where the regularisation, not the
+  geometry, sets the correction;
 - counts every step at which κ binds or B is rank-deficient.
 
 Those counts belong to the verification hypothesis H3a. They are defects, never successes.
@@ -530,6 +549,7 @@ against it (pre-registration, Section 9).
 ## 6. Verification ladder for the new reference
 
 The first four checks have been run on small grids as design verification
+(each number below is printed by the named script)
 (`verify/run_checks.py`, results in `verify/results_run_checks.json`, 2026-11-03). They are
 not study data. They use one MOF-303-like material (q_max 24.5 mol kg⁻¹, ΔH −52 kJ mol⁻¹,
 step at RH 0.12, n = 3, f_H 0.17), feed at RH 0.40 and 303 K, v = 0.1 m s⁻¹, and
@@ -540,7 +560,7 @@ desorption at 353 K.
 | V1 Paper 1 limit | `c_w = 0` against `solver_fd.py`, N = 200, one stoichiometric time | max difference 7×10⁻¹⁰ in c/c_in, 6×10⁻⁹ in q/q_max, 1.5×10⁻⁷ K in T (temperature rise 16.7 K); passed |
 | V2 balances and signs | two temperature-swing cycles, `c_w = 33.6`, N = 120 | water-rate identity 6×10⁻¹⁵, energy-rate identity 3×10⁻¹⁶, entropy identity `dS/dt = Φ_S + Σσ` 3×10⁻¹⁶ (relative to Σ\|w·ẋ\|); every production term ≥ 0 (worst −7×10⁻²², round-off); passed |
 | V3 concavity | relative-coordinate Hessians at 200 random states | stream entropy and cell entropy negative semidefinite (largest eigenvalue ratio −2×10⁻⁵ and −3×10⁻¹⁰); passed |
-| V4 coarse-graining | 400 → 40 cells over one cycle | coarse entropy inequality held at all 602 snapshots; balances exact only with the stored fine outlet (Section 5.2); passed with that design change |
+| V4 coarse-graining | 400 → 40 cells over one cycle | coarse entropy inequality held at all 602 snapshots, smallest margin +0.012 of scale; wall-heat floor 3.3×10⁻⁵; balances exact only with the stored fine outlet (Section 5.2); passed with that design change |
 
 Writing the check code exposed two of my own errors, both caught by the bookkeeping
 identity before any result was used. The code had a wrong sign in the enthalpy mean η and in
@@ -550,15 +570,21 @@ volume.
 
 Still to do at the study's resolution, before any data are used:
 
-1. **Paper 1 limit at N_z = 2000** on Paper 1's verification cases (`verify_solver.py`).
-2. **Integrated closure** over full cycles with the production solver's tolerances.
-   Trapezoidal closure on 401 output points already gives 1×10⁻⁵ to 8×10⁻⁵ at N = 120,
-   limited by the quadrature, not by the solver.
+1. **Paper 1 limit at N_z = 2048** on Paper 1's verification cases (`verify_solver.py`).
+2. **Closure, at three levels.**
+   (a) the rate identities in float64 at every stored snapshot, to 10⁻¹² relative (they are
+   algebraic and already close to 10⁻¹⁵);
+   (b) integrated closure over full cycles, with the cumulative port fluxes carried as extra
+   ODE states, so that closure is limited by the solver's tolerance, not by output
+   quadrature. The criterion is 10 × rtol relative to the cycle's throughput. Trapezoidal
+   closure on 401 output points gives only 1×10⁻⁵ to 8×10⁻⁵ at N = 120, which is the
+   quadrature's limit;
+   (c) the stored float32 coarse data against the stored cumulative ports, to 10⁻⁵ relative.
 3. **Grid convergence.** The same `grid_convergence()` criterion as Paper 1, for c, q and T
    over cycle 1 and cycle 50.
 4. **Cyclic steady state.** Convergence of per-cycle water uptake to a fixed point, with the
    convergence cycle recorded per trajectory.
-5. **Coarse-graining at 2000 → 128 cells** on the pilot trajectories: the entropy
+5. **Coarse-graining at 2048 → 128 cells** on the pilot trajectories: the entropy
    inequality, and the wall-heat floor that sets the violation threshold.
 
 ## 7. Open points this document does not settle
@@ -571,7 +597,7 @@ Still to do at the study's resolution, before any data are used:
 
 - **The gas model (author's decision).** The dilute-solute vapour (this document, Paper 1's
   limit) or the ideal-gas vapour that Paper 3A uses. They differ by RT in the heat released,
-  4 to 8 %. The recommendation is to keep the dilute solute and state the offset. See
+  4.1 to 8.4 %. The recommendation is to keep the dilute solute and state the offset. See
   INTERFACE_3A.md, last section.
 - **With a 3A potential in `t_mode="kirchhoff"`,** the adsorbed-phase heat capacity follows
   from the potential and differs from the vapour's. Section 3.3 then generalises: e_a(q,T)

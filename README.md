@@ -10,8 +10,10 @@ efficiency and admissibility. The test was declared in advance.
 
 Status (2026-11-03): **design, verified on small grids. No study data exist.** The
 pre-registration is a revised draft awaiting the author's review. It was revised after an
-independent adversarial review (`research/review_adversarial_2026-11-03.md`, 36 findings,
-all addressed).
+independent adversarial review (`research/review_adversarial_2026-11-03.md`, 36 findings)
+and a second-round check of those revisions (`research/review_round2_2026-11-03.md`: 28 fully
+addressed, 8 partly, all 8 then completed, plus the new problems it found). The corrections
+are listed in `RETRACTIONS_P3B.md`.
 
 | file | content |
 |---|---|
@@ -27,7 +29,7 @@ all addressed).
 Related repositories by the same author: `ai-mof-cof-dynamics` (Paper 1, the falsification
 ladder), `ai-kinetics-discoverability` (Paper 2) and `ai-isotherm-thermo` (Paper 3A). The
 reference model of this paper reduces exactly to Paper 1's solver in a stated limit (water
-heat capacity zero). Verified to 10⁻⁹ in `verify/`.
+heat capacity zero), verified to better than 10⁻⁸ in `verify/`.
 
 ## Author
 

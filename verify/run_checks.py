@@ -4,7 +4,7 @@ V1  c_w = 0 reproduces Paper 1's solver_fd.py (Section 3.4 claim).
 V2  a temperature-swing cycle with c_w = 33.6: water and energy rate identities, the
     entropy bookkeeping identity, and the sign of every production term (Section 4).
 V3  concavity of the gas-stream entropy and of the cell entropy (Sections 3.3, 4.3).
-V4  coarse-graining: do 2000->128-style block averages keep the balances and the
+V4  coarse-graining: do block averages (2048->128 in the study; 400->40 here) keep the balances and the
     entropy inequality, with port fluxes taken from the coarse cell or the fine outlet?
 
 Prints one JSON document; writes it to verify/results_run_checks.json.
@@ -180,7 +180,8 @@ fine = Column(phys, NF, c_w=C_W)
 coarse = Column(phys, NC, c_w=C_W)
 blk = NF // NC
 y = fine.initial_state(COND["T_in"])
-res = {"sigma_c_min_over_scale_coarse_outlet": 0.0, "sigma_c_min_over_scale_fine_outlet": 0.0,
+res = {"sigma_c_min_over_scale_coarse_outlet": np.inf, "sigma_c_min_over_scale_fine_outlet": np.inf,
+       "wall_heat_floor_over_energy_rate": 0.0, "max_abs_blockT_minus_mean_fineT_K": 0.0,
        "water_rate_rel_coarse_outlet": 0.0, "water_rate_rel_fine_outlet": 0.0,
        "energy_rate_rel_coarse_ports": 0.0, "energy_rate_rel_fine_ports": 0.0,
        "fraction_times_sigma_c_negative_fine_ports": 0.0}
@@ -220,6 +221,10 @@ for name, dur, inp in phases[:2]:
         portN_b = v * (c_feed - cf[-1])
         portE_b = v * (ein - fine.stream_energy(cf[-1], Tf[-1])) - np.sum(Wf) * fine.dz
         scale = abs(dSc) + abs(phiS_b) + 1e-30
+        res["wall_heat_floor_over_energy_rate"] = max(res["wall_heat_floor_over_energy_rate"],
+            abs(np.sum(Wc) * coarse.dz - np.sum(Wf) * fine.dz) / (abs(dEc) + abs(np.sum(Wf) * fine.dz) + 1e-30))
+        res["max_abs_blockT_minus_mean_fineT_K"] = max(res["max_abs_blockT_minus_mean_fineT_K"],
+            float(np.max(np.abs(Tc - Tf.reshape(NC, blk).mean(axis=1)))))
         sa = (dSc - phiS_a) / scale
         sb = (dSc - phiS_b) / scale
         res["sigma_c_min_over_scale_coarse_outlet"] = min(res["sigma_c_min_over_scale_coarse_outlet"], sa)
