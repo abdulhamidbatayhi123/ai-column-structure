@@ -1,0 +1,50 @@
+[
+ {
+  "n": 3.0,
+  "N": 128,
+  "ads_cpu": 1.39,
+  "ads_nfev": 1347,
+  "des_cpu": 1.08,
+  "des_nfev": 659
+ },
+ {
+  "n": 3.0,
+  "N": 256,
+  "ads_cpu": 1.92,
+  "ads_nfev": 1370,
+  "des_cpu": 1.91,
+  "des_nfev": 705
+ },
+ {
+  "n": 3.0,
+  "N": 512,
+  "ads_cpu": 2.72,
+  "ads_nfev": 1488,
+  "des_cpu": 3.36,
+  "des_nfev": 707
+ },
+ {
+  "n": 6.0,
+  "N": 128,
+  "ads_cpu": 1.58,
+  "ads_nfev": 1401,
+  "des_cpu": 1.45,
+  "des_nfev": 960
+ },
+ {
+  "n": 6.0,
+  "N": 256,
+  "ads_cpu": 2.34,
+  "ads_nfev": 1468,
+  "des_cpu": 2.72,
+  "des_nfev": 962
+ },
+ {
+  "n": 6.0,
+  "N": 512,
+  "ads_cpu": 3.78,
+  "ads_nfev": 1564,
+  "des_cpu": 4.31,
+  "des_nfev": 983
+ }
+]
