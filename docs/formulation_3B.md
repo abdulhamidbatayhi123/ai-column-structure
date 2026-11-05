@@ -259,7 +259,8 @@ route, for two reasons:
    of the model, where a controller would act.
 
 So convection enters as a port interconnection between open subsystems. That is the setting
-of port-metriplectic models (Hernández et al., arXiv:2211.01873), of boundary-controlled
+of port-metriplectic models (Hernández et al., Comput. Mech. 72, 553, 2023; arXiv:2211.01873),
+of boundary-controlled
 irreversible port-Hamiltonian systems (Ramirez, Le Gorrec, Maschke, Chem. Eng. Sci. 248,
 117107, 2022, doi:10.1016/j.ces.2021.117107; arXiv:2104.13459), and
 of boundary ports in general. The closest continuum template is arXiv:2603.11260 (Ouardi,
@@ -611,16 +612,16 @@ Still to do at the study's resolution, before any data are used:
   wall) is fixed in the pre-registration, not here.
 - Whether `c_w` should be the vapour value (33.6) or a value 3A's potential implies (with a
   temperature-dependent ΔH) depends on 3A. See INTERFACE_3A.md.
-- Every prior structured column model found is **isothermal**, judged from abstracts only:
-  the port-based (bond-graph, Dirac-structure) adsorption column of Baaiu, Couenne, Le Gorrec,
-  Lefèvre and Tayakout (Math. Comput. Model. Dyn. Syst. 2008, doi:10.1080/13873950701844840),
-  built "under isothermal conditions" on irreversible thermodynamics. Its structure-preserving
-  reduction and discretisation followed (J. Process Control 2009,
-  doi:10.1016/j.jprocont.2008.07.002, no abstract in any database; IEEE CDC 2007,
-  doi:10.1109/cdc.2007.4434663). The group's 2009 general port-based theory of transport
-  (doi:10.1080/13873950902808578) covers heat as well as mass transfer, but no fetched abstract
-  applies it to a non-isothermal column. Their full texts were not reachable
-  (paywalled). Before the paper is written, the author should read them through library
-  access, to state exactly how their convection and boundary treatment compare with
-  Section 4. 3B's formulation is the non-isothermal, entropy-explicit extension, and Section 4
-  must say so in those words.
+- **Every prior structured column model is isothermal** (full texts read through the
+  author's library access, 2026-11-05; literature review, Section 2). That covers the
+  port-based (bond-graph, Dirac-structure) adsorption column of Baaiu, Couenne, Le Gorrec,
+  Lefèvre and Tayakout (Math. Comput. Model. Dyn. Syst. 14, 195, 2008), its
+  structure-preserving discretisation (Peng et al., IEEE CDC 2007) and its reduction (Baaiu et
+  al., J. Process Control 19, 394, 2009). All three assume constant temperature and pressure
+  and use the Gibbs free energy as the storage function. The group's 2009 theory paper (Math.
+  Comput. Model. Dyn. Syst. 15, 233) names heat transfer in its scope, but its developed
+  sections are isothermal and isobaric. Like 3B, that work keeps convection outside the
+  dissipative structure: as a distributed source term (J. Process Control 2009), or as a
+  one-port element modulated by the imposed velocity (2009 theory paper). 3B's formulation is
+  the non-isothermal, entropy-explicit extension, and the paper says so in those words. Its
+  remaining sections should be read in full before submission.

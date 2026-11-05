@@ -66,7 +66,8 @@ ACS Cent. Sci. 5, 1699 (2019), doi:10.1021/acscentsci.9b00745:
 - the step at about 0.12 RH is stated in the text;
 - ΔH = −52 kJ mol⁻¹ is a reading of SI Figure S25 (Section S3.2, read live 2026-11-05 from the
   open supplementary file, Europe PMC PMC6813556). The isosteric heat there plateaus at about
-  51 to 54 kJ mol⁻¹ between about 80 and 440 cm³ g⁻¹ of uptake, and falls at both ends. The
+  51 to 54 kJ mol⁻¹ between about 80 and 440 cm³ g⁻¹ of uptake, peaks at about 55 kJ mol⁻¹
+  near 470 cm³ g⁻¹, and falls at both ends. The
   main text gives 50 to 54 kJ mol⁻¹ for three sorbents together;
 - **convention**: ΔH is set to −Q_st, as in Paper 1, so the heat released per mole matches the
   measured isosteric heat. In the dilute-solute model a pressure-based Clausius-Clapeyron

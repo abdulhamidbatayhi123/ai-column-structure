@@ -267,3 +267,10 @@ Supporting text in the review that should change (the gap itself does not):
    - Item 4: Semantic Scholar again returned 429. OpenAlex did not hit its limit during this sweep.
    - The citation-gate sweep before submission is still required.
 
+### N24. Bilal et al. 2026, two non-isothermal chromatography surrogates (added 2026-11-05)
+- (a) Muhammad Bilal, Sirajul Haq, Muhammad Asif. "Interpretable Physics-Guided Deep Learning Ensemble for Nonisothermal General Rate Model of Chromatography". Ind. Eng. Chem. Res. 65 (2026) 13942-13958, doi:10.1021/acs.iecr.6c02282.
+- (b) Muhammad Bilal, Sirajul Haq, Muhammad Asif, Ali M Alhartomi. "Integrating First-Principles Modeling with Explainable Machine Learning for Non-Isothermal Chromatography". ACS Omega 11 (2026) 48428-48449, doi:10.1021/acsomega.6c04740 (a correction followed, doi:10.1021/acsomega.6c11117). Same paper as S51 of the structure journal.
+- Fetched: Crossref records for both (2026-11-05); abstracts read by the reference audit (`research/audit_references_2026-11-05.md`, row 41).
+- Supports: scalar-output (KPI) surrogates of a non-isothermal general rate model. (a) uses a deep ensemble with physics-derived dimensionless ratios as input features; (b) uses XGBoost on 31 dimensionless parameters and compares SHAP rankings with model sensitivities. Neither constrains its outputs.
+- THREAT: **none** to the gap (no structure, no field or rollout model).
+

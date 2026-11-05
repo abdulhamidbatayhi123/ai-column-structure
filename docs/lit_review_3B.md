@@ -23,7 +23,7 @@ and LeVan 2005, Schwamberger and Schmidt 2013, Myers and Monson 2014, Dytrych an
 2610.05570v1, the v9 record of 2606.08343, An et al. 2026 (Crossref), and the HAL record of
 the Mousa thesis (tel-05363400).
 
-## 1. Structure-preserving learning is mature, and every latent version found learns the entropy
+## 1. Structure-preserving learning is mature, and every latent version found learns its potentials
 
 Building the GENERIC or metriplectic structure into the architecture, rather than adding it
 as a loss, is now routine for ODEs, graphs and neural operators.
@@ -37,12 +37,13 @@ as a loss, is now routine for ODEs, graphs and neural operators.
   61 of 72 seed-level comparisons.
 
 Latent (autoencoder) versions exist too:
-- the thermodynamics-aware reduced model of Hernández et al. (CMAME 380, 113763, 2021;
+- the thermodynamics-aware reduced model of Hernández et al. (CMAME 379, 113763, 2021;
   arXiv:2007.03758);
 - tLaSDI (Park et al., CMAME 429, 117144, 2024; arXiv:2403.05848) and its parametric
   successor (He et al., TMLR 2026; arXiv:2506.08475);
 - a magnetisation-dynamics operator (Schaffer and Exl, arXiv:2609.04530; the statements used
-  here are in its v2 full text, Section 4.5 and the rollout figures).
+  here are in its v2 full text, Section 4.5 and the rollout figures). It learns a single
+  scalar potential and has no entropy.
 
 tLaSDI is the closest architectural template to 3B. It reports extrapolation errors about 3
 to 7 times lower than its baselines, for example 2.47×10⁻³ against 1.70×10⁻² for a plain
@@ -88,22 +89,39 @@ quantified rollout error. Two models come closest:
   2025, T16). Its E and S gradients are learned, it is full-field rather than latent, and its
   abstract does not say how inflow and outflow fluxes are treated.
 
-## 2. Structured models of adsorption columns exist; every one found is isothermal (from abstracts only)
+## 2. Structured models of adsorption columns exist; every one is isothermal (full texts read)
 
 The Lyon LAGEP group built a **port-based distributed model of a multiscale adsorption
 column "under isothermal conditions"**, using bond graphs, Dirac structures and the axioms
 of irreversible thermodynamics (Baaiu, Couenne, Le Gorrec, Lefèvre, Tayakout, Math. Comput.
-Model. Dyn. Syst. 2008, doi:10.1080/13873950701844840; abstract read live). The general
-port-based theory of transport followed (Baaiu et al. 2009, doi:10.1080/13873950902808578),
-and so did structure-preserving discretisation and reduction applied to adsorption (Peng et
-al., IEEE CDC 2007, doi:10.1109/cdc.2007.4434663; Baaiu et al., J. Process Control 19, 394,
-2009, doi:10.1016/j.jprocont.2008.07.002). In the 2008 column model there is no heat of
-adsorption, no thermal domain, no entropy as a state, and no learning. The 2009 general
-theory covers heat as well as mass transfer, but no fetched abstract applies it to a
-non-isothermal adsorption column. The J. Process Control paper has no abstract in any
-database, so nothing about it beyond its title is checked. **The full texts were not
-reachable**, so their state variables and exact boundary treatment are not verified. That is
-the one reading the author must do through library access before the paper is written.
+Model. Dyn. Syst. 14, 195, 2008, doi:10.1080/13873950701844840). A general port-based theory
+of transport followed (Baaiu et al., Math. Comput. Model. Dyn. Syst. 15, 233, 2009,
+doi:10.1080/13873950902808578), and so did structure-preserving discretisation and reduction
+applied to adsorption (Peng, Baaiu, Couenne, Le Gorrec, IEEE CDC 2007, 3513,
+doi:10.1109/cdc.2007.4434663; Baaiu, Couenne, Lefevre, Le Gorrec, Tayakout, J. Process Control
+19, 394, 2009, doi:10.1016/j.jprocont.2008.07.002).
+
+**The full texts were read on 2026-11-05** (the author's library access: the CDC and J.
+Process Control papers in full, the 2008 paper from the publisher's reader, and the 2009
+theory paper through its Section 3). What they contain:
+- **All three adsorption papers are isothermal and isobaric by assumption.** The 2008 paper
+  takes the column "at constant temperature and pressure" and says it will "omit the thermal
+  and spatial domain". The CDC paper assumes temperature "uniform and constant". The J.
+  Process Control paper supposes "isothermal and isobaric operating conditions". The storage
+  function in each is the Gibbs free energy, which is a valid potential only at fixed T and P.
+  There is no energy balance, no heat of adsorption, no entropy as a state and no learning.
+- **The 2009 theory paper** names heat and mass transfer in its abstract, but its developed
+  sections, read through Section 3, are written "for isobaric and isothermal systems". It
+  treats an imposed velocity with a one-port element modulated by that velocity, on a moving
+  material volume.
+- **Convection is outside the dissipative structure in every one.** In the J. Process
+  Control paper, convection and dispersion enter "as a distributed source term added to the
+  diffusion term". That is the same choice 3B makes for an imposed velocity (formulation,
+  Section 4.1), and it gives that choice a precedent in this line of work.
+
+So the non-isothermal, entropy-explicit column formulation of 3B is not anticipated by this
+group's papers. 3B extends their isothermal, free-energy-based structure to a fixed energy and
+entropy with a thermal domain and, unlike their models, it is learned in latent coordinates.
 
 The rest of the non-ML literature (journal B):
 
@@ -113,9 +131,9 @@ The rest of the non-ML literature (journal B):
   - A 2026 extension brings it inside the structure, but only where the velocity is a state
     of the fluid (Ouardi et al., arXiv:2603.11260).
   - Others treat it as a "dissipation port" (a counter-current heat exchanger, P14), as a
-    boundary supply in passivity analyses (P15, P29), where in one study convection is what
-    can break the otherwise automatic dissipation condition (P28), or as compartments in
-    series (a heat exchanger, P13).
+    boundary supply in passivity analyses (P15, P29), or as compartments in series (a heat
+    exchanger, P13). In a related study, convection together with nonlinear
+    phenomenological relations "may destroy the dissipation condition" (P28).
 
   3B's choice (formulation, Section 4.1) is the last of these, with a proof of non-negative
   mixing entropy.
@@ -159,10 +177,13 @@ From most to least structure (journal C, Part 1):
     1.1 million simulations (Zenodo 22556794).
   - Ceccanti et al. 2026: a DeepONet for cyclic TVSA, which assumes isothermal operation
     (arXiv:2601.09491).
-  - Bilal, Haq and Asif 2026: scalar-output surrogates of a non-isothermal chromatography
-    general rate model, with physics used only to build input features (Ind. Eng. Chem. Res.
-    65, 13942, doi:10.1021/acs.iecr.6c02282; ACS Omega 11, 48428,
-    doi:10.1021/acsomega.6c04740).
+  - Bilal, Haq, Asif and co-authors 2026: scalar-output surrogates of a non-isothermal
+    chromatography general rate model. One uses a deep ensemble with physics-derived
+    dimensionless ratios as input features (Ind. Eng. Chem. Res. 65, 13942,
+    doi:10.1021/acs.iecr.6c02282). The other uses XGBoost on 31 dimensionless model
+    parameters and checks its feature rankings against the model's sensitivities (Bilal, Haq,
+    Asif, Alhartomi, ACS Omega 11, 48428, doi:10.1021/acsomega.6c04740). Neither constrains
+    its outputs.
   - An, Wald, Chen, King 2026: a neural surrogate of a temperature-vacuum swing (TVSA)
     direct-air-capture cycle, trained on about 120,000 cycle-resolved simulations of a
     lumped state-transition model (Front. Environ. Eng., doi:10.3389/fenve.2026.1881554).
@@ -181,11 +202,12 @@ construction was found** in journals A and C. The searches covered GENERIC, metr
 port-Hamiltonian, Onsager, entropy-stable and "thermodynamically consistent", crossed with
 adsorption, sorption, chromatography, desiccant, PSA, TSA, breakthrough and water harvesting.
 
-One candidate exception was checked and ruled out: Mousa, Negny, Ouaret, Di Pretoro,
-Montastruc, "Incorporating Physical Constraints inside Neural Networks … Chemical Engineering
-Unit Operations Modeling", Comput. Chem. Eng. 199, 109156 (2025). It cites GFINNs, but the
-first author's open thesis shows neural networks corrected by data reconciliation on balances
-and equilibria, with no adsorption (Section 6, item 1).
+One candidate exception was checked: Mousa, Negny, Ouaret, Di Pretoro, Montastruc,
+"Incorporating Physical Constraints inside Neural Networks … Chemical Engineering Unit
+Operations Modeling", Comput. Chem. Eng. 199, 109156 (2025). It cites GFINNs. The article itself
+is unread (closed), but the first author's open thesis, which lists it as its own, describes
+neural networks corrected by data reconciliation on balances and equilibria, with no adsorption
+(Section 6, item 1).
 
 ## 4. What structure buys: the evidence is real but mostly from toy systems
 
@@ -221,8 +243,8 @@ and equilibria, with no adsorption (Section 6, item 1).
 - **Penalties have their own failures:** ill-conditioning, and ensemble collapse under
   shared constraints (journal C, C34; Nooraiepour et al., Energy and AI 24, 100757, 2026).
 - **Headline numbers can come from the best of several runs.** tLaSDI's come from the run
-  with the smallest training loss of 10 (C17). The standard benchmark suite does not test
-  thermodynamic structure at all (PDEBench, C31).
+  with the smallest training loss of 10 (C17). The standard benchmark suite's abstract lists
+  no thermodynamic-structure metric (PDEBench, C31).
 
 ## 5. The exact gap
 
@@ -237,7 +259,7 @@ Each qualifier is load-bearing. Here is what each one excludes:
 
 | qualifier | excludes |
 |---|---|
-| non-isothermal | the isothermal port-based column model of Baaiu et al. 2008, and the structure-preserving discretisation and reduction applied to adsorption (Peng et al. 2007; Baaiu et al. 2009, J. Process Control); read from abstracts only |
+| non-isothermal | the isothermal port-based adsorption-column work of the Lyon group: Baaiu et al. 2008, Peng et al. 2007 and Baaiu et al. 2009 (J. Process Control), all isothermal and isobaric by assumption (full texts read 2026-11-05) |
 | learned, latent | the non-ML IPHS, GENERIC and port-based formulations |
 | E and S fixed from thermodynamics | tLaSDI and its fracture application, the thermodynamics-aware reduced models, the magnetisation operator, GENERIC-FNO (all learn them); Physics-conforming Latent Twins (prescribed invariants, not a thermodynamic E and S) |
 | adsorption column with ports | port-metriplectic networks and thermodynamics-informed graph networks (no sorption, E and S learned) |
@@ -261,10 +283,12 @@ Each qualifier is load-bearing. Here is what each one excludes:
    corrected by data reconciliation on mass and energy balances and reaction equilibria,
    for a flash drum, a distillation column and reactors. There is no adsorption and no
    entropy structure.
-2. **Open: the full texts of Baaiu et al. 2008 and 2009.** HAL holds no file and all three
-   records are closed. If they contain a non-isothermal extension that the abstracts do not
-   mention, the formulation is no longer new. The learned-model claim would still stand.
-   This needs library access (Taylor & Francis and Elsevier).
+2. **Resolved: the Lyon papers.** Their full texts were read through the author's library
+   access on 2026-11-05 (Section 2). All three adsorption papers are isothermal and isobaric
+   by assumption, and the 2009 theory paper's developed sections are too, so the formulation's
+   novelty stands. The 2009 theory paper was read through its Section 3. Its remaining
+   sections (closure examples, convection, multi-level coupling) should be read in full
+   before submission, in case they develop the thermal domain.
 3. **Open: pages refused during the searches.**
    - Döppel, Bracconi and Maestri 2026, ACS Eng. Au (hard atom balances in a catalytic
      reactor surrogate, SEEN-ONLY);
