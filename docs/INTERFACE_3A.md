@@ -94,8 +94,7 @@ a reader comparing the two papers will see it. Two options:
     offset in both papers, with 3B reporting isosteric heats by 3A's definition;
 (b) move 3B to an ideal-gas vapour at constant total pressure. That needs the carrier
     tracked as a species, adds a pV term, and loses the exact Paper 1 limit.
-3B's recommendation is (a). It is the author's decision, and it is listed as an open point
-in `formulation_3B.md`, Section 7.
+Decided 2026-11-05: the author chose (a).
 
 ## Re-check on 2026-11-03 (3A's `PREREG_P3A.md` draft and `docs/DESIGN.md`, read only)
 
@@ -117,6 +116,6 @@ in `formulation_3B.md`, Section 7.
    `c_a(q, T) ≥ 0` over its cycle domain before using any Kirchhoff potential, and will fall
    back to the van't Hoff mode if the check fails.
 3. **Gas model.** 3A treats the vapour as an ideal gas (DESIGN.md, Section 2). 3B keeps the
-   dilute solute (working decision, pre-registration Section 2). The RT offset, 4.1 to 8.4 %
+   dilute solute (the author's decision of 2026-11-05, pre-registration Section 2). The RT offset, 4.1 to 8.4 %
    of the heat released over 3B's temperatures, is stated in both papers.
 

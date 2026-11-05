@@ -595,10 +595,10 @@ Still to do at the study's resolution, before any data are used:
   transport term that has a physical counterpart. That is a natural follow-up if the primary
   study shows that the free transport term is where S's errors concentrate.
 
-- **The gas model (author's decision).** The dilute-solute vapour (this document, Paper 1's
-  limit) or the ideal-gas vapour that Paper 3A uses. They differ by RT in the heat released,
-  4.1 to 8.4 %. The recommendation is to keep the dilute solute and state the offset. See
-  INTERFACE_3A.md, last section.
+- **The gas model: decided.** The author chose the dilute-solute vapour (this document,
+  Paper 1's limit) on 2026-11-05, over the ideal-gas vapour that Paper 3A uses. They differ
+  by RT in the heat released, 4.1 to 8.4 %, and the offset is stated in both papers
+  (INTERFACE_3A.md, last section).
 - **With a 3A potential in `t_mode="kirchhoff"`,** the adsorbed-phase heat capacity follows
   from the potential and differs from the vapour's. Section 3.3 then generalises: e_a(q,T)
   and s_a(q,T) come from the Legendre transform of 3A's psi at fixed q, and T(n,a,u) is no

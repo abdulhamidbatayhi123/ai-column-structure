@@ -31,9 +31,9 @@ study is designed so that a negative answer is as publishable as a positive one.
 
 **Reference.** The consistent u-form finite-volume column of formulation Section 4:
 - water heat capacity `c_w = 33.6` J mol⁻¹ K⁻¹;
-- dilute-solute gas model (formulation, Section 3.1). This is the working decision. The
-  author may switch to the ideal-gas vapour model before the freeze (INTERFACE_3A.md, last
-  section);
+- dilute-solute gas model (formulation, Section 3.1), chosen by the author on 2026-11-05.
+  The RT offset against Paper 3A's ideal-gas isosteric heats (4.1 to 8.4 %) is stated in both
+  papers (INTERFACE_3A.md, last section);
 - first-order upwind convection;
 - dispersion in the exact discrete-gradient Onsager form, which equals Paper 1's discrete
   Fick flux;
