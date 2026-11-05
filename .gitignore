@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Third-party PDFs obtained through library access: read locally, never published.
+private/

@@ -1,0 +1,55 @@
+cff-version: 1.2.0
+title: >-
+  Design, verification and pre-registration for: What does thermodynamic structure buy a
+  learned model of a temperature-swing adsorption column?
+message: If you use this software or its design, please cite it.
+type: software
+authors:
+  - given-names: Abdulhamid
+    family-names: Batayhi
+    email: abdulhamid.batayhi@std.yildiz.edu.tr
+    orcid: "https://orcid.org/0009-0007-0374-6755"
+    affiliation: >-
+      Yıldız Technical University, Faculty of Mechanical Engineering, Department of Mechatronics Engineering, Istanbul, Türkiye
+repository-code: "https://github.com/abdulhamidbatayhi123/ai-column-structure"
+abstract: >-
+  The pre-registered design of a computational study that asks what thermodynamic structure
+  buys a learned reduced model of a non-isothermal adsorption column (a MOF water-harvesting
+  bed). Energy and entropy are fixed from the adsorbent's and the gas's thermodynamics, not
+  learned; inlet, outlet and wall are ports. The repository holds the thermodynamic
+  formulation, its numerical verification on small grids (it reduces to the Paper 1 solver to
+  better than 1e-8), property tests, a number gate that binds every quoted number to its
+  results file, the literature journals behind the gap statement, two independent review
+  rounds, the correction ledger and the draft pre-registration. No study data exist yet; the
+  pre-registration is frozen only after the author's review and a pilot.
+keywords:
+  - metriplectic
+  - GENERIC
+  - port-Hamiltonian
+  - structure-preserving machine learning
+  - reduced-order model
+  - adsorption column
+  - temperature-swing adsorption
+  - metal-organic frameworks
+  - water harvesting
+  - pre-registration
+license: MIT
+references:
+  - type: software
+    title: >-
+      Code, results and pre-registrations for: The coefficient map, not the basis
+    authors:
+      - given-names: Abdulhamid
+        family-names: Batayhi
+    doi: "10.5281/zenodo.23323685"
+    notes: >-
+      Paper 1. Its solver (solver_fd.py, isotherm.py, gen_parametric_dataset.py at release
+      v2.0.1) is the c_w = 0 limit of this design's reference model and is imported unchanged
+      by the verification code.
+  - type: software
+    title: >-
+      Code, results and pre-registration for: When can AI discover adsorption kinetics?
+    authors:
+      - given-names: Abdulhamid
+        family-names: Batayhi
+    repository-code: "https://github.com/abdulhamidbatayhi123/ai-kinetics-discoverability"
