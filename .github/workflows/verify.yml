@@ -1,0 +1,72 @@
+name: verify
+
+# On every push and pull request: regenerate the design-verification results from scratch
+# against Paper 1's public release, apply the pass criteria, check that every number the
+# formulation quotes still matches the committed results, run the property tests, and
+# validate the citation file.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          path: ai-column-structure
+
+      - name: Check out Paper 1 at the pinned release (its solver is the c_w = 0 limit)
+        uses: actions/checkout@v4
+        with:
+          repository: abdulhamidbatayhi123/ai-mof-cof-dynamics
+          ref: v2.0.1
+          path: ai-mof-cof-dynamics
+          sparse-checkout: |
+            isotherm.py
+            solver_fd.py
+            gen_parametric_dataset.py
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai-column-structure/requirements.txt
+
+      - name: Install pinned dependencies
+        run: pip install -r ai-column-structure/requirements.txt cffconvert==2.0.0
+
+      - name: Number bindings against the committed results
+        working-directory: ai-column-structure
+        run: python verify/check_results.py verify/results_run_checks.json --bindings
+
+      - name: Regenerate the verification results from scratch
+        working-directory: ai-column-structure
+        run: |
+          cp verify/results_run_checks.json /tmp/committed.json
+          python verify/run_checks.py > /tmp/run_checks.log
+          tail -5 /tmp/run_checks.log
+
+      - name: Pass criteria on the regenerated results
+        working-directory: ai-column-structure
+        run: python verify/check_results.py verify/results_run_checks.json
+
+      - name: Property tests
+        working-directory: ai-column-structure
+        run: python -m pytest -q tests
+
+      - name: Validate CITATION.cff
+        working-directory: ai-column-structure
+        run: cffconvert --validate
