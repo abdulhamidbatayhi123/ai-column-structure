@@ -199,15 +199,16 @@ ranges (q_max 8 to 30 mol kg⁻¹, ΔH −60 to −38 kJ mol⁻¹, feed 288 to 3
 | difference | size | treatment in 3B |
 |---|---|---|
 | water heat capacity omitted (`c_w = 0`) | adsorbed water at saturation holds 0.27 to 1.01 × the solid's heat capacity at c_w = 33.6 J mol⁻¹ K⁻¹, and 0.60 to 2.25 × at a liquid-like 75 | **included**: primary reference uses c_w = 33.6 (keeps Paper 1's isotherm exact); c_w = 0 is the verification limit |
-| flow work of the vapour (ideal gas versus dilute solute) | RT/\|ΔH\| = 4.1 to 8.4 % of the heat released over 293 to 383 K (the temperatures 3B's cycles visit) and Paper 1's ΔH range; 4.7 to 6.1 % for the MOF-303-like material | not included; the dilute-solute model is kept for continuity with Paper 1 and stated as a limitation |
+| flow work of the vapour (ideal gas versus dilute solute); where it lands depends on the parameter convention: with ΔH = −Q_st (Paper 1's and 3B's choice) the heat is right and the isotherm's temperature shift is RT/\|ΔH\| too strong | RT/\|ΔH\| = 4.1 to 8.4 % of the heat released over 293 to 383 K (the temperatures 3B's cycles visit) and Paper 1's ΔH range; 4.7 to 6.1 % for the MOF-303-like material | not included; the dilute-solute model is kept for continuity with Paper 1 and stated as a limitation |
 | enthalpy carried by vapour in the gas stream | vapour/carrier stream heat capacity 0.9 to 4.3 % (RH 0.2 to 0.9 at 303 K) | included automatically once c_w > 0 |
 | liquid-like heat capacity of the adsorbed phase (c_a ≠ c_v) | would make ΔH temperature-dependent (Kirchhoff), about 4 % over a 50 K swing | not in the primary reference, because it changes the isotherm's T-dependence; it belongs to 3A's potential (INTERFACE_3A.md) |
 
 The point that the adsorbed-phase heat capacity and the isosteric heat must come from one
 consistent thermodynamic path is not new. Walton and LeVan (Adsorption 2005,
 doi:10.1007/s10450-005-5984-6) derive fixed-bed energy balances along consistent paths.
-Schwamberger and Schmidt (Ind. Eng. Chem. Res. 2013, doi:10.1021/ie4011832) show that
-inconsistent heat-capacity choices leave energy and entropy balance residuals. 3B cites them
+Schwamberger and Schmidt (Ind. Eng. Chem. Res. 52, 16958, 2013, doi:10.1021/ie4011832)
+show that computing the adsorbed-phase heat capacity along reversible thermodynamic paths
+makes the energy and entropy balance residuals much smaller. 3B cites them
 and claims only the derivation from one potential and its exact reduction to Paper 1.
 
 None of this affects Paper 1's conclusions, which concern surrogates of a defined PDE. The
@@ -239,8 +240,8 @@ state-dependent vector field can be written as `L(x) ∇E` with some antisymmetr
 real obstruction is the degeneracy condition `L ∇S = 0`. The naive construction
 `L = (a e_uᵀ − e_u aᵀ)/|e_u|²`, with `a` the advection field, reproduces advection but gives
 `L ∇S = a Σ(1/T_i) ≠ 0`. A valid L needs a genuinely constructed bracket, which is what the
-Poisson-GENERIC operators of arXiv:2610.05570 build for transport (a Lie-Poisson L). They
-also note that their friction class cannot represent transport. 3B does not take that
+Poisson-GENERIC operators of arXiv:2610.05570 build for transport (a Lie-Poisson L). Their
+first version (v1) also notes that their friction class cannot represent transport. 3B does not take that
 route, for two reasons:
 
 1. **Upwind convection is not reversible at the discrete level, and 3B chooses not to split
@@ -259,7 +260,8 @@ route, for two reasons:
 
 So convection enters as a port interconnection between open subsystems. That is the setting
 of port-metriplectic models (Hernández et al., arXiv:2211.01873), of boundary-controlled
-irreversible port-Hamiltonian systems (Ramirez, Le Gorrec, Maschke, arXiv:2104.13459), and
+irreversible port-Hamiltonian systems (Ramirez, Le Gorrec, Maschke, Chem. Eng. Sci. 248,
+117107, 2022, doi:10.1016/j.ces.2021.117107; arXiv:2104.13459), and
 of boundary ports in general. The closest continuum template is arXiv:2603.11260 (Ouardi,
 Sarkar, Ramirez, Le Gorrec 2026). It brings convective transport *inside* an irreversible
 port-Hamiltonian structure for 1-D viscous fluids, through modified differential operators
@@ -318,7 +320,7 @@ m_i = T_i r_i / (μ_v − μ_a) = T_i (1−ε) ρ_p k (q*(c,T) − q) / (μ_v(c,
 `T (1−ε) ρ_p k ∂q*/∂μ`. So **the LDF law is an Onsager flux with a positive, state-dependent
 coefficient, by virtue of the isotherm's monotonicity alone.** Non-equilibrium thermodynamics
 already writes uptake as a flux driven by the difference in chemical potential (Santamaria-Holek,
-Grzywna, Rubi, arXiv:1204.3841). The observation here, a one-line sign argument, is that the
+Grzywna, Rubi, J. Non-Equilib. Thermodyn. 37, 2012; arXiv:1204.3841). The observation here, a one-line sign argument, is that the
 *concentration-difference* LDF used in practice is of that form whenever the isotherm is
 increasing. It is not a contribution of the paper. It answers the
 claim of a 2025 preprint (HARMONIA, Dytrych and Dlaskova, ChemRxiv,
@@ -609,12 +611,15 @@ Still to do at the study's resolution, before any data are used:
   wall) is fixed in the pre-registration, not here.
 - Whether `c_w` should be the vapour value (33.6) or a value 3A's potential implies (with a
   temperature-dependent ΔH) depends on 3A. See INTERFACE_3A.md.
-- Prior structured column models exist only for the **isothermal** case: the port-based
-  (bond-graph, Dirac-structure) adsorption column of Baaiu, Couenne, Le Gorrec, Lefèvre and
-  Tayakout (Math. Comput. Model. Dyn. Syst. 2008, doi:10.1080/13873950701844840), built "under
-  isothermal conditions" on irreversible thermodynamics. Its structure-preserving reduction
-  and discretisation followed (J. Process Control 2009, doi:10.1016/j.jprocont.2008.07.002;
-  IEEE CDC 2007, doi:10.1109/cdc.2007.4434663). Their full texts were not reachable
+- Every prior structured column model found is **isothermal**, judged from abstracts only:
+  the port-based (bond-graph, Dirac-structure) adsorption column of Baaiu, Couenne, Le Gorrec,
+  Lefèvre and Tayakout (Math. Comput. Model. Dyn. Syst. 2008, doi:10.1080/13873950701844840),
+  built "under isothermal conditions" on irreversible thermodynamics. Its structure-preserving
+  reduction and discretisation followed (J. Process Control 2009,
+  doi:10.1016/j.jprocont.2008.07.002, no abstract in any database; IEEE CDC 2007,
+  doi:10.1109/cdc.2007.4434663). The group's 2009 general port-based theory of transport
+  (doi:10.1080/13873950902808578) covers heat as well as mass transfer, but no fetched abstract
+  applies it to a non-isothermal column. Their full texts were not reachable
   (paywalled). Before the paper is written, the author should read them through library
   access, to state exactly how their convection and boundary treatment compare with
   Section 4. 3B's formulation is the non-isothermal, entropy-explicit extension, and Section 4

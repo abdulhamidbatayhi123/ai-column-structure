@@ -23,27 +23,32 @@ and LeVan 2005, Schwamberger and Schmidt 2013, Myers and Monson 2014, Dytrych an
 2610.05570v1, the v9 record of 2606.08343, An et al. 2026 (Crossref), and the HAL record of
 the Mousa thesis (tel-05363400).
 
-## 1. Structure-preserving learning is mature, and its latent versions all learn the entropy
+## 1. Structure-preserving learning is mature, and every latent version found learns the entropy
 
 Building the GENERIC or metriplectic structure into the architecture, rather than adding it
 as a loss, is now routine for ODEs, graphs and neural operators.
 - **Structure as architecture.** GFINNs satisfy the degeneracy conditions by architecture
-  (arXiv:2109.00092). Gruber et al. make the parameterisation scale quadratically in the state
+  (Zhang, Shin, Karniadakis, Phil. Trans. R. Soc. A 380, 20210207, 2022; arXiv:2109.00092).
+  Gruber et al. make the parameterisation scale quadratically in the state
   (arXiv:2405.16305). Port-metriplectic networks extend it to open systems learned by parts
-  (arXiv:2211.01873).
+  (Hernández et al., Comput. Mech. 2023, doi:10.1007/s00466-023-02296-w; arXiv:2211.01873).
 - **Function space.** GENERIC-FNO (arXiv:2606.08343) and Poisson-GENERIC neural operators
   (arXiv:2610.05570, 4 October 2026) carry the structure into function space. The second wins
   61 of 72 seed-level comparisons.
 
 Latent (autoencoder) versions exist too:
-- the thermodynamics-aware reduced model of Hernández et al. (arXiv:2007.03758);
-- tLaSDI (arXiv:2403.05848) and its parametric successor (arXiv:2506.08475);
-- a magnetisation-dynamics operator (arXiv:2609.04530).
+- the thermodynamics-aware reduced model of Hernández et al. (CMAME 380, 113763, 2021;
+  arXiv:2007.03758);
+- tLaSDI (Park et al., CMAME 429, 117144, 2024; arXiv:2403.05848) and its parametric
+  successor (He et al., TMLR 2026; arXiv:2506.08475);
+- a magnetisation-dynamics operator (Schaffer and Exl, arXiv:2609.04530; the statements used
+  here are in its v2 full text, Section 4.5 and the rollout figures).
 
-tLaSDI is the closest architectural template to 3B. It reports extrapolation errors 5 to 8
-times lower than its baselines, for example 2.47×10⁻³ against 1.70×10⁻² for a plain network
-on Couette flow (journal C, C17). Two caveats travel with that number: it is the best of 10
-runs, and an ablation found that one of its losses added nothing.
+tLaSDI is the closest architectural template to 3B. It reports extrapolation errors about 3
+to 7 times lower than its baselines, for example 2.47×10⁻³ against 1.70×10⁻² for a plain
+network on Couette flow (journal C, C17). Two caveats travel with that number: it comes from
+the run with the smallest training loss of 10, and in one of its two ablations the modelling
+loss added nothing once the Jacobian loss was present.
 
 **In every latent GENERIC or metriplectic model found, the energy and entropy are learned
 in latent coordinates without physical meaning.** That now includes a fracture application
@@ -63,63 +68,75 @@ Fixing a trusted energy is partly anticipated outside latent models:
 - the fixed structural energy terms of Poisson-GENERIC (T5);
 - a trusted-energy projection in metriplectic flow matching (arXiv:2509.19526, T13);
 - irreversible port-Hamiltonian neural ODEs, whose structure comes from physics and whose
-  parameters are learned (arXiv:2211.06130, T17), a lumped thermal model.
+  parameters are learned (Zakwan et al., IFAC-PapersOnLine 56(2), 5855, 2023;
+  arXiv:2211.06130, T17), a lumped thermal model.
 
 None of these is a latent model with E and S fixed from the physics of the decoded fields.
 
 **Transport is the documented weak spot.** GENERIC-FNO loses accuracy "on pure transport"
-(T4). Poisson-GENERIC shows that its friction class provably cannot represent transport, so
-transport must enter through a Lie-Poisson reversible operator (T5). GENERIC-FNO's latest version (v9, 1 November 2026) also limits its
-guarantees to "closed conservative-dissipative dynamics". No fetched paper shows a learned
-metriplectic latent model of an advection-dominated *open* system with inflow and outflow
-ports and a quantified rollout error. The nearest learned distributed-port model is
-conservative and learns its Hamiltonian (Beckers and Colombo, arXiv:2604.04266, boundary
-control of port-Hamiltonian PDEs). The nearest is a thermodynamics-informed
-MeshGraphNet for open flow around obstacles (Bermejo et al. 2025, T16). Its E and S are
-learned, it is full-field, and its abstract does not say how boundary fluxes are treated.
+(T4). In the first version of the Poisson-GENERIC paper (arXiv:2610.05570v1), the friction
+class provably excludes transport, so transport enters through a Lie-Poisson reversible
+operator (T5). GENERIC-FNO's latest version (v9, 1 November 2026) also limits its guarantees
+to "closed conservative-dissipative dynamics". No fetched paper shows a learned metriplectic
+latent model of an advection-dominated *open* system with inflow and outflow ports and a
+quantified rollout error. Two models come closest:
+- a learned distributed-port model that learns its Hamiltonian with a Gaussian process, on a
+  shallow-water channel with linear friction. It has dissipation but no thermodynamic entropy
+  and no second-law structure (Beckers and Colombo, arXiv:2604.04266);
+- a thermodynamics-informed MeshGraphNet with a nodal port-metriplectic formulation, for
+  incompressible flow past obstacles (Bermejo et al., Adv. Model. Simul. Eng. Sci. 12:27,
+  2025, T16). Its E and S gradients are learned, it is full-field rather than latent, and its
+  abstract does not say how inflow and outflow fluxes are treated.
 
-## 2. Structured models of adsorption columns exist, but only isothermal ones
+## 2. Structured models of adsorption columns exist; every one found is isothermal (from abstracts only)
 
 The Lyon LAGEP group built a **port-based distributed model of a multiscale adsorption
 column "under isothermal conditions"**, using bond graphs, Dirac structures and the axioms
 of irreversible thermodynamics (Baaiu, Couenne, Le Gorrec, Lefèvre, Tayakout, Math. Comput.
 Model. Dyn. Syst. 2008, doi:10.1080/13873950701844840; abstract read live). The general
-port-based theory of mass transport followed (Baaiu et al. 2009,
-doi:10.1080/13873950902808578), and so did structure-preserving discretisation and reduction
-applied to adsorption (Peng et al., IEEE CDC 2007, doi:10.1109/cdc.2007.4434663; Baaiu et al.,
-J. Process Control 2009, doi:10.1016/j.jprocont.2008.07.002). There is no heat of adsorption,
-no thermal domain, no entropy as a state, and no learning. **The full texts were not
+port-based theory of transport followed (Baaiu et al. 2009, doi:10.1080/13873950902808578),
+and so did structure-preserving discretisation and reduction applied to adsorption (Peng et
+al., IEEE CDC 2007, doi:10.1109/cdc.2007.4434663; Baaiu et al., J. Process Control 19, 394,
+2009, doi:10.1016/j.jprocont.2008.07.002). In the 2008 column model there is no heat of
+adsorption, no thermal domain, no entropy as a state, and no learning. The 2009 general
+theory covers heat as well as mass transfer, but no fetched abstract applies it to a
+non-isothermal adsorption column. The J. Process Control paper has no abstract in any
+database, so nothing about it beyond its title is checked. **The full texts were not
 reachable**, so their state variables and exact boundary treatment are not verified. That is
 the one reading the author must do through library access before the paper is written.
 
 The rest of the non-ML literature (journal B):
 
 - **Convection by an imposed velocity has no settled treatment.**
-  - Irreversible port-Hamiltonian reactor models leave convection out on purpose (P6, P8,
-    P10).
+  - Irreversible port-Hamiltonian models of reaction-diffusion and conduction-diffusion
+    leave convection out (P6, P8, P10).
   - A 2026 extension brings it inside the structure, but only where the velocity is a state
     of the fluid (Ouardi et al., arXiv:2603.11260).
   - Others treat it as a "dissipation port" (a counter-current heat exchanger, P14), as a
-    boundary supply in passivity analyses where convection is exactly what breaks automatic
-    passivity (P15, P28, P29), or as compartments in series (a heat exchanger, P13).
+    boundary supply in passivity analyses (P15, P29), where in one study convection is what
+    can break the otherwise automatic dissipation condition (P28), or as compartments in
+    series (a heat exchanger, P13).
 
   3B's choice (formulation, Section 4.1) is the last of these, with a proof of non-negative
   mixing entropy.
 - **Uptake as a flux driven by chemical-potential difference** is standard
-  non-equilibrium thermodynamics (Santamaria-Holek, Grzywna, Rubi, arXiv:1204.3841). A 2025
+  non-equilibrium thermodynamics (Santamaria-Holek, Grzywna, Rubi, J. Non-Equilib.
+  Thermodyn. 37, 2012, doi:10.1515/jnetdy-2011-0029; arXiv:1204.3841). A 2025
   preprint claims standard isotherm-plus-LDF couplings can violate the second law
   (HARMONIA, doi:10.26434/chemrxiv-2025-c860f; read as an abstract record only). Formulation
   Section 4.2 shows that for one adsorbate with an increasing isotherm they cannot.
 - **Consistency of heats and heat capacities is known.** Walton and LeVan (Adsorption 2005)
   derive energy balances along consistent thermodynamic paths and tie the adsorbed-phase
   heat capacity to the temperature dependence of the isosteric heat. Schwamberger and Schmidt
-  (Ind. Eng. Chem. Res. 2013) show that inconsistent choices leave energy and entropy balance
-  residuals. Myers and Monson (Adsorption 2014) argue for absolute adsorption as the
+  (Ind. Eng. Chem. Res. 52, 16958, 2013) show that computing the adsorbed-phase heat capacity
+  along reversible thermodynamic paths makes the energy and entropy balance residuals much
+  smaller (water on zeolite 13X). Myers and Monson (Adsorption 2014) argue for absolute adsorption as the
   thermodynamic basis. 3B cites them and does not claim the consistency point as new.
 - **Entropy generation in adsorption cycles has been computed only after the fact.** A
   lumped TSA cycle attributes 63.27 % of entropy generation to heat transfer, 53.72 % with
   heat recovery (Li et al., Sci. Rep. 2019). A CFD TSA study does the same spatially (Guo et
-  al., Entropy 2019). No model has entropy production as structure.
+  al., Entropy 2019). No adsorption-cycle model found carries entropy production as
+  structure; in these studies it is computed after the fact.
 
 ## 3. Learned sorption models: unstructured, penalised, or balance-constrained
 
@@ -127,43 +144,48 @@ From most to least structure (journal C, Part 1):
 
 - **Hard balances without a second law:** mass- and energy-constrained networks for
   distributed chemical systems (Mukherjee and Bhattacharyya, Ind. Eng. Chem. Res. 2024) and
-  hard enthalpy balances in a packed-bed reactor surrogate (Lastrucci et al.,
-  arXiv:2501.17782). Neither is an adsorption column, and neither carries entropy.
+  hard enthalpy balances in a packed-bed reactor surrogate (Lastrucci et al., ESCAPE 35,
+  Syst. Control Trans. 4, 1718, 2025, doi:10.69997/sct.108423; arXiv:2501.17782). Neither is an adsorption column, and neither carries entropy.
 - **A conservative solver with a learned part:** FINN for groundwater diffusion and sorption
-  (Water Resour. Res. 2022), isothermal, learning only the isotherm. Hybrid chromatography
-  models screened in AIChE J. 2025.
-- **Physics as a loss:** PINN surrogates of adsorption processes (Processes 2025) and of a
-  PSA cycle (Green Chem. Eng. 2024).
+  (Praditia et al., Water Resour. Res. 58, e2022WR033149, 2022), a finite-volume network with
+  no energy equation that, in this application, learns the sorption isotherm. Hybrid
+  chromatography models screened by Frandsen et al. (AIChE J. 71, e70045, 2025,
+  doi:10.1002/aic.70045).
+- **Physics as a loss:** PINN surrogates of adsorption processes (Galanti et al., Processes 13,
+  2824, 2025, doi:10.3390/pr13092824) and of a PSA cycle (Wu et al., Green Chem. Eng. 6, 233,
+  2025, doi:10.1016/j.gce.2024.08.004).
 - **Unstructured:**
   - Staudt et al. 2026: a neural surrogate of binary non-isothermal breakthrough trained on
     1.1 million simulations (Zenodo 22556794).
   - Ceccanti et al. 2026: a DeepONet for cyclic TVSA, which assumes isothermal operation
     (arXiv:2601.09491).
-  - Bilal et al. 2026: a non-isothermal chromatography surrogate.
+  - Bilal, Haq and Asif 2026: scalar-output surrogates of a non-isothermal chromatography
+    general rate model, with physics used only to build input features (Ind. Eng. Chem. Res.
+    65, 13942, doi:10.1021/acs.iecr.6c02282; ACS Omega 11, 48428,
+    doi:10.1021/acsomega.6c04740).
   - An, Wald, Chen, King 2026: a neural surrogate of a temperature-vacuum swing (TVSA)
     direct-air-capture cycle, trained on about 120,000 cycle-resolved simulations of a
     lumped state-transition model (Front. Environ. Eng., doi:10.3389/fenve.2026.1881554).
     It is cycle-level, not a column field, and has no energy or entropy structure.
 - **A strong non-learned competitor:** a differentiable mechanistic VPSA model that reaches
-  the cyclic steady state about 20 times faster (Glover, Papathanasiou, Pini, Comput. Chem.
-  Eng. 2026, doi:10.1016/j.compchemeng.2026.109904).
+  the cyclic steady state about 20 times faster than a representative MATLAB implementation
+  (Glover, Papathanasiou, Pini, Comput. Chem. Eng. 216, 109904, online 2026,
+  doi:10.1016/j.compchemeng.2026.109904).
 
 Differentiable mechanistic simulators keep getting stronger: diff-soup (Degnan-Morgenstern
-and Bazant, arXiv:2610.37333) puts a neural closure inside a stiff packed-bed solver on GPU.
-That strengthens the case for arm C. No learned sorption model reports zero unphysical
-outputs over many cycles. **No learned
+and Bazant, arXiv:2610.37333) trains a neural field for the catalyst activity inside a stiff,
+differentiable 3-D packed-bed reactor solver on GPU. That strengthens the case for arm C. No
+learned sorption model found reports zero unphysical outputs over many cycles. **No learned
 adsorption, sorption or chromatography model that is thermodynamically structured by
 construction was found** in journals A and C. The searches covered GENERIC, metriplectic,
 port-Hamiltonian, Onsager, entropy-stable and "thermodynamically consistent", crossed with
 adsorption, sorption, chromatography, desiccant, PSA, TSA, breakthrough and water harvesting.
 
-One possible exception is unverified: Mousa, Negny, Ouaret, Di Pretoro, Montastruc,
-"Incorporating Physical Constraints inside Neural Networks … Chemical Engineering Unit
-Operations Modeling", Comput. Chem. Eng. 199, 109156 (2025). It cites GFINNs. ScienceDirect
-refused both browsers and no repository holds a copy. Its reference list (read live on
-Crossref) is mostly data reconciliation for heat exchangers, power plants and refrigeration,
-plus PINNs with hard linear constraints, and has no adsorption entry. It is most likely a
-balance-constraint paper, but it must be read before the novelty sentence is final.
+One candidate exception was checked and ruled out: Mousa, Negny, Ouaret, Di Pretoro,
+Montastruc, "Incorporating Physical Constraints inside Neural Networks … Chemical Engineering
+Unit Operations Modeling", Comput. Chem. Eng. 199, 109156 (2025). It cites GFINNs, but the
+first author's open thesis shows neural networks corrected by data reconciliation on balances
+and equilibria, with no adsorption (Section 6, item 1).
 
 ## 4. What structure buys: the evidence is real but mostly from toy systems
 
@@ -191,12 +213,16 @@ balance-constraint paper, but it must be read before the novelty sentence is fin
   form, not from conservation, and strict conservation hurts on dissipative systems
   (arXiv:2202.04836).
 - **Hidden state reverses the ranking.** With variables missing, a Transformer beats a
-  structure-preserving network (arXiv:2512.16305).
-- **Hard conservation can break positivity.** A global conservation projection created
-  negative densities in ProbConserv (arXiv:2302.11002).
+  structure-preserving network (Urdeitx et al., J. Non-Newton. Fluid Mech. 349, 105601,
+  2026; arXiv:2512.16305).
+- **Hard conservation can break positivity.** In the ProbConserv paper, a baseline that
+  enforces conservation by shifting every point equally produced a negative bias in the
+  zero-density region (Hansen et al., Physica D 457, 133952, 2024; arXiv:2302.11002).
 - **Penalties have their own failures:** ill-conditioning, and ensemble collapse under
-  shared constraints (journal C, C34 and C37).
-- **Reporting is often best-of-N runs** (journal C, C31).
+  shared constraints (journal C, C34; Nooraiepour et al., Energy and AI 24, 100757, 2026).
+- **Headline numbers can come from the best of several runs.** tLaSDI's come from the run
+  with the smallest training loss of 10 (C17). The standard benchmark suite does not test
+  thermodynamic structure at all (PDEBench, C31).
 
 ## 5. The exact gap
 
@@ -211,7 +237,7 @@ Each qualifier is load-bearing. Here is what each one excludes:
 
 | qualifier | excludes |
 |---|---|
-| non-isothermal | the isothermal port-based column models of Baaiu et al. 2008 and 2009 |
+| non-isothermal | the isothermal port-based column model of Baaiu et al. 2008, and the structure-preserving discretisation and reduction applied to adsorption (Peng et al. 2007; Baaiu et al. 2009, J. Process Control); read from abstracts only |
 | learned, latent | the non-ML IPHS, GENERIC and port-based formulations |
 | E and S fixed from thermodynamics | tLaSDI and its fracture application, the thermodynamics-aware reduced models, the magnetisation operator, GENERIC-FNO (all learn them); Physics-conforming Latent Twins (prescribed invariants, not a thermodynamic E and S) |
 | adsorption column with ports | port-metriplectic networks and thermodynamics-informed graph networks (no sorption, E and S learned) |
@@ -253,7 +279,8 @@ Each qualifier is load-bearing. Here is what each one excludes:
 
 - **A non-learned competitor is mandatory** (arm C in the pre-registration). The 1-D
   benchmark's core alone reached round-off, and a differentiable mechanistic model already
-  reaches the cyclic steady state 20 times faster.
+  reaches the cyclic steady state 20 times faster than a representative MATLAB
+  implementation.
 - **Convection is a port, the Poisson part is empty, and both are argued** (formulation,
   Section 4.1). Section 4.1 also cites the Lie-Poisson alternative.
 - **The latent model is not a pure gradient flow.** The projected port term carries the

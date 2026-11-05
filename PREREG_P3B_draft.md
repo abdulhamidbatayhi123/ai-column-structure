@@ -61,7 +61,20 @@ exists at the freeze, a MOF-303-like dual-site isotherm is used:
 - Henry-to-cluster affinity ratio 1/20 (Paper 1's fixed value);
 - n set to ⟨fixed at freeze from the figure reading⟩.
 
-Sources: research/water_mof_parameters.md in Paper 1's repository (Hanikel et al. 2019).
+Sources: research/water_mof_parameters.md in Paper 1's repository, from Hanikel et al.,
+ACS Cent. Sci. 5, 1699 (2019), doi:10.1021/acscentsci.9b00745:
+- the step at about 0.12 RH is stated in the text;
+- ΔH = −52 kJ mol⁻¹ is a reading of SI Figure S25 (Section S3.2, read live 2026-11-05 from the
+  open supplementary file, Europe PMC PMC6813556). The isosteric heat there plateaus at about
+  51 to 54 kJ mol⁻¹ between about 80 and 440 cm³ g⁻¹ of uptake, and falls at both ends. The
+  main text gives 50 to 54 kJ mol⁻¹ for three sorbents together;
+- **convention**: ΔH is set to −Q_st, as in Paper 1, so the heat released per mole matches the
+  measured isosteric heat. In the dilute-solute model a pressure-based Clausius-Clapeyron
+  fit of the model's isotherm would then give Q_st = −ΔH + RT, so the isotherm's temperature
+  shift is about RT/|ΔH| ≈ 5 % stronger than measured. The alternative, ΔH = −(Q_st − RT),
+  matches the shift and releases 5 % too little heat. The paper states which 5 % it carries;
+- q_max and f_H are read from the figure (Fig. 1a) and are labelled as figure readings
+  wherever they are used.
 
 Bed properties are the midpoints of Paper 1's ranges (ε 0.39, ρ_p 1050 kg m⁻³, d_p 3.25 mm),
 with Paper 1's fixed properties (L 0.10 m, D_in 0.05 m, k_z 0.10 W m⁻¹ K⁻¹, h_w 10 W m⁻² K⁻¹).
