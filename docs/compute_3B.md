@@ -42,14 +42,15 @@ own figure. The budget uses 30 s per cycle, the upper end.
 | train pool | 256 × 6 = 1536 | 12.8 |
 | validation | 32 × 6 = 192 | 1.6 |
 | long validation | 4 × 60 = 240 | 2.0 |
-| long test | 32 × 60 = 1920 | 16.0 |
-| OOD test | 16 × 30 = 480 | 4.0 |
-| **total** | **4528** | **37.7** |
+| long test | 48 × 60 = 2880 | 24.0 |
+| OOD test | 24 × 30 = 720 | 6.0 |
+| replication material: train pool, validation, long test | 1536 + 192 + 2880 = 4608 | 38.4 |
+| **total** | **10,336** | **86.1** |
 
-With 4 worker processes (about 150 MB each), that is **about 9.5 hours of wall time** on a
+With 4 worker processes (about 150 MB each), that is **about 21.5 hours of wall time** on a
 free machine. Storage at 128 cells × 3 fields × 200 snapshots per cycle in float32, plus the
 outlet channels and the per-block wall-heat field (128 values per snapshot), is about
-0.41 MB per cycle, **about 1.85 GB on disk**. Training reads it
+0.41 MB per cycle, **about 4.2 GB on disk**, which fits in the 16 GB free. Training reads it
 through a memory map.
 
 ## 2. Training and evaluation
@@ -69,7 +70,8 @@ value shared by all arms (pre-registration, Section 9).
 | S−Π (metriplectic term, no projection) | about 1.0 s | 2.3 h |
 | U+proj | no training (U's weights, projection at rollout) | evaluation only |
 | autoencoder, full data | n/a | about 0.5 h (proportionally less on subsets) |
-| evaluation rollout, 60 cycles × 32 trajectories, projected arms | n/a | about 0.5 h |
+| FNO (descriptive arm) | small 1-D operator on 128 cells | about 0.5 h (estimate; measured in the pilot) |
+| evaluation rollout, 60 cycles × 48 trajectories, projected arms | n/a | about 0.75 h |
 
 Peak memory of one training process: about 0.4 GB for torch and the model, plus the
 memory-mapped data pages.
@@ -78,32 +80,34 @@ memory-mapped data pages.
 
 | block | hours |
 |---|---|
-| reference data, all sets | 9.5 |
+| reference data, all sets, both materials | 21.5 |
 | pilot training (2 seeds × U, U+F, P, S, S−M, S−Π at full iterations: 2 × 11.48 h) and timings | 23 |
-| autoencoders (5 seeds at full data and size 32, 3 seeds at the other sizes) | 7 |
+| autoencoders (both materials, all sizes and seeds) | 9 |
 | primary, full data: U, U+F, P, S, S−M, S−Π × 5 seeds (5 × 11.48 h) | 57 |
 | H2 at size 32: U, U+F, P, S × 5 seeds (5 × 6.28 h) | 31 |
 | H2 learning curve at sizes 16, 64 and 128: U, P, S × 3 seeds (9 × 3.98 h) | 36 |
 | U-long, compute-matched (3 seeds × 3.25 h) | 10 |
-| evaluation rollouts (projected arms, U+proj, arm C) | 13 |
-| **total** | **about 187 hours: about 8 days of continuous background running on a free machine** |
+| replication material: U, U+F, P, S × 3 seeds at full data and at size 32 (6 × 6.28 h) | 38 |
+| FNO, descriptive (3 seeds at full data and at size 32) | 3 |
+| evaluation rollouts (projected arms, U+proj, arm C, FNO; 48 long-test trajectories; both materials) | 26 |
+| **total** | **about 254 hours: about 10.6 days of continuous background running on a free machine** |
 
 Uncertainty: a factor of 0.5 to 2 on the training blocks (the benchmark used a stand-in
-entropy of the right shape), and the measured scaling for the data.
+entropy of the right shape), and the measured scaling for the data. The design grew from 187
+to 254 hours on 2026-11-05. The second material, the larger test sets and the FNO arm were
+added after the author's approval, at the author's instruction that time is not a constraint.
 
 ## 4. What fits and what does not
 
-- **Fits:** the whole primary study (H1 to H5, all arms and ablations, arm C) in about eight
-  days of background running, one job at a time, inside the RAM limit, *when the machine is not
+- **Fits:** the whole study (H1 to H5 and the replication, all arms and ablations, arm C,
+  the FNO arm) in about 11 days of background running, one job at a time, inside the RAM limit, *when the machine is not
   shared with other heavy jobs*. With other sessions' jobs running, as on 2026-11-03,
   nothing heavy should start.
-- **Does not fit comfortably:** the conditional second-material replication (about 30 hours
-  more at 3 seeds, primary arms only). It is pre-declared as conditional for this reason.
 - **Does not fit at all:** 10 seeds everywhere, or a full-order learned model on 2048 cells.
   Neither is in the design.
 - **A GPU would help but is not required.** The arms that differentiate through the decoder
-  (S, S−M, S−Π, U+F) dominate, at about 130 of the 187 hours. The program's shared GPU account would need the author's and
-  their professor's approval (memory: no GPU spending without it), so the plan assumes none.
+  (S, S−M, S−Π, U+F) dominate, at about 170 of the 254 hours. The program's shared GPU account
+  would need the author's and their professor's approval, so the plan assumes none.
 
 ## 5. How the run is organised
 
@@ -123,5 +127,6 @@ entropy of the right shape), and the measured scaling for the data.
    is used for every arm.
 4. For the data: the data-cost contingency of the pre-registration, Section 2
    (N_z = 1024 if it is grid-converged, then shorter long tests, then a smaller train pool).
-5. Never reduced: the 5 seeds of the primary comparison, the 32 long-test trajectories, and
+5. Never reduced: the 5 seeds of the primary comparison, the 48 long-test trajectories, the
+   replication material, and
    the arms U, U+F, U+proj, P and S.

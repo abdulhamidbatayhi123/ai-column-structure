@@ -1,6 +1,8 @@
 # Pre-registration (DRAFT for the author's review): what does thermodynamic structure buy a learned model of a temperature-swing adsorption column?
 
-Status: **DRAFT, not frozen.** First written 2026-10-12. Revised 2026-11-03 after an
+Status: **DRAFT, approved by the author on 2026-11-05; not frozen.** The author approved this
+design and asked that it keep being improved until the freeze; every change after 2026-11-05
+is listed in Section 13. First written 2026-10-12. Revised 2026-11-03 after an
 independent adversarial review (`research/review_adversarial_2026-11-03.md`, findings F1 to
 F36), a second-round check of the revision (`research/review_round2_2026-11-03.md`), and
 design-verification runs on small grids (`verify/`). Nothing in this document
@@ -77,6 +79,19 @@ ACS Cent. Sci. 5, 1699 (2019), doi:10.1021/acscentsci.9b00745:
 - q_max and f_H are read from the figure (Fig. 1a) and are labelled as figure readings
   wherever they are used.
 
+**Replication material (mandatory, 2026-11-05).** An Al-fumarate-like (Basolite A520)
+dual-site isotherm, from the same Paper 1 file:
+- step at about 0.26 RH at 303 K (H19 figure reading 0.265; Laurenz et al. 2020, Energies 13,
+  3003, gives 0.25 for a coating);
+- q_max 23.0 mol kg⁻¹ (H19 figure reading);
+- ΔH = −52.2 kJ mol⁻¹ (Laurenz et al. 2020, abstract), with the same −Q_st convention;
+- f_H = 0.05 (figure reading, low confidence);
+- n fixed at the freeze from the figure.
+
+Its step sits at more than twice MOF-303's humidity, so its cycles load and unload in a
+different part of the isotherm. Hanikel et al. report a small hysteresis for this material.
+The dual-site model has none, and the paper states this limitation.
+
 Bed properties are the midpoints of Paper 1's ranges (ε 0.39, ρ_p 1050 kg m⁻³, d_p 3.25 mm),
 with Paper 1's fixed properties (L 0.10 m, D_in 0.05 m, k_z 0.10 W m⁻¹ K⁻¹, h_w 10 W m⁻² K⁻¹).
 The LDF coefficient follows from the pellet by Paper 1's Glueckauf relation. Parameters are
@@ -109,8 +124,15 @@ held through the cycle.
 | train pool | 256 | 6 | fitting (H2 subsets are nested: 16 ⊂ 32 ⊂ 64 ⊂ 128 ⊂ 256) |
 | validation | 32 | 6 | early stopping, the penalty weight of arm P, decoder width |
 | long validation | 4 | 60 | decoder gate at cyclic steady state (Section 6.1) |
-| long test | 32 | 60 | H1, H3, H4, and H2 on its cycles 1 to 6 |
-| OOD test | 16 | 30 | H5 |
+| long test | 48 | 60 | H1, H3, H4, and H2 on its cycles 1 to 6 |
+| OOD test | 24 | 30 | H5 |
+| replication: train pool | 256 | 6 | fitting, Al-fumarate-like material |
+| replication: validation | 32 | 6 | as for the primary material |
+| replication: long test | 48 | 60 | R-H1, R-H2, R-H4 (Section 5) |
+
+The long test was raised from 32 to 48 trajectories, and the OOD test from 16 to 24, on
+2026-11-05. More test conditions cost little (one reference solve each) and shrink the
+minimum detectable effect (Section 7).
 
 "In-distribution test" means cycles 1 to 6 of the long-test trajectories. The test sets are
 touched once, after every model is frozen.
@@ -149,6 +171,7 @@ arms are matched on:
 | S−M | S without the internal metriplectic term (projection only) | ablation: is it the balances? |
 | S−Π | S without the port projection (metriplectic term plus a free port term) | ablation: is it the bracket? |
 | **C** | the consistent finite-volume scheme on 16, 32 and 64 cells, no learning, with dispersion compensated for upwind numerical diffusion, `D_L,eff = max(0, D_L − u Δz/2)` with `u = v/ε` | the non-learned competitor in its strongest simple configuration (F15) |
+| FNO (descriptive) | an autoregressive 1-D Fourier neural operator on the stored coarse fields and outlet channels, conditioned on the cycle inputs, trained with the same multi-step rollouts and budget rule; 3 seeds, full data and size 32 | the strongest unstructured *field* model of Paper 1 (rung L5), so that S is also placed against a different model family; reported with intervals, no verdict words |
 
 Arm C exists because the discrete scheme is thermodynamically consistent at *any* grid size,
 for any non-negative dispersion (formulation, Section 0, point 4). If a coarse consistent
@@ -262,7 +285,7 @@ The compute-matched U-long is reported beside it as a secondary contrast.
   scientific result.
 - **H3b (secondary, associational).** Within U, trajectories with larger cumulative
   water-balance drift at cycle 50 have larger `e_50`. Both are averaged over seeds per
-  trajectory (n = 32, no pseudo-replication), and the test is a one-sided Spearman
+  trajectory (n = 48, no pseudo-replication), and the test is a one-sided Spearman
   correlation with a permutation p-value over trajectories.
   - **SUPPORTED**: p < 0.05 and ρ ≥ 0.3;
   - **REFUTED**: ρ ≤ 0;
@@ -288,12 +311,29 @@ is S's field error equivalent to U's?
   - **INCONCLUSIVE**: otherwise.
 
 **H5 (secondary).** On the OOD test (hotter desorption, wetter feed), S has lower `ε_W` than U
-at cycle 20. Verdict words as for H1, with 16 trajectories and no Holm correction. Its MDE
-(about 0.64 SD at α = 0.05, before the decision-rule simulation) is printed beside it.
+at cycle 20. Verdict words as for H1, with 24 trajectories and no Holm correction. Its MDE
+(about 0.52 SD at α = 0.05, before the decision-rule simulation) is printed beside it.
+
+**Replication on the second material (R-H1, R-H2, R-H4; mandatory).** H1, H2 and H4 are
+repeated, unchanged in statistic and threshold, on the Al-fumarate-like material: arms U,
+U+F, P and S, with 3 seeds at full data and at size 32, and 48 long-test trajectories. Each
+receives its own verdict word by the same rules, at α = 0.05 without Holm correction. The
+replication outcome is then fixed as follows:
+- **REPLICATED**: the replication verdict equals the primary verdict;
+- **PARTLY REPLICATED**: both verdicts point the same way but differ in strength (SUPPORTED
+  against SMALL, or EQUIVALENT against INCONCLUSIVE);
+- **NOT REPLICATED**: they point in opposite directions, or one is SUPPORTED and the other
+  REFUTED;
+- **INCONCLUSIVE**: otherwise.
+
+The headline list (below) is decided on the primary material. Its row is then qualified with
+the replication outcome of each hypothesis it uses: "replicated on a second material",
+"partly replicated" or "not replicated". A primary result that does not replicate is never
+reported without that qualifier.
 
 **Secondary contrasts, reported with intervals and without verdict words:** P versus U (the
 L4 replication), P versus S, S−M and S−Π versus S (which part buys what), U+F and U+proj
-versus U, and every learned arm against C on the accuracy-cost plane.
+versus U, FNO versus S and U, and every learned arm against C on the accuracy-cost plane.
 
 **Arm C against the latent model.** A paired one-sided non-inferiority test of C's
 `ε_W,50` against S's, margin 1.10 (ratio), for each of the three grids, Holm-corrected over
@@ -390,9 +430,11 @@ condition, median threshold) and prints the power curve. For each primary hypoth
 pre-registration records the true ratio detectable with 0.8 power ⟨pilot⟩.
 
 For orientation only, the classical MDE of the inner test is:
-- 32 trajectories, one-sided Wilcoxon at α = 0.05: about 0.45 SD of the log ratio;
-- the same at the Holm worst case α = 0.0167: 0.54 SD;
-- H5 (16 trajectories, α = 0.05): about 0.64 SD.
+- 48 trajectories, one-sided Wilcoxon at α = 0.05: about 0.37 SD of the log ratio;
+- the same at the Holm worst case α = 0.0167: 0.44 SD;
+- H5 (24 trajectories, α = 0.05): about 0.52 SD;
+- the replication (48 trajectories, α = 0.05): about 0.37 SD, with 3 seeds instead of 5, so
+  its bootstrap condition is wider.
 
 These use the 0.955 asymptotic relative efficiency of the Wilcoxon test against the t-test.
 The decision rules have less power than these numbers, because they also require the median
@@ -410,7 +452,8 @@ A null result is INCONCLUSIVE with its printed power, never "no effect".
 | the working-capacity metric favours S | W is net release from each arm's own decoded outlet, identical for every arm (Section 4) |
 | the guarantee is about a surrogate entropy | E and S are the physical functionals of the decoded fields (formulation, Section 5.1), never learned |
 | the balance metric scores the truth as violating | fine outlet stored; thresholds 10× the reference's own floor (Section 4) |
-| the result is specific to one material | a second material (Al-fumarate-like) is a pre-declared conditional replication: run if compute allows after the primary, 3 seeds, H1 and H4 only, reported whatever it shows |
+| the result is specific to one material | a second material (Al-fumarate-like) is a mandatory, pre-declared replication of H1, H2 and H4, with fixed replication words that qualify the headline |
+| why not a neural operator? | an FNO arm (Paper 1's strongest field model) is reported descriptively beside every primary contrast |
 | the decoder, not the dynamics, sets the error | shared frozen autoencoder; decoder gate including outlet, N and E; reconstruction error reported beside every dynamics error, including at cycle 50 |
 | post-hoc metric shopping | every metric, threshold and verdict word is above; anything else is labelled exploratory |
 | pilot choices as forking paths | the pilot's choices are rule-based (Section 9) |
@@ -467,3 +510,15 @@ Anthropic) as a tool to assist with drafting and language editing, with writing 
 code, and with checking bibliographic records. The author designed the study, made every
 scientific decision, reviewed and edited all content, and takes full responsibility for the
 content of the published article."
+
+## 13. Changes after the author's approval (2026-11-05)
+
+Each change below was made after the author approved the design and before the freeze,
+following the author's instruction to keep improving it.
+
+| date | change | reason |
+|---|---|---|
+| 2026-11-05 | long test 32 → 48 trajectories, OOD test 16 → 24 | smaller minimum detectable effect (0.45 → 0.37 SD) for one reference solve per added condition |
+| 2026-11-05 | the second material became a mandatory replication (R-H1, R-H2, R-H4) with fixed replication words | a one-material result is the first objection a referee raises |
+| 2026-11-05 | an FNO arm, descriptive | Paper 1's strongest field model; referees will ask why the comparison stays inside one model family |
+

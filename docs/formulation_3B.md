@@ -619,9 +619,11 @@ Still to do at the study's resolution, before any data are used:
   structure-preserving discretisation (Peng et al., IEEE CDC 2007) and its reduction (Baaiu et
   al., J. Process Control 19, 394, 2009). All three assume constant temperature and pressure
   and use the Gibbs free energy as the storage function. The group's 2009 theory paper (Math.
-  Comput. Model. Dyn. Syst. 15, 233) names heat transfer in its scope, but its developed
-  sections are isothermal and isobaric. Like 3B, that work keeps convection outside the
+  Comput. Model. Dyn. Syst. 15, 233) names heat transfer in its scope but states that "the
+  thermal domain is not considered". It notes that a thermal extension would compute the
+  energy balance on the internal energy rather than the Gibbs free energy, which is what
+  Sections 3 and 4 here do. Like 3B, that work keeps convection outside the
   dissipative structure: as a distributed source term (J. Process Control 2009), or as a
-  one-port element modulated by the imposed velocity (2009 theory paper). 3B's formulation is
-  the non-isothermal, entropy-explicit extension, and the paper says so in those words. Its
-  remaining sections should be read in full before submission.
+  one-port element modulated by the imposed velocity, treated as "a control variable" whose
+  energy source is "in the system environment" (2009 theory paper, Section 5). 3B's formulation is
+  the non-isothermal, entropy-explicit extension, and the paper says so in those words.

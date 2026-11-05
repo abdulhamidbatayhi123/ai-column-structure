@@ -103,17 +103,20 @@ doi:10.1109/cdc.2007.4434663; Baaiu, Couenne, Lefevre, Le Gorrec, Tayakout, J. P
 
 **The full texts were read on 2026-11-05** (the author's library access: the CDC and J.
 Process Control papers in full, the 2008 paper from the publisher's reader, and the 2009
-theory paper through its Section 3). What they contain:
+theory paper in full, the last from the publisher's free-access page). What they contain:
 - **All three adsorption papers are isothermal and isobaric by assumption.** The 2008 paper
   takes the column "at constant temperature and pressure" and says it will "omit the thermal
   and spatial domain". The CDC paper assumes temperature "uniform and constant". The J.
   Process Control paper supposes "isothermal and isobaric operating conditions". The storage
   function in each is the Gibbs free energy, which is a valid potential only at fixed T and P.
   There is no energy balance, no heat of adsorption, no entropy as a state and no learning.
-- **The 2009 theory paper** names heat and mass transfer in its abstract, but its developed
-  sections, read through Section 3, are written "for isobaric and isothermal systems". It
-  treats an imposed velocity with a one-port element modulated by that velocity, on a moving
-  material volume.
+- **The 2009 theory paper** names heat and mass transfer in its abstract, but states in
+  Section 4: "In this article, the thermal domain is not considered." It adds that otherwise
+  the entropy production would enter a thermal balance, and "the energy balance should then
+  be computed on the internal energy rather than on the Gibbs free energy". That is the step
+  3B takes (formulation, Sections 3 and 4). Its Section 5 treats convection by a given
+  velocity whose energy source is "in the system environment": the velocity is "a control
+  variable", entered through a CONV element modulated by it.
 - **Convection is outside the dissipative structure in every one.** In the J. Process
   Control paper, convection and dispersion enter "as a distributed source term added to the
   diffusion term". That is the same choice 3B makes for an imposed velocity (formulation,
@@ -283,12 +286,10 @@ Each qualifier is load-bearing. Here is what each one excludes:
    corrected by data reconciliation on mass and energy balances and reaction equilibria,
    for a flash drum, a distillation column and reactors. There is no adsorption and no
    entropy structure.
-2. **Resolved: the Lyon papers.** Their full texts were read through the author's library
-   access on 2026-11-05 (Section 2). All three adsorption papers are isothermal and isobaric
-   by assumption, and the 2009 theory paper's developed sections are too, so the formulation's
-   novelty stands. The 2009 theory paper was read through its Section 3. Its remaining
-   sections (closure examples, convection, multi-level coupling) should be read in full
-   before submission, in case they develop the thermal domain.
+2. **Resolved: the Lyon papers.** All four were read in full on 2026-11-05 (Section 2). The
+   three adsorption papers are isothermal and isobaric by assumption, and the 2009 theory
+   paper states that "the thermal domain is not considered", naming the internal-energy
+   formulation as the extension. The formulation's novelty stands.
 3. **Open: pages refused during the searches.**
    - Döppel, Bracconi and Maestri 2026, ACS Eng. Au (hard atom balances in a catalytic
      reactor surrogate, SEEN-ONLY);
