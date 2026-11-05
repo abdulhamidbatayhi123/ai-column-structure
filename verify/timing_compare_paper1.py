@@ -1,7 +1,8 @@
 """Single-thread CPU time of one adsorption step (256 cells): Paper 1 solver_fd.py against verify/consistent_column.py.
 Run with OMP_NUM_THREADS=1. Prints CPU seconds and RHS evaluation counts."""
 import sys,time,numpy as np
-sys.path.insert(0,"C:/Users/abdulhamid batayhi/Desktop/ai-column-structure/verify"); sys.path.insert(0,"C:/Users/abdulhamid batayhi/Desktop/ai-mof-cof-dynamics")
+import os
+HERE=os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0,HERE); sys.path.insert(0,os.path.abspath(os.path.join(HERE,"..","..","ai-mof-cof-dynamics")))
 from consistent_column import Column
 from gen_parametric_dataset import build_physics, rh_to_conc
 from solver_fd import generate_breakthrough_data

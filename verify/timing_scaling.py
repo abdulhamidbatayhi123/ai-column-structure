@@ -1,7 +1,8 @@
 """CPU time of one temperature-swing cycle at 128/256/512 cells, n = 3 and 6 (single thread).
 Writes verify/timing_scaling.json. Used by docs/compute_3B.md, Section 0."""
 import sys,time,json,numpy as np
-sys.path.insert(0,"C:/Users/abdulhamid batayhi/Desktop/ai-column-structure/verify"); sys.path.insert(0,"C:/Users/abdulhamid batayhi/Desktop/ai-mof-cof-dynamics")
+import os
+HERE=os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0,HERE); sys.path.insert(0,os.path.abspath(os.path.join(HERE,"..","..","ai-mof-cof-dynamics")))
 from consistent_column import Column
 from gen_parametric_dataset import build_physics, rh_to_conc
 from scipy.integrate import solve_ivp
@@ -15,4 +16,4 @@ for nexp in (3.0,6.0):
       t0=time.process_time(); sol=solve_ivp(col.rhs,(0,dur),y,method="BDF",args=(inp,),t_eval=np.linspace(0,dur,201),jac_sparsity=col.sparsity(),rtol=1e-6,atol=1e-10)
       rec[name+"_cpu"]=round(time.process_time()-t0,2); rec[name+"_nfev"]=int(sol.nfev); y=sol.y[:,-1]
     out.append(rec); print(rec,flush=True)
-json.dump(out,open("C:/Users/abdulhamid batayhi/Desktop/ai-column-structure/verify/timing_scaling.json","w"),indent=1)
+json.dump(out,open(os.path.join(HERE,"timing_scaling.json"),"w"),indent=1)
