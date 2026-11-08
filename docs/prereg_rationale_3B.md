@@ -124,3 +124,15 @@ approval on 2026-11-05. Review codes:
     clip bites only at 16 cells, so at C+L's 32 cells the multipliers act on unclipped
     coefficients (T5's 91 % clipped share predates Task 7b). System B's arm C uses the hybrid
     scheme too (plan 1, `make_store(..., compensate=True)`).
+- **From the plan 2 code review (2026-11-08).**
+  - The field error is Paper 1's metric on the physical fields. The stored log channels would
+    let 0.02 of the log c range pass about 18 % pointwise error in c. The decoder gate takes
+    each field separately, as Paper 1's own `metrics.py` forbids pooling fields of very
+    different variance.
+  - The 10⁻⁸ rank tolerance applies to B with unit-norm columns (and the balance Jacobian with
+    unit-norm rows). Unscaled, the ratio of B's singular values was 10⁻⁷ to 3 × 10⁻⁶ on the
+    real column physics, because |∇Ê|/|∇N̂| ≈ |ΔH|, so steps would have been flagged
+    rank-deficient for their units. Scaled, the ratio is about 7 × 10⁻³. The projector and the
+    minimum-norm steps do not change.
+  - C+L's implicit-Euler substeps K are set in the pilot, so that the multipliers do not absorb
+    time-discretisation error.

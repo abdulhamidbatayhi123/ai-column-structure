@@ -248,9 +248,9 @@ hyperparameters of Section 4.
   LDF coefficient (system B: on k_f,eff and the exchange coefficient h_v). Each multiplier is
   the softplus of an MLP (3 local inputs → 32 → 32 → 1) of the cell state, initialised at
   exactly 1 so that C+L starts as C. It is trained on the same coarse data and iteration
-  budget, with gradients through implicit-Euler steps at the snapshot interval, and it is
-  evaluated with the same implicit-Euler steps, so training and evaluation use one
-  integrator. Implicit Euler adds its own numerical diffusion at that step (Lantz 1971), which
+  budget, with gradients through implicit-Euler steps (K substeps per snapshot interval, K
+  set in the pilot, Section 10), and it is evaluated with the same steps, so training and
+  evaluation use one integrator. Implicit Euler adds its own numerical diffusion (Lantz 1971), which
   the multipliers can only partly offset because they are non-negative; the paper states this
   limit. Every Onsager block stays positive semi-definite, so C+L is consistent by
   construction (formulation, Section 4.2). A hybrid that learns a correction to the convective
@@ -272,14 +272,18 @@ hyperparameters of Section 4.
 | training | Adam; learning rate from {3×10⁻⁴, 10⁻³, 3×10⁻³}, chosen per arm in the pilot (Section 10); cosine decay to 10⁻⁵; batch 8 windows × 20 RK4 steps (640 dynamics evaluations per iteration); one fixed iteration count for every arm (pilot rule); **the final checkpoint is used, with no early stopping** |
 | loss | MSE of the decoded standardised channels along each window, the outlet channels included, equal weights |
 | integrator | RK4 with step h (pilot rule) |
-| projection | pseudo-inverse rank tolerance 10⁻⁸ (relative singular value); κ = 10⁻³ × the pilot median of \|P∇Ŝ\|²; "κ binds" when \|P∇Ŝ\|² < 10 κ |
+| projection | pseudo-inverse rank tolerance 10⁻⁸ (relative singular value of B = [∇Ê, ∇N̂] with its columns scaled to unit norm, and of the balance Jacobian with its rows scaled to unit norm: ∇Ê and ∇N̂ differ by about \|ΔH\| in units, and the tolerance must measure their angle, not their units; the projector and the minimum-norm steps are unchanged by the scaling); κ = 10⁻³ × the pilot median of \|P∇Ŝ\|²; "κ binds" when \|P∇Ŝ\|² < 10 κ |
 | P | penalty weight fixed a priori (Section 3) |
 
 ## 5. Metrics and gates
 
 **Metrics.**
-- **Field error e_k:** Paper 1's normalised RMSE over all stored channels on the 128 coarse
-  cells, for cycle k.
+- **Field error e_k:** Paper 1's normalised RMSE (the RMSE of a field over the cycle's
+  snapshots and the 128 coarse cells, divided by that field's range in the reference cycle),
+  computed on the physical fields (system A: c, q, T; system B: T_f, T_s) and averaged over
+  them, for cycle k. Each field's value is reported. The stored channels are logarithms in
+  system A, and 0.02 of the log c range (about 9, from the 10⁻⁴ c_in trace) would allow about
+  18 % pointwise error in c, so the physical fields carry the metric (plan 2 review).
 - **Working capacity (A):** `W_k = ∫_des v (c_out − c_in,des) dt`, the net release, from each
   arm's own outlet. Its error is ε_W,k.
 - **Heat delivered (B):** `Q_k = ∫_dis v ρ_f c_f (T_out − T_cold) dt`. Its error is ε_Q,k.
@@ -312,7 +316,9 @@ hyperparameters of Section 4.
 
 **Gates** (checked before any comparison, blind to arms):
 - **5.1 Decoder gate.** All seeds of the full-data autoencoders must meet, on validation:
-  - mean field nRMSE ≤ 0.02;
+  - field nRMSE ≤ 0.02 for each physical field separately (the e_k metric per field, averaged
+    over the validation trajectory-cycles; Paper 1 forbids pooling fields of very different
+    variance), with the stored-channel version reported beside it;
   - outlet RMSE of c_out/c_in ≤ 0.02, and of (T_out − T_low)/(T_high − T_low) ≤ 0.02;
   - |N̂ − N| ≤ 0.01 W_ref and |Ê − E| ≤ 0.01 (|ΔH| W_ref + ∫|wall heat| dt) (B: the analogues).
 
@@ -546,7 +552,10 @@ no error value is seen by arm (blinding). It sets exactly the following, and not
   decoder check;
 - **the decoder gate on pilot data** (d grid), so the latent dimension's risk is known
   before the freeze;
-- **the positive control.**
+- **the positive control;**
+- **C+L's implicit-Euler substeps:** the smallest K in {1, 2, 4, 8} substeps per snapshot
+  interval at which C+L with all multipliers fixed at 1 reproduces C's ε_W within 1 % on the
+  pilot trajectories, so that the learned multipliers do not absorb time-discretisation error.
 
 Pilot errors by arm are never reported or used.
 
