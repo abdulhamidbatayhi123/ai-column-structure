@@ -57,13 +57,15 @@ def cycle_schedule(point: dict, iso, phys) -> list[tuple[str, float, tuple[float
             ("des", float(point["beta"]) * t_a, (c_in, T_des, T_des))]
 
 
-def setup_a(point: dict, material: str, N_z: int):
-    """(Column with the material's isotherm and Glueckauf k_LDF at the feed, cycle schedule)."""
+def setup_a(point: dict, material: str, N_z: int, column_cls=Column):
+    """(Column with the material's isotherm and Glueckauf k_LDF at the feed, cycle schedule).
+
+    `column_cls` builds the model (default the reference Column; p3b.solvers uses MusclColumn)."""
     iso = mat.load_isotherm(material)
     phys = mat.bed_physics(point["v"], point["T_ads"])
     schedule = cycle_schedule(point, iso, phys)
     phys.k_LDF = mat.k_ldf(iso, phys, schedule[0][2][0], float(point["T_ads"]))
-    return Column(phys, N_z, C_W, iso=iso, compensate=COMPENSATE), schedule
+    return column_cls(phys, N_z, C_W, iso=iso, compensate=COMPENSATE), schedule
 
 
 def prewet_state(col: Column, c_in: float, T: float) -> np.ndarray:
@@ -74,7 +76,7 @@ def prewet_state(col: Column, c_in: float, T: float) -> np.ndarray:
     return np.concatenate([n, a, col.energy(n, a, Tv)])
 
 
-def augmented_sparsity(N: int) -> csr_matrix:
+def augmented_sparsity(N: int, band: int = 1) -> csr_matrix:
     """Jacobian pattern of the augmented state [n, a, u, wall heat per cell (N), 6 port integrals].
 
     The wall heat is integrated per cell (each row depends on its own cell only), not as one
@@ -82,8 +84,9 @@ def augmented_sparsity(N: int) -> csr_matrix:
     """
     n3 = 3 * N
     S = lil_matrix((4 * N + 6, 4 * N + 6))
-    band = diags([1.0, 1.0, 1.0], [-1, 0, 1], shape=(N, N))
-    S[:n3, :n3] = bmat([[band, band, band]] * 3)
+    offs = list(range(-band, band + 1))
+    blk = diags([1.0] * len(offs), offs, shape=(N, N))
+    S[:n3, :n3] = bmat([[blk, blk, blk]] * 3)
     eye = diags([1.0], [0], shape=(N, N))
     S[n3:4 * N, :n3] = bmat([[eye, eye, eye]])
     P = 4 * N
@@ -101,7 +104,7 @@ class _Augmented:
         self.col = col
         self.n3 = 3 * col.N
         self.P = 4 * col.N
-        self.sparsity = augmented_sparsity(col.N)
+        self.sparsity = augmented_sparsity(col.N, getattr(col, "BAND", 1))
 
     def rhs(self, t, y, inputs):
         col = self.col
@@ -134,7 +137,7 @@ def half_cycle_closure(aug: _Augmented, y0, y1) -> float:
 
 
 def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 200,
-                          on_cycle: Callable | None = None) -> TrajectoryResult:
+                          on_cycle: Callable | None = None, column_cls=Column) -> TrajectoryResult:
     """Run point["n_cycles"] cycles; call on_cycle(k, t, y_fine, ports) once per cycle.
 
     t: (n_snap,) absolute times (s); y_fine: (n_snap, 4 N_z) float64: the column states (n, a, u)
@@ -148,7 +151,7 @@ def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 20
     cyc_cpu: list[float] = []
     k = 0
     try:
-        col, schedule = setup_a(point, material, N_z)
+        col, schedule = setup_a(point, material, N_z, column_cls)
         c_in = schedule[0][2][0]
         aug = _Augmented(col)
         y = np.concatenate([prewet_state(col, c_in, float(point["T_ads"])), np.zeros(N_z + 6)])

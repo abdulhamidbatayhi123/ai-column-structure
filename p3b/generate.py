@@ -21,6 +21,11 @@ from p3b.simulate_b import make_store, simulate_trajectory_b
 from p3b.store import Coarsener
 
 
+def _paper1_meta(system: str) -> dict:
+    """The provenance every stored trajectory carries: generation constants and Paper 1's hashes."""
+    return dict(constants=current_constants(system), paper1_sha256=dict(PAPER1_SHA256))
+
+
 def generate_trajectory(system: str, point: dict, material: str | None, N_z: int, N_c: int = 128,
                         path=None, n_snap: int = 200, extra_meta: dict | None = None) -> TrajectoryResult:
     """Run one trajectory and, if it succeeds and `path` is given, write its coarse npz."""
@@ -41,7 +46,7 @@ def generate_trajectory(system: str, point: dict, material: str | None, N_z: int
             meta = dict(material=material, point=point, schedule=schedule, n_snap=n_snap, cpu_s=res.cpu_s,
                         closure_max=max(res.closure), nfev=res.nfev, cycle_cpu_s=res.cycle_cpu_s,
                         cycles_override=None)
-            meta.update(constants=current_constants(system), paper1_sha256=dict(PAPER1_SHA256))
+            meta.update(_paper1_meta(system))
             meta.update(extra_meta or {})
             cz.to_npz(path, meta=meta, ports_end=res.final_ports)
         return res

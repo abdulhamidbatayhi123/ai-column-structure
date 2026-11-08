@@ -48,11 +48,12 @@ def cycle_schedule(point: dict, st: ThermalStore) -> list[tuple[str, float, tupl
             ("discharge", float(point["beta"]) * t_c, (-v, float(point["T_cold"]), T_AMB))]
 
 
-def augmented_sparsity(N: int) -> csr_matrix:
+def augmented_sparsity(N: int, band: int = 1) -> csr_matrix:
     """Jacobian pattern of [u_f, u_s, wall heat per cell (N), energy in, energy out, entropy in, entropy out]."""
     S = lil_matrix((3 * N + 4, 3 * N + 4))
-    band = diags([1.0, 1.0, 1.0], [-1, 0, 1], shape=(N, N))
-    S[:2 * N, :2 * N] = bmat([[band, band], [band, band]])
+    offs = list(range(-band, band + 1))
+    blk = diags([1.0] * len(offs), offs, shape=(N, N))
+    S[:2 * N, :2 * N] = bmat([[blk, blk], [blk, blk]])
     S[2 * N:3 * N, :N] = diags([1.0], [0], shape=(N, N))     # wall loss from the fluid of each cell
     S[3 * N + 1, 0] = 1.0                                     # energy out: T_f at z = 0 (discharge)
     S[3 * N + 1, N - 1] = 1.0                                 # or at z = L (charge)
@@ -66,7 +67,7 @@ class _Augmented:
         self.st = st
         N = st.N
         self.n2, self.P = 2 * N, 3 * N
-        self.sparsity = augmented_sparsity(N)
+        self.sparsity = augmented_sparsity(N, getattr(st, "BAND", 1))
 
     def rhs(self, t, y, inputs):
         st = self.st
@@ -92,7 +93,7 @@ def half_cycle_closure(aug: _Augmented, y0, y1) -> float:
 
 
 def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
-                          on_cycle: Callable | None = None) -> TrajectoryResult:
+                          on_cycle: Callable | None = None, store_factory=None) -> TrajectoryResult:
     """Run point["n_cycles"] cycles; call on_cycle(k, t, y_fine, ports) once per cycle.
 
     t: (n_snap,) absolute times (s); y_fine: (n_snap, 3 N_z) float64: u_f, u_s and the
@@ -106,7 +107,7 @@ def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
     cyc_cpu: list[float] = []
     k = 0
     try:
-        st = make_store(N_z)
+        st = (store_factory or make_store)(N_z)
         aug = _Augmented(st)
         schedule = cycle_schedule(point, st)
         y = np.concatenate([st.initial_state(float(point["T_cold"])), np.zeros(N_z + 4)])
