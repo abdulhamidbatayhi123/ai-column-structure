@@ -76,12 +76,13 @@ thermodynamics.
 - **If S beats U+F, U+F+proj and S-L:** structure helps through the constraint itself, and
   fixing the potentials from physics beats learning them. That is a positive, mechanistic
   result.
-- **If S beats U but not U+F:** the gain is information, not constraint. That is a useful
-  negative result for the structure-preserving literature.
-- **If nothing beats U:** structure buys admissibility only. That is the program's standing
-  warning, now tested with the strongest controls.
-- **If arm C or C+L matches S at lower cost:** learned latent models are unnecessary for these
-  systems, a direct message to the field.
+- **If S beats U, U+F beats U and S is equivalent to U+F:** the gain is information, not
+  constraint. That is a useful negative result for the structure-preserving literature.
+- **If nothing beats U and S's projections are free of defects:** structure buys
+  admissibility only. That is the program's standing warning, now tested with the strongest
+  controls.
+- **If arm C or C+L is shown non-inferior to S at no lower throughput:** learned latent models
+  are unnecessary for these systems, a direct message to the field.
 - **If the systems disagree:** the result does not generalise, and the paper says so.
 
 ## 1. Background and the prior
@@ -181,11 +182,19 @@ therefore also reported stratified by RH_ads below and above 1.2 × the step RH 
 | design scenarios | 8 operating scenarios | - | - | H6 |
 
 **Data-cost contingency**, applied identically to every system and material if the pilot's
-reference timing exceeds the budget by more than 2×, in this order:
-1. N_z halved, if Paper 1's grid-convergence criterion passes;
-2. long tests cut to 40 cycles, with H1 at cycle 30 and the long-validation check at cycles
-   20 to 40;
-3. train pools cut to 192 ("full data" then means 192).
+reference timing (CPU time on an idle Kaggle CPU session, never the laptop) exceeds the budget
+by more than 2×, in this order, each step only while the budget is still exceeded:
+1. N_z halved, and halved again, as long as Paper 1's grid-convergence criterion passes at
+   the new N_z against 2 N_z (the coarsening factor onto 128 cells stays an integer, so
+   N_z ≥ 256). Weakens nothing: the reference stays grid-converged by the same criterion.
+2. Long tests cut to 40 cycles, with H1 at cycle 30 and the long-validation check at cycles
+   20 to 40. Weakens H1 (a shorter horizon) and H3b; H2 and H4 are unaffected.
+3. Train pools cut to 192 ("full data" then means 192). Weakens H2 (a narrower size range).
+4. The replication material's long test cut to 24 trajectories. Weakens the replication
+   words of Section 7 for that material only (they are printed with their power).
+
+If the budget is still exceeded after step 4, the study is reported as infeasible at this
+compute, with the measured costs, and no confirmatory test is run.
 
 ## 3. Arms: definitions
 
@@ -207,9 +216,11 @@ hyperparameters of Section 4.
   physical functionals of the decoded fields. The port fluxes come from the decoded outlet
   channels and the known feed. RK4 with Gauss-Newton balance projection.
 - **S-L.** As S, but the metriplectic term uses learned scalar potentials E_θ(z) and S_θ(z),
-  with degeneracy with respect to ∇E_θ and ∇N̂. The port term is projected only on the
-  physical water balance N̂, because a learned energy has no physical port flux. This is
-  the tLaSDI/GFINN-style control for "fixed physical potentials".
+  with degeneracy with respect to ∇E_θ and ∇N̂. The port term is S's own Π[G_θ], unchanged:
+  the physical Ê, N̂ and Ŝ and their port fluxes exist whatever potentials the bracket uses,
+  so S and S-L differ in the bracket's potentials alone and the contrast isolates "fixed
+  physical potentials" (revised after the cs-org1 review T5, F3). This is the
+  tLaSDI/GFINN-style control for that attribution.
 - **S−M and S−Π.** S without the metriplectic term, and S without the port projection.
 - **FNO.** An autoregressive 1-D FNO on the stored coarse fields and outlet channels,
   conditioned on the cycle inputs: 4 Fourier layers, 16 modes, width 64. Same multi-step
@@ -225,14 +236,26 @@ hyperparameters of Section 4.
   (`verify/clip_shares.json`). That grid stays over-diffusive by construction, which the paper
   states. From 32 cells up the compensation is complete over the whole velocity box.
   Integration tolerances (rtol 10⁻⁶, atol 10⁻¹⁰) are the same for C's accuracy and its timing,
-  because the compensation assumes the semi-discrete scheme. C's fields are mapped to the 128 cells by
-  piecewise-constant injection of the conserved variables. It runs on all systems and
+  because the compensation assumes the semi-discrete scheme. C's fields are mapped to the 128
+  cells by a conservative piecewise-linear reconstruction of the conserved variables (minmod
+  limiter, mean-preserving in every C cell, so N and E are unchanged). A staircase injection
+  would add a pure representation error to e_50 that has nothing to do with C's dynamics
+  (cs-org1 review T5, F2 (i)). Two sensitivity scores are reported beside it: piecewise-constant
+  injection, and e on C's own grid against the reference block-averaged to it. ε_W and the
+  outlet channels are C's own and do not depend on the mapping. It runs on all systems and
   materials.
 - **C+L.** C at 32 cells, with learned non-negative multipliers on D_L,eff, k_z,eff and the
-  LDF coefficient (system B: the exchange coefficient). Each multiplier is the softplus of an
-  MLP (3 local inputs → 32 → 32 → 1) of the cell state. It is trained on the same coarse data
-  and iteration budget, with gradients through implicit-Euler steps. Every Onsager block stays
-  positive semi-definite, so C+L is consistent by construction (formulation, Section 4.2).
+  LDF coefficient (system B: on k_f,eff and the exchange coefficient h_v). Each multiplier is
+  the softplus of an MLP (3 local inputs → 32 → 32 → 1) of the cell state, initialised at
+  exactly 1 so that C+L starts as C. It is trained on the same coarse data and iteration
+  budget, with gradients through implicit-Euler steps at the snapshot interval, and it is
+  evaluated with the same implicit-Euler steps, so training and evaluation use one
+  integrator. Implicit Euler adds its own numerical diffusion at that step (Lantz 1971), which
+  the multipliers can only partly offset because they are non-negative; the paper states this
+  limit. Every Onsager block stays positive semi-definite, so C+L is consistent by
+  construction (formulation, Section 4.2). A hybrid that learns a correction to the convective
+  flux would be stronger where the scheme is over-diffusive, but it leaves the consistency
+  proof; it is named as future work.
 - **MUSCL-C.** C with a van Leer reconstruction, 32 and 64 cells. Descriptive, and labelled
   "not proven consistent". The Bregman proof covers first-order upwind plus non-negative
   diffusion, which includes the hybrid scheme of C and the reference, but not limited
@@ -274,8 +297,13 @@ hyperparameters of Section 4.
     stored pilot data with ports computed as the models compute them;
   - entropy: total production below −τ_S;
   - projection defects: rank or κ binding.
-- **Cost:** single-trajectory latency (seconds per simulated cycle, batch 1) and batched
-  throughput (trajectory-cycles per second at batch 48), both with 4 threads on this machine.
+- **Cost:** single-trajectory latency (CPU-seconds per simulated cycle, batch 1) and batched
+  throughput (trajectory-cycles per CPU-second at batch 48), both measured as CPU time on an
+  idle Kaggle CPU session with 4 threads, the same session type for every arm, never on the
+  laptop. The learned arms batch 48 trajectories in one tensor; C, C+L and MUSCL-C, whose
+  stiff solvers run one trajectory per process, run 48 trajectories as parallel processes on
+  the same 4 cores, so every arm is charged the CPU time it actually uses (cs-org1 review T5,
+  F2 (ii)).
 - **Mechanism diagnostics** (exploratory, every arm):
   - (i) the split of `W^pred − W^ref` into inventory error and outlet-shape error, per cycle;
   - (ii) the norm of the latent displacement in the null space of B = [∇Ê, ∇N̂], cycles 1 to
@@ -319,8 +347,17 @@ error ratio, arm over U. The estimate is the Hodges-Lehmann (HL) estimator of th
 which is the parameter the signed-rank test targets. "Ratio" means exp(HL).
 - **(a)** One-sided Wilcoxon signed-rank test at the hypothesis's level α_h (Holm-adjusted
   in the primary family). Zeros by Pratt's method, and their number reported.
-- **(b)** The (1 − 2α_h) two-sided percentile bootstrap interval of HL (trajectories, then
-  seeds within trajectories; 10,000 draws) lies on the declared side of 0.
+- **(b)** The (1 − 2α_h) two-sided percentile bootstrap interval of HL lies on the declared
+  side of 0. Seeds are crossed with trajectories (the same trained models are evaluated on
+  every trajectory), so each of the 10,000 draws resamples trajectories and seeds
+  independently, once each, and recomputes the seed-averaged values from the drawn seeds: the
+  pigeonhole bootstrap for crossed designs (Owen, Ann. Appl. Stat. 1, 386-411, 2007). It
+  carries the seed component that (a) conditions on, so (b) is the more conservative of the
+  two (cs-org1 review T5, F5).
+- **α_h** is the Holm level at which the hypothesis is tested in step-down order,
+  α/(k − r + 1) for the hypothesis with the r-th smallest p-value among k. For a hypothesis
+  step-down did not reach, α_h is the level it would have had if step-down had continued; its
+  REFUTED interval uses that level.
 
 Both conditions run at the same level. A trajectory × seed variance decomposition is
 reported. Inference is over trajectories for these training runs, with seed variance shown
@@ -338,10 +375,13 @@ beside it.
 ratios) with margin ±log m, m = 1.10. If the pilot's upper-80 % SD gives power < 0.8 at the
 Holm worst case, m is widened to the smallest value reaching 0.8, capped at 1.20. Beyond
 that, H4 is demoted to secondary.
-- **EQUIVALENT (±m):** both one-sided tests reject.
-- **S WORSE:** the lower bound of the (1 − 2α) interval exceeds log m.
-- **S BETTER:** the upper bound lies below −log m.
+- **EQUIVALENT (±m):** both one-sided tests reject at H4's Holm level α_h (the TOST is in
+  the primary family).
+- **S WORSE:** the lower bound of the 90 % interval (α = 0.05) exceeds log m.
+- **S BETTER:** the upper bound of the 90 % interval lies below −log m.
 - **INCONCLUSIVE:** otherwise.
+
+S WORSE and S BETTER are directional descriptions outside the Holm family, at α = 0.05.
 
 **H3a** is checked on validation and long validation before any test set is opened. A
 defect allows only these fixes, in order, each applied to every projected arm (S, S−M, S−Π,
@@ -363,25 +403,41 @@ decoder error exceeds the Section 5.1 thresholds.
   W_CSS/(t_A + t_D) over (α, β, T_des) on a 6 × 6 × 5 grid inside the training box.
 - Each arm's optimum is re-simulated with the reference. The reference also evaluates a
   20-point Sobol design per scenario.
+- The benchmark set is fixed: the 20 Sobol points plus the reference-evaluated optima of the
+  five H6 arms below. These five are never removed by the reduction order of Section 11, so
+  no arm added or dropped elsewhere changes any regret (cs-org1 review T5, F7).
 - Regret is `1 − (reference productivity at the arm's optimum)/(best reference productivity
-  found among all evaluated designs)`.
-- The unit is a scenario (seed-averaged), α 0.05, words as H1, applied to the regret ratio
-  S/U.
+  in the benchmark set)`. An arm that hits the best design has regret 0, so the words use
+  the floored ratio (r_S + 0.01)/(r_U + 0.01): regret differences below 1 % of the best
+  productivity are treated as immaterial.
+- The unit is a scenario (seed-averaged), α 0.05, words as H1, applied to that ratio. Ties
+  (both arms at the same design) give a zero, handled by Pratt's method and counted.
 - Arms: U, U+F, S, C (32 cells) and C+L.
+- With 8 scenarios the smallest attainable one-sided p is 1/256, and fewer with ties. H6 is
+  expected to be INCONCLUSIVE, and its result is printed with that expectation beside it.
 
 **Attribution** (applies whenever S is credited: rows 2 to 7, 9 and 12 of Section 8). "S
 beats X" means (a) and (b) hold for S against X, at α 0.05.
 - If S beats U+F: **"the constraint"**.
 - If S beats U+F+proj: **"the constraint in training"** (U+proj is reported beside it).
 - If S beats S-L: **"fixed physical potentials"**.
-- If S does not beat U+F and U+F beats U: **"the physical information, not the constraint"**.
+- If S does not beat U+F, U+F beats U, and S against U+F is EQUIVALENT by the H4 TOST with
+  the H4 margin: **"the physical information, not the constraint"**.
+- If S does not beat U+F and U+F beats U, but S against U+F is not EQUIVALENT: **"the
+  information suffices; the constraint's added value is unresolved"**. A non-significant
+  test is never read as equality (cs-org1 review T5, F4).
 - If S does not beat U+F and U+F does not beat U: **"not separable from the information at
   this power"**.
 
-**Arm C, C+L and cost.** A Pareto statement fixed in advance: S is **"useful against the
-coarse solver"** only if no C grid (and not C+L) is non-inferior to S, margin 1.10, in both
-ε_W,50 and e_50 while being no slower in batched throughput. Each non-inferiority test is
-one-sided at α 0.05, Holm over the grids.
+**Arm C, C+L and cost.** A three-way statement fixed in advance, on ε_W,50 and e_50 with
+margin 1.10, each test one-sided at α 0.05, Holm over the C grids and C+L. The burden of
+proof lies on the claim that is printed, never on its competitor (cs-org1 review T5, F2):
+- **"useful against the coarse solver"** only if S is shown **superior** to every C grid and
+  to C+L in both metrics, at no lower batched throughput;
+- **"a coarse consistent solver makes the learned model unnecessary for this system"** only
+  if some C grid or C+L is shown **non-inferior** to S in both metrics at no lower
+  throughput;
+- otherwise **"unresolved against the coarse solver"**.
 
 **Secondary contrasts** (intervals, no words):
 - P against U and S;
@@ -433,9 +489,11 @@ Definitions:
 | 5 | A_s, H4 ∈ {EQUIVALENT, S BETTER} | "Structure helps in [H], but less than the declared minimum." |
 | 6 | A_s, H4 = S WORSE | "Structure helps in [H] less than the declared minimum, at a price in accuracy." |
 | 7 | A_s, H4 unresolved | "Structure helps in [H] less than the declared minimum; its accuracy cost is unresolved." |
-| 8 | R, H4 = EQUIVALENT | "Structure buys admissibility only." |
+| 8a | R, H4 = EQUIVALENT, H3a = pass | "Structure buys admissibility only." |
+| 8b | R, H4 = EQUIVALENT, H3a = defect | "Structure buys neither stability nor data efficiency, and its admissibility guarantee had projection defects." |
 | 9 | R, H4 = S BETTER | "Structure improves short-horizon accuracy but buys neither stability nor data efficiency." |
-| 10 | R, H4 = S WORSE | "Structure costs accuracy and buys only admissibility." |
+| 10a | R, H4 = S WORSE, H3a = pass | "Structure costs accuracy and buys only admissibility." |
+| 10b | R, H4 = S WORSE, H3a = defect | "Structure costs accuracy and buys neither stability nor data efficiency; its admissibility guarantee had projection defects." |
 | 11 | R, H4 unresolved | "Structure buys neither stability nor data efficiency; its accuracy cost is unresolved." |
 | 12 | none of A, A_s, R; H4 = S BETTER | "Structure improves short-horizon accuracy; stability and data efficiency are unresolved at this power." |
 | 13 | none of A, A_s, R; H4 = S WORSE | "Structure costs accuracy; its benefits are unresolved at this power." |
@@ -446,8 +504,12 @@ Definitions:
 2. the consistency words for each [H] on the second isotherm and on system B. A SUPPORTED
    hypothesis that is INCONSISTENT on either is demoted one strength level: "pays" becomes
    "helps in one setting", and the headline names where it holds;
-3. the Pareto statement, or "a coarse consistent solver makes the learned model unnecessary
-   for this system".
+3. the three-way coarse-solver statement of Section 6 ("useful against the coarse solver",
+   "a coarse consistent solver makes the learned model unnecessary for this system", or
+   "unresolved against the coarse solver").
+
+"Admissibility" is printed only when H3a = pass (rows 8a and 10a; cs-org1 review T5, F6).
+Rows 8 and 10 elsewhere in this document mean 8a or 8b and 10a or 10b.
 
 ## 9. Power
 
