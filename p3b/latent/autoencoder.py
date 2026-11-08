@@ -114,21 +114,29 @@ def _temps_low_high(meta):
 
 @torch.no_grad()
 def decoder_gate(model, ds, std, phys) -> dict:
-    """PREREG 5.1 on a validation Dataset: mean field nRMSE, outlet RMSEs, balance errors.
+    """PREREG 5.1 on a validation Dataset: field nRMSE, outlet RMSEs, balance errors.
+
+    The field nRMSE is Paper 1's metric on the physical fields (A: c, q, T; B: T_f, T_s), each
+    field's mean over the validation trajectory-cycles, and the gate takes the largest field
+    (Paper 1 forbids pooling across fields); the same on the stored channels is reported as
+    field_nrmse_channels.
 
     Balances are the largest |N^ - N| / W_ref and |E^ - E| / (|dH| W_ref + int |wall| dt) over all
     snapshots (B: |E^ - E| / (|Q_ref| + int |wall loss| dt)); each must be <= 0.01."""
     A = ds.system == "A"
     n_ch, n_out = (3, 2) if A else (2, 1)
     nc = ds.n_cells
-    nr, oc, ot, bN, bE = [], [], [], [], []
+    nr, nr_ch, oc, ot, bN, bE = [], [], [], [], [], []
     for j in range(ds.X.shape[0]):
         lo, hi = _temps_low_high(ds.meta[j])
         for k in range(ds.X.shape[1]):
             X = ds.X[j, k]
             R = std.decode(model.decode(model.encode(std.encode(X))))
-            nr.append(float(field_nrmse(R, X, nc, n_ch)))
+            nr_ch.append(field_nrmse(R, X, nc, n_ch, per_field=True))
             ch_r = R[:, :nc * n_ch].reshape(-1, nc, n_ch)
+            ch_t = X[:, :nc * n_ch].reshape(-1, nc, n_ch)
+            nr.append(field_nrmse(phys.physical_fields(ch_r).reshape(len(R), -1),
+                                  phys.physical_fields(ch_t).reshape(len(X), -1), nc, n_ch, per_field=True))
             out_r, out_t = R[:, nc * n_ch:], X[:, nc * n_ch:]
             W = abs(float(ds.W_ref[j, k]))
             wall = float(ds.wall_abs[j, k])
@@ -141,7 +149,9 @@ def decoder_gate(model, ds, std, phys) -> dict:
             else:
                 ot.append(((out_r[:, 0] - out_t[:, 0]) / (hi - lo)).pow(2))
                 bE.append(float((phys.E(ch_r) - ds.E_true[j, k]).abs().max()) / (W + wall))
-    res = dict(field_nrmse=float(np.mean(nr)),
+    per_field = torch.stack(nr).mean(0)
+    res = dict(field_nrmse=float(per_field.max()), field_nrmse_per_field=per_field.tolist(),
+               field_nrmse_channels=float(torch.stack(nr_ch).mean(0).max()),
                outlet_c=float(torch.sqrt(torch.cat(oc).mean())) if oc else None,
                outlet_T=float(torch.sqrt(torch.cat(ot).mean())),
                balance_N=max(bN) if bN else None, balance_E=max(bE))

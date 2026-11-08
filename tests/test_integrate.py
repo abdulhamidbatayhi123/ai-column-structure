@@ -74,6 +74,6 @@ def test_rank_deficient_constraints_are_handled_and_flagged():
 def test_projection_is_differentiable():
     z = torch.randn(2, 4, dtype=F64, requires_grad=True)
     cons = lambda x: (x ** 2).sum(-1, keepdim=True)  # noqa: E731
-    zp, _ = balance_project(z, cons, torch.ones(2, 1, dtype=F64), iters=2, create_graph=True)
+    zp, _ = balance_project(z, cons, torch.ones(2, 1, dtype=F64), iters=2, differentiable=True)
     (g,) = torch.autograd.grad(zp.sum(), z)
     assert torch.isfinite(g).all()

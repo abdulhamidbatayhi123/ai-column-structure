@@ -29,7 +29,7 @@ def _lf():
 
 def test_sl_water_balance_and_learned_energy():
     lf, raw = _lf()
-    sl = SLDynamics(D, K, lf)
+    sl = SLDynamics(D, K, lf, kappa=1e-10)
     z, feat = 0.1 * torch.randn(3, D, dtype=F64), torch.randn(3, K, dtype=F64)
     dz, parts = sl(z, feat, raw)
     t = lf.evaluate(z, raw)

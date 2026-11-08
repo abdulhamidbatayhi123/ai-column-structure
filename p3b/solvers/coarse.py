@@ -39,6 +39,33 @@ def inject(y, nvar: int, nc: int, r: int) -> np.ndarray:
     return np.concatenate(parts, axis=1)
 
 
+def reconstruct_minmod(F, r: int) -> np.ndarray:
+    """(ns, nc) cell means -> (ns, nc r) sub-cell values: piecewise linear in every coarse cell with
+    the minmod slope of its two neighbour differences (zero in the end cells), sampled at the r
+    sub-cell centres. Mean-preserving in every coarse cell (so N and E are unchanged), exact for
+    linear data away from the ends, and free of new extrema (PREREG Section 3, arm C)."""
+    F = np.asarray(F, dtype=float)
+    dl = np.diff(F, axis=1)
+    slope = np.zeros_like(F)
+    a, b = dl[:, :-1], dl[:, 1:]
+    slope[:, 1:-1] = np.where(a * b > 0, np.sign(a) * np.minimum(np.abs(a), np.abs(b)), 0.0)
+    x = (np.arange(r) + 0.5) / r - 0.5
+    return (F[:, :, None] + slope[:, :, None] * x[None, None, :]).reshape(F.shape[0], -1)
+
+
+def map_to_target(y, nvar: int, nc: int, r: int, mapping: str = "minmod") -> np.ndarray:
+    """(ns, (nvar+1) nc) -> (ns, (nvar+1) nc r): the conserved densities by `mapping` ("minmod",
+    the primary score, or "inject", the sensitivity), the extensive wall heat split equally."""
+    if mapping == "inject":
+        return inject(y, nvar, nc, r)
+    if mapping != "minmod":
+        raise ValueError(f"unknown mapping {mapping!r}")
+    y = np.asarray(y, dtype=float)
+    parts = [reconstruct_minmod(y[:, j * nc:(j + 1) * nc], r) for j in range(nvar)]
+    parts.append(np.repeat(y[:, nvar * nc:(nvar + 1) * nc], r, axis=1) / r)
+    return np.concatenate(parts, axis=1)
+
+
 def van_leer_faces(q, q_in):
     """Face values 0..N for flow from face 0 to face N: feed at face 0, last cell at face N,
     plain upwind at face 1, van Leer limited upwind-biased reconstruction elsewhere."""
@@ -101,8 +128,9 @@ class MusclStore(ThermalStore):
 
 
 def run_c(system: str, point: dict, material, N_c: int, path=None, n_snap: int = 200, n_target: int = 128,
-          muscl: bool = False) -> TrajectoryResult:
-    """Run arm C (or MUSCL-C) on N_c cells and store it at the n_target cells of the reference."""
+          muscl: bool = False, mapping: str = "minmod") -> TrajectoryResult:
+    """Run arm C (or MUSCL-C) on N_c cells and store it at the n_target cells of the reference,
+    mapped by the conservative minmod reconstruction (primary) or by injection (sensitivity)."""
     if n_target % N_c:
         raise ValueError("n_target must be a multiple of N_c")
     r = n_target // N_c
@@ -112,7 +140,7 @@ def run_c(system: str, point: dict, material, N_c: int, path=None, n_snap: int =
             model, schedule = setup_a(point, material, n_target)
             cz = Coarsener("A", n_target, n_target, model=model, c_in=schedule[0][2][0])
             nvar = 3
-            on = lambda k, t, y, p: cz.add_cycle(k, t, inject(y, nvar, N_c, r), p)  # noqa: E731
+            on = lambda k, t, y, p: cz.add_cycle(k, t, map_to_target(y, nvar, N_c, r, mapping), p)  # noqa: E731
             res = simulate_trajectory_a(point, material, N_c, n_snap=n_snap, on_cycle=on,
                                         column_cls=MusclColumn if muscl else Column)
         else:
@@ -120,12 +148,12 @@ def run_c(system: str, point: dict, material, N_c: int, path=None, n_snap: int =
             schedule = schedule_b(point, model)
             cz = Coarsener("B", n_target, n_target, model=model)
             nvar = 2
-            on = lambda k, t, y, p: cz.add_cycle(k, t, inject(y, nvar, N_c, r), p)  # noqa: E731
+            on = lambda k, t, y, p: cz.add_cycle(k, t, map_to_target(y, nvar, N_c, r, mapping), p)  # noqa: E731
             factory = (lambda n: MusclStore.from_store(make_store(n))) if muscl else None
             res = simulate_trajectory_b(point, N_c, n_snap=n_snap, on_cycle=on, store_factory=factory)
         if res.ok and path is not None:
             meta = dict(material=material, point=point, schedule=schedule, n_snap=n_snap, cpu_s=res.cpu_s,
-                        arm="MUSCL-C" if muscl else "C", N_solver=N_c, consistent=not muscl,
+                        arm="MUSCL-C" if muscl else "C", N_solver=N_c, consistent=not muscl, mapping=mapping,
                         closure_max=max(res.closure), nfev=res.nfev, cycle_cpu_s=res.cycle_cpu_s,
                         **_paper1_meta(system))
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)

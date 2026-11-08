@@ -35,7 +35,7 @@ def test_c_at_the_target_grid_is_the_coarse_reference(tmp_path, system, point, m
 
 
 def test_c_on_a_coarser_grid_writes_target_resolution(tmp_path):
-    res = run_c("A", POINT_A, "MOF-303", N_c=8, path=tmp_path / "c.npz", n_snap=NS, n_target=16)
+    res = run_c("A", POINT_A, "MOF-303", N_c=8, path=tmp_path / "c.npz", n_snap=NS, n_target=16, mapping="inject")
     assert res.ok
     d = np.load(tmp_path / "c.npz")
     assert d["channels"].shape == (1, NS, 16, 3)

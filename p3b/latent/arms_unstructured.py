@@ -52,7 +52,14 @@ def count_params(module) -> int:
 
 
 def match_width(build, target: int, tol: float = 0.05, lo: int = 4, hi: int = 4096) -> int:
-    """The width whose parameter count is closest to `target`; ValueError if not within tol."""
+    """The width whose parameter count is closest to `target`; ValueError if not within tol.
+    Candidate modules are built on the meta device, so no parameter memory is allocated."""
+    _build = build
+
+    def build(w):
+        with torch.device("meta"):
+            return _build(w)
+
     best = min(range(lo, hi + 1), key=lambda w: abs(count_params(build(w)) - target)) if hi - lo < 64 else None
     if best is None:  # parameter count grows monotonically with width: bisect, then check neighbours
         a, b = lo, hi

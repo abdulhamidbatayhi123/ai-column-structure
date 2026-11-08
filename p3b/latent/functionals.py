@@ -13,6 +13,9 @@ class LatentFunctionals:
     def __init__(self, decode, std, phys, system: str, n_cells: int):
         self.decode, self.std, self.phys, self.system, self.n_cells = decode, std, phys, system, n_cells
         self.n_ch = 3 if system == "A" else 2
+        owner = getattr(decode, "__self__", None)          # the frozen autoencoder (PREREG 3)
+        if isinstance(owner, torch.nn.Module):
+            owner.requires_grad_(False)
 
     def split(self, X):
         k = self.n_cells * self.n_ch
@@ -28,10 +31,15 @@ class LatentFunctionals:
             v["P_E"], v["Phi_S"] = self.phys.ports(ch, out, raw)
         return v
 
-    def evaluate(self, z, raw, grads: bool = True, create_graph: bool = False) -> dict:
-        """Values (batch,) and, if `grads`, the latent gradients dE, dN, dS (batch, d)."""
+    def evaluate(self, z, raw, grads: bool = True, create_graph: bool | None = None) -> dict:
+        """Values (batch,) and, if `grads`, the latent gradients dE, dN, dS (batch, d). The results
+        stay in the graph when gradients are enabled (create_graph=None follows torch.is_grad_enabled()),
+        so U+F's inputs, P's penalties and S's terms keep their dependence on z in training."""
+        if create_graph is None:
+            create_graph = torch.is_grad_enabled()
         if not grads:
-            return self._values(z, raw)
+            v = self._values(z, raw)
+            return v if create_graph else {k: t.detach() for k, t in v.items()}
         with torch.enable_grad():
             zz = z if z.requires_grad else z.detach().requires_grad_(True)
             v = self._values(zz, raw)

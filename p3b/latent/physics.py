@@ -56,6 +56,11 @@ class ColumnPhysics:
     def fields(self, ch):
         return torch.exp(ch[..., 0]), torch.exp(ch[..., 1]), torch.exp(ch[..., 2])
 
+    def physical_fields(self, ch):
+        """(..., n_cells, 3) channels -> (..., n_cells, 3) physical fields (c, q, T)."""
+        c, x, T = self.fields(ch)
+        return torch.stack([c, Q_torch(self.iso, x), T], dim=-1)
+
     def conserved(self, c, x, T):
         n = self.eps * c
         a = self.A * Q_torch(self.iso, x)
@@ -109,6 +114,10 @@ class StorePhysics:
 
     def _dz(self, ch):
         return self.L / ch.shape[-2]
+
+    def physical_fields(self, ch):
+        """System B's channels are already physical (T_f, T_s)."""
+        return ch
 
     def E(self, ch):
         return (self.Cf * (ch[..., 0] - T0_B) + self.Cs * (ch[..., 1] - T0_B)).sum(-1) * self._dz(ch)

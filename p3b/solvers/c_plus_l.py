@@ -178,22 +178,68 @@ class TorchStoreRHS(nn.Module):
         return torch.cat([duf, dus])
 
 
-def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-13, max_iter: int = 50):
-    """y1 = y0 + h f(y1) by Newton; differentiable in y0 and the multiplier weights (see module doc)."""
+def colored_jacobian(f, y, n_cells: int, n_var: int):
+    """Dense Jacobian of a right-hand side whose cell i depends only on cells i-1, i, i+1 (every
+    variable block), from 3 n_var forward-mode products (columns coloured by variable and cell
+    mod 3) instead of n reverse passes."""
+    n = y.numel()
+    J = torch.zeros(n, n, dtype=y.dtype)
+    rows = torch.arange(n)
+    row_cell = rows % n_cells
+    for var in range(n_var):
+        for k in range(3):
+            v = torch.zeros(n, dtype=y.dtype)
+            cols = var * n_cells + torch.arange(k, n_cells, 3)
+            v[cols] = 1.0
+            _, Jv = torch.func.jvp(f, (y,), (v,))
+            for off in (-1, 0, 1):
+                cell = row_cell + off
+                ok = (cell >= 0) & (cell < n_cells) & (cell % 3 == k)
+                J[rows[ok], var * n_cells + cell[ok]] = Jv[ok]
+    return J
+
+
+def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-12, max_iter: int = 50, substeps: int = 1):
+    """y(h) by `substeps` implicit-Euler steps of h/substeps, each solved by Newton with the
+    coloured Jacobian; differentiable in y0 and the multiplier weights (see module doc).
+
+    Convergence is tested per variable block (n, a, u for system A; u_f, u_s for B), each against
+    the larger of its magnitude and its update h f, because the blocks differ by up to 1e13. A Newton solve that does not
+    converge raises RuntimeError: a wrong value with a wrong gradient is never returned."""
     n = y0.numel()
+    N = rhs.N
+    n_var = n // N
     eye = torch.eye(n, dtype=F64)
-    with torch.no_grad():
-        y = y0.detach().clone()
-        scale = float(y0.abs().max()) + 1e-300
-        for _ in range(max_iter):
-            F = y - y0.detach() - h * rhs(y, inp)
-            if float(F.abs().max()) <= tol * scale:
-                break
-            J = torch.autograd.functional.jacobian(lambda x: rhs(x, inp), y, vectorize=True)
-            y = y - torch.linalg.solve(eye - h * J, F)
-    J = torch.autograd.functional.jacobian(lambda x: rhs(x, inp), y, vectorize=True).detach()
-    F = y - y0 - h * rhs(y, inp)
-    return y - torch.linalg.solve(eye - h * J, F)
+    hs = h / substeps
+    y_prev = y0
+    for _ in range(substeps):
+        f = lambda x: rhs(x, inp)  # noqa: E731
+        with torch.no_grad():
+            base = y_prev.detach()
+            y = base.clone()
+            # each block against the larger of its own magnitude and its update h f: in a pre-wetted
+            # bed n is ~1e-4 of the feed term, and a tolerance on |n| alone sits below round-off
+            scale = torch.maximum(base.reshape(n_var, N).abs().amax(-1, keepdim=True),
+                                  (hs * f(base)).reshape(n_var, N).abs().amax(-1, keepdim=True)).clamp(min=1e-300)
+            ok = False
+            for _ in range(max_iter):
+                F = y - base - hs * f(y)
+                if bool((F.reshape(n_var, N).abs() <= tol * scale).all()):
+                    ok = True
+                    break
+                J = colored_jacobian(f, y, N, n_var)
+                y = y - torch.linalg.solve(eye - hs * J, F)
+            if not ok:
+                F = y - base - hs * f(y)
+                ok = bool((F.reshape(n_var, N).abs() <= tol * scale).all())
+            if not ok:
+                worst = float((F.reshape(n_var, N).abs() / scale).max())
+                raise RuntimeError(f"Newton did not converge in {max_iter} iterations "
+                                   f"(largest block-relative residual {worst:.3e}, tol {tol:g})")
+            J = colored_jacobian(f, y, N, n_var)
+        F = y - y_prev - hs * f(y)
+        y_prev = y - torch.linalg.solve(eye - hs * J, F)
+    return y_prev
 
 
 class CPlusL(nn.Module):
@@ -201,10 +247,10 @@ class CPlusL(nn.Module):
         super().__init__()
         self.rhs = rhs
 
-    def rollout(self, y0, inps, dts):
-        """States after each implicit-Euler step; inps (steps, 3), dts (steps,)."""
+    def rollout(self, y0, inps, dts, substeps: int = 1):
+        """States after each snapshot interval; inps (steps, 3), dts (steps,)."""
         ys, y = [], y0
         for k in range(inps.shape[0]):
-            y = implicit_euler_step(self.rhs, y, inps[k], float(dts[k]))
+            y = implicit_euler_step(self.rhs, y, inps[k], float(dts[k]), substeps=substeps)
             ys.append(y)
         return torch.stack(ys)
