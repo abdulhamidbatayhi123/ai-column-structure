@@ -8,3 +8,7 @@ private/
 
 # Plan-execution scratch (ledger, briefs)
 .superpowers/
+
+# reference data and Kaggle build output (archived with the paper, not in git)
+data/reference/
+kaggle/build/
