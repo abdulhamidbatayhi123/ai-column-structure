@@ -100,12 +100,21 @@ model rather than added to the loss, and which part of it does the buying.
 Sections 3 and 4:
 - dilute-solute gas model (the author's decision, 2026-11-05);
 - water heat capacity c_w = 33.6 J mol⁻¹ K⁻¹;
-- first-order upwind convection;
+- convection by the hybrid scheme (Spalding 1972; Patankar 1980): first-order upwind plus the
+  physical dispersion and conduction lowered, per face, by the upwind truncation term and
+  clipped at zero (the same rule as arm C). At N_z = 2048 the clip never bites
+  (`verify/clip_shares.json`: numerical conduction at most 1.3 % of the physical one), so the
+  reference is central differencing with the physical coefficients, and it keeps the
+  consistency proof because it is written as upwind plus non-negative diffusion;
 - exact discrete-gradient Fick dispersion;
 - wall and convection as ports;
 - N_z = 2048.
 
-Bed: ε 0.39, ρ_p 1050 kg m⁻³, d_p 3.25 mm, L 0.10 m, D_in 0.05 m, k_z 0.10 W m⁻¹ K⁻¹, h_w 10 W m⁻² K⁻¹.
+Bed: ε 0.39, ρ_p 1050 kg m⁻³, d_p 3.25 mm, L 0.10 m, D_in 0.05 m, h_w 10 W m⁻² K⁻¹. Axial
+effective conductivity `k_z = 0.10 + δ ρ_g C_pg v d_p` W m⁻¹ K⁻¹ with δ = 0.5 ⟨δ to be
+verified in the full text⟩: it grows with flow as in packed-bed practice (Yagi, Kunii and Wakao
+1960), and it is the heat analogue of D_L's `0.5 d_p u` term. Paper 1's constant 0.10 is its
+stagnant part.
 The LDF coefficient follows from the pellet by Paper 1's Glueckauf relation with the
 material's own isotherm.
 
@@ -132,7 +141,10 @@ rock, with fluid and solid temperatures, local exchange, conduction in both phas
 loss to an ambient bath at 293.15 K. Charging: hot water at T_hot enters at z = 0, for α t_front. Discharging: cold water at
 T_cold enters at z = L, for β α t_front. The bed starts uniform at T_cold. Bed and fluid
 properties are those of `verify/thermal_store.py` (ε 0.38, quartzite-like solid, L 1.0 m), with
-N_z = 1024 ⟨grid-convergence check in the pilot⟩.
+N_z = 1024 ⟨grid-convergence check in the pilot⟩. The fluid's axial conductivity includes the
+flow-dependent dispersion, `k_f = 1.5 + δ ρ_f c_f |v| d_p` with rock d_p = 5 cm
+⟨d_p to be verified against h_v⟩, and the reference uses the same hybrid scheme as system A
+(numerical conduction at most 1.9 % of the physical one at 1024 cells, `verify/clip_shares.json`).
 
 **Sampling** (scrambled Sobol, seeds fixed in `scripts/design_sets.py` before the pilot):
 
@@ -202,14 +214,18 @@ hyperparameters of Section 4.
 - **FNO.** An autoregressive 1-D FNO on the stored coarse fields and outlet channels,
   conditioned on the cycle inputs: 4 Fourier layers, 16 modes, width 64. Same multi-step
   rollout training and budget rule.
-- **C.** The consistent finite-volume scheme on 16, 32, 64 and 128 cells. It is compensated
-  for upwind numerical diffusion in both mass and heat:
+- **C.** The consistent finite-volume scheme on 16, 32, 64 and 128 cells, with the hybrid
+  scheme of the reference (Spalding 1972; Patankar 1980; the truncation term as in Lantz
+  1971):
   - `D_L,eff = max(0, D_L − u Δz/2)`;
-  - `k_z,eff = max(0, k_z − (v ρ_g C_pg + v c c_w) Δz/2)`;
-  - system B uses the same on k_f.
+  - per face, `k_z,eff = max(0, k_z − (ρ_g C_pg + c̄ c_w) v Δz/2)`, with c̄ the face mean;
+  - system B: `k_f,eff = max(0, k_f − ρ_f c_f |v| Δz/2)`.
 
-  At 16 cells the mass compensation saturates, so that grid stays over-diffusive by
-  construction, which the paper states. C's fields are mapped to the 128 cells by
+  With the flow-dependent k_z and k_f, the clip bites only at 16 cells, in both systems
+  (`verify/clip_shares.json`). That grid stays over-diffusive by construction, which the paper
+  states. From 32 cells up the compensation is complete over the whole velocity box.
+  Integration tolerances (rtol 10⁻⁶, atol 10⁻¹⁰) are the same for C's accuracy and its timing,
+  because the compensation assumes the semi-discrete scheme. C's fields are mapped to the 128 cells by
   piecewise-constant injection of the conserved variables. It runs on all systems and
   materials.
 - **C+L.** C at 32 cells, with learned non-negative multipliers on D_L,eff, k_z,eff and the
@@ -218,7 +234,9 @@ hyperparameters of Section 4.
   and iteration budget, with gradients through implicit-Euler steps. Every Onsager block stays
   positive semi-definite, so C+L is consistent by construction (formulation, Section 4.2).
 - **MUSCL-C.** C with a van Leer reconstruction, 32 and 64 cells. Descriptive, and labelled
-  "not proven consistent" (the Bregman proof covers first-order upwind only).
+  "not proven consistent". The Bregman proof covers first-order upwind plus non-negative
+  diffusion, which includes the hybrid scheme of C and the reference, but not limited
+  reconstructions.
 
 ## 4. Hyperparameters (fixed now; the pilot sets only what Section 10 lists)
 

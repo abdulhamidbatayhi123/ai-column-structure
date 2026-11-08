@@ -31,9 +31,16 @@ class Column:
     `phys` is a Paper 1 AdsorptionPhysicsConfig (or anything with the same fields).
     `c_w` is the molar heat capacity of water in both phases (J/mol/K); c_w = 0 is
     Paper 1's model. `iso` is a MultiTermIsotherm; default: Paper 1's dual-site isotherm.
+
+    `compensate=True` is the hybrid scheme (Spalding 1972; Patankar 1980): the upwind truncation
+    term is removed from the physical face coefficients, eps*D_L -> max(0, eps*D_L - v dz/2) and,
+    per face, k_z -> max(0, k_z - (rho_g C_pg + c_face c_w) v dz/2), with c_face the face mean.
+    Central differencing where the cell Peclet number is at most 2, upwind without physical
+    diffusion above it; written as upwind plus non-negative diffusion, the consistency proof
+    holds unchanged. Default False (Paper 1's plain upwind).
     """
 
-    def __init__(self, phys, N, c_w, iso=None):
+    def __init__(self, phys, N, c_w, iso=None, compensate=False):
         self.p = phys
         self.N = N
         self.dz = phys.L / N
@@ -45,6 +52,7 @@ class Column:
         self.h_a = 4.0 * phys.h_w / phys.D_in                 # wall, W/m3/K
         self.iso = iso if iso is not None else from_paper1(phys)
         self.dH = self.iso.dH
+        self.compensate = bool(compensate)
 
     # ---- Section 3: thermodynamics -------------------------------------------------
     def e_w(self, T):
@@ -118,7 +126,13 @@ class Column:
         r_ldf = self.A * p.k_LDF * (self.q_star(c, T) - q)
 
         # dispersion (exact Fick on c) and conduction, on interior faces i+1/2
-        J_n = -self.eps * p.D_L * (c[1:] - c[:-1]) / dz
+        epsD = self.eps * p.D_L
+        k_eff = np.full(self.N - 1, float(p.k_z))
+        if self.compensate:
+            epsD = max(0.0, epsD - p.v * dz / 2)
+            c_face = 0.5 * (c[1:] + c[:-1])
+            k_eff = np.maximum(0.0, p.k_z - (self.rhoC + c_face * self.c_w) * p.v * dz / 2)
+        J_n = -epsD * (c[1:] - c[:-1]) / dz
         # enthalpy carried by the dispersive flux: eta = Delta(phi/T)/Delta(1/T), the
         # discrete-gradient mean of e_w (Gibbs-Helmholtz: d(phi/T)/d(1/T) = e_w), so that
         # X_n + eta X_u = -R Delta ln c exactly; eta -> e_w(T) when Delta T -> 0
@@ -127,7 +141,7 @@ class Column:
         small = np.abs(dinvT) < 1e-14
         eta = np.where(small, self.e_w(0.5 * (T[1:] + T[:-1])),
                        dphi / np.where(small, 1.0, dinvT))
-        J_u = eta * J_n - p.k_z * (T[1:] - T[:-1]) / dz
+        J_u = eta * J_n - k_eff * (T[1:] - T[:-1]) / dz
 
         # convection (first-order upwind = tanks in series), gas stream per m3
         g_n = np.concatenate(([c_in], c))
@@ -136,7 +150,7 @@ class Column:
         # wall exchange, W per m3 bed
         W = self.h_a * (T - T_w)
         return dict(T=T, c=c, q=q, r_ldf=r_ldf, J_n=J_n, J_u=J_u, eta=eta,
-                    g_n=g_n, g_u=g_u, W=W)
+                    g_n=g_n, g_u=g_u, W=W, epsD_eff=epsD, k_eff=k_eff)
 
     def rhs(self, t, y, inputs):
         f = self.fluxes(y, inputs)

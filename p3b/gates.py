@@ -41,8 +41,8 @@ def model_from_meta(meta: dict):
     if meta["system"] == "A":
         from p3b.simulate_a import setup_a
         return setup_a(meta["point"], meta["material"], meta["N_z"])[0]
-    from p3b.thermal_store import ThermalStore
-    return ThermalStore(meta["N_z"])
+    from p3b.simulate_b import make_store
+    return make_store(meta["N_z"])
 
 
 def _flat(a):

@@ -25,6 +25,15 @@ from p3b.simulate_a import ATOL, RTOL, TrajectoryResult
 from p3b.thermal_store import T0, ThermalStore
 
 T_AMB = 293.15       # K, ambient bath of the wall loss (constant)
+# Rock size for the flow-dependent fluid dispersion; provisional (about 5 cm is what the default
+# h_v = 2e4 W m^-3 K^-1 implies for a rock bed; to be verified, cs task). The reference uses the
+# hybrid scheme, as in system A.
+D_P_B = 0.05
+
+
+def make_store(N_z: int) -> ThermalStore:
+    """The reference thermocline store: flow-dependent fluid dispersion, hybrid scheme."""
+    return ThermalStore(N_z, d_p=D_P_B, compensate=True)
 N_PORTS = 4
 PORT_NAMES = ("energy_in", "energy_out", "wall_heat", "direction")
 
@@ -91,7 +100,7 @@ def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
     closure: list[float] = []
     k = 0
     try:
-        st = ThermalStore(N_z)
+        st = make_store(N_z)
         aug = _Augmented(st)
         schedule = cycle_schedule(point, st)
         y = np.concatenate([st.initial_state(float(point["T_cold"])), np.zeros(N_z + 2)])

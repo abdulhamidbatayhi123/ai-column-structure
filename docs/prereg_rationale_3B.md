@@ -70,3 +70,16 @@ approval on 2026-11-05. Review codes:
   trapezoid rule, at the outlet of that interval's own flow direction) must be positive. The
   first test trajectories give margins of about 5 × 10⁻³ (system A) and 1 × 10⁻³ (system B) of
   the interval's entropy turnover.
+- **Flow-dependent axial heat dispersion, and the hybrid scheme in both references**
+  (2026-11-08, from cs T3, verified here; plan 1 Task 7b). With Paper 1's constant k_z = 0.10
+  the plain-upwind reference carried about 9 % excess conduction at v 0.30 m/s (A, 2048 cells),
+  and system B's reference (1024 cells, constant k_f 1.5) carried up to 4 times more numerical
+  than physical conduction, so it was not a converged reference. Packed-bed practice makes the
+  axial conductivity grow with flow (Yagi, Kunii and Wakao 1960), as D_L already does
+  (`0.5 d_p u`). With `k_z = 0.10 + 0.5 ρ_g C_pg v d_p` and `k_f = 1.5 + 0.5 ρ_f c_f |v| d_p`
+  (rock 5 cm), the upwind truncation term is at most 1.3 % (A) and 1.9 % (B) of the physical
+  conduction at the reference grids, and the hybrid scheme removes it exactly. For arm C the
+  clip now bites only at 16 cells (it bit on 32 % of the A velocity box at 128 cells and
+  everywhere in B before). Numbers: `verify/clip_shares.json`. δ = 0.5 and the 5 cm rock are
+  provisional until verified in the full texts (queued). This changes the reference physics,
+  so it is the author's to confirm at the freeze.

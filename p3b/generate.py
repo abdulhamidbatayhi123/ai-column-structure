@@ -8,9 +8,8 @@ from __future__ import annotations
 
 from p3b.simulate_a import TrajectoryResult, setup_a, simulate_trajectory_a
 from p3b.simulate_b import cycle_schedule as schedule_b
-from p3b.simulate_b import simulate_trajectory_b
+from p3b.simulate_b import make_store, simulate_trajectory_b
 from p3b.store import Coarsener
-from p3b.thermal_store import ThermalStore
 
 
 def generate_trajectory(system: str, point: dict, material: str | None, N_z: int, N_c: int = 128,
@@ -21,7 +20,7 @@ def generate_trajectory(system: str, point: dict, material: str | None, N_z: int
         cz = Coarsener("A", N_z, N_c, model=col, c_in=schedule[0][2][0])
         res = simulate_trajectory_a(point, material, N_z, n_snap=n_snap, on_cycle=cz.add_cycle)
     elif system == "B":
-        st = ThermalStore(N_z)
+        st = make_store(N_z)
         schedule = schedule_b(point, st)
         cz = Coarsener("B", N_z, N_c, model=st)
         res = simulate_trajectory_b(point, N_z, n_snap=n_snap, on_cycle=cz.add_cycle)

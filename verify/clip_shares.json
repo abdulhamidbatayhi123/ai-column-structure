@@ -1,0 +1,108 @@
+{
+ "commit": "5c91f87ee66df3b8ce7154fda0553d55c4419064-dirty",
+ "K_E0": 0.1,
+ "DELTA_AX": 0.5,
+ "A": [
+  {
+   "N": 16,
+   "thermal_clip_share": 0.9196593854128101,
+   "thermal_max_ratio": 1.702362859794758,
+   "mass_clip_share": 1.0,
+   "mass_max_ratio": 1.8965255651646187
+  },
+  {
+   "N": 32,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.851181429897379,
+   "mass_clip_share": 0.0,
+   "mass_max_ratio": 0.9482627825823093
+  },
+  {
+   "N": 64,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.4255907149486895,
+   "mass_clip_share": 0.0,
+   "mass_max_ratio": 0.47413139129115467
+  },
+  {
+   "N": 128,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.21279535747434475,
+   "mass_clip_share": 0.0,
+   "mass_max_ratio": 0.23706569564557733
+  },
+  {
+   "N": 256,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.10639767873717237,
+   "mass_clip_share": 0.0,
+   "mass_max_ratio": 0.11853284782278867
+  },
+  {
+   "N": 512,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.05319883936858619,
+   "mass_clip_share": 0.0,
+   "mass_max_ratio": 0.059266423911394334
+  },
+  {
+   "N": 1024,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.026599419684293094,
+   "mass_clip_share": 0.0,
+   "mass_max_ratio": 0.029633211955697167
+  },
+  {
+   "N": 2048,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.013299709842146547,
+   "mass_clip_share": 0.0,
+   "mass_max_ratio": 0.014816605977848583
+  }
+ ],
+ "B": [
+  {
+   "N": 16,
+   "D_P_B": 0.05,
+   "thermal_clip_share": 1.0,
+   "thermal_max_ratio": 1.2439877831754125
+  },
+  {
+   "N": 32,
+   "D_P_B": 0.05,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.6219938915877062
+  },
+  {
+   "N": 64,
+   "D_P_B": 0.05,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.3109969457938531
+  },
+  {
+   "N": 128,
+   "D_P_B": 0.05,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.15549847289692656
+  },
+  {
+   "N": 256,
+   "D_P_B": 0.05,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.07774923644846328
+  },
+  {
+   "N": 512,
+   "D_P_B": 0.05,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.03887461822423164
+  },
+  {
+   "N": 1024,
+   "D_P_B": 0.05,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.01943730911211582
+  }
+ ],
+ "A_c_max": 1.3053510780764814
+}

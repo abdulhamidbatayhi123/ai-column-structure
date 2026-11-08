@@ -20,7 +20,12 @@ from solver_fd import AdsorptionPhysicsConfig  # Paper 1
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FIT_PATH = os.path.join(_ROOT, "verify", "materials", "fit_isotherms.json")
 
-BED = dict(eps_t=0.39, rho_p=1050.0, d_p=3.25e-3, L=0.10, D_in=0.05, k_z=0.10, h_w=10.0)
+BED = dict(eps_t=0.39, rho_p=1050.0, d_p=3.25e-3, L=0.10, D_in=0.05, h_w=10.0)
+# Axial effective thermal conductivity, flow-dependent as in packed-bed practice (Yagi, Kunii and
+# Wakao 1960): k_z = K_E0 + DELTA_AX rho_g C_pg v d_p, the heat analogue of D_L's 0.5 d_p u term.
+# K_E0 is Paper 1's constant k_z. DELTA_AX is provisional until verified in the full text (cs task).
+K_E0 = 0.10
+DELTA_AX = 0.5
 DH_C = {"MOF-303": -51.3e3, "Al-fumarate": -48.5e3}
 
 
@@ -50,6 +55,7 @@ def bed_physics(v: float, T: float) -> AdsorptionPhysicsConfig:
     p.v = float(v)
     p.T_in = p.T_w = float(T)
     p.D_L = 0.7 * 2.5e-5 + 0.5 * p.d_p * (p.v / p.eps_t)  # Ruthven, as in Paper 1's build_physics
+    p.k_z = K_E0 + DELTA_AX * p.rho_g * p.C_pg * p.v * p.d_p
     p.k_LDF = float("nan")
     return p
 

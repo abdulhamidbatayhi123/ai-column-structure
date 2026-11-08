@@ -18,6 +18,10 @@ Mechanisms, each with non-negative entropy production:
   * axial conduction in the fluid (effective, incl. dispersion) and in the solid, each
     J = -k dT/dz = L Delta(1/T) with L = k T_i T_{i+1}/dz >= 0;
   * heat loss through the wall from the fluid to the ambient bath (a port).
+
+Optional (defaults reproduce the design-verification model): `d_p` adds the flow-dependent axial
+dispersion of the fluid, k_f(v) = k_f + delta_ax rho_f c_f |v| d_p; `compensate=True` lowers it by
+the upwind truncation term, k_f,eff = max(0, k_f(v) - rho_f c_f |v| dz/2) (the hybrid scheme).
 """
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -28,13 +32,23 @@ T0 = 293.15
 
 class ThermalStore:
     def __init__(self, N, L=1.0, eps=0.38, rho_f=990.0, c_f=4180.0, rho_s=2650.0, c_s=830.0,
-                 h_v=2.0e4, k_f=1.5, k_s=0.8, h_wall=2.0, D=0.3):
+                 h_v=2.0e4, k_f=1.5, k_s=0.8, h_wall=2.0, D=0.3, d_p=None, delta_ax=0.5, compensate=False):
         self.N, self.L, self.dz = N, L, L / N
         self.Cf = eps * rho_f * c_f           # J/m3/K per bed volume
         self.Cs = (1 - eps) * rho_s * c_s
         self.rhoc = rho_f * c_f               # per m3 of flowing fluid
         self.h_v, self.k_f, self.k_s = h_v, k_f, k_s
         self.h_a = 4.0 * h_wall / D           # wall, W/m3/K
+        self.d_p, self.delta_ax, self.compensate = d_p, delta_ax, bool(compensate)
+
+    def k_f_phys(self, v):
+        """Fluid axial conductivity incl. flow-dependent dispersion (W/m/K)."""
+        return self.k_f + (self.delta_ax * self.rhoc * abs(v) * self.d_p if self.d_p else 0.0)
+
+    def k_f_eff(self, v):
+        """The coefficient the scheme uses: k_f_phys, lowered by the upwind term if compensated."""
+        k = self.k_f_phys(v)
+        return max(0.0, k - self.rhoc * abs(v) * self.dz / 2) if self.compensate else k
 
     def split(self, y):
         return y[:self.N], y[self.N:]
@@ -58,7 +72,7 @@ class ThermalStore:
             g_up = np.concatenate((g[1:], [g_in]))
         conv = abs(v) / self.dz * (g_up - g)
         W = self.h_v * (Tf - Ts)
-        Jf = -self.k_f * (Tf[1:] - Tf[:-1]) / self.dz
+        Jf = -self.k_f_eff(v) * (Tf[1:] - Tf[:-1]) / self.dz
         Js = -self.k_s * (Ts[1:] - Ts[:-1]) / self.dz
         Wwall = self.h_a * (Tf - T_amb)
         return dict(Tf=Tf, Ts=Ts, g=g, g_up=g_up, conv=conv, W=W, Jf=Jf, Js=Js, Wwall=Wwall)

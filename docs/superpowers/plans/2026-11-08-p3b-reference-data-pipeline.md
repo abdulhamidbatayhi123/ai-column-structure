@@ -30,12 +30,12 @@ constants and the bed builder.
 ## Global Constraints
 
 **System A:**
-- dilute-solute gas model; c_w = 33.6 J mol⁻¹ K⁻¹; first-order upwind; exact discrete-gradient
+- dilute-solute gas model; c_w = 33.6 J mol⁻¹ K⁻¹; hybrid-scheme convection (upwind plus compensated diffusion, Task 7b); exact discrete-gradient
   Fick dispersion; wall and convection as ports;
 - N_z = 2048 (system A), 1024 (system B), 128 coarse cells; the coarsening factor must be an
   integer;
 - 200 snapshots per cycle, stored float32 (state integrated in float64);
-- bed: ε 0.39, ρ_p 1050 kg m⁻³, d_p 3.25 mm, L 0.10 m, D_in 0.05 m, k_z 0.10 W m⁻¹ K⁻¹,
+- bed: ε 0.39, ρ_p 1050 kg m⁻³, d_p 3.25 mm, L 0.10 m, D_in 0.05 m, k_z = 0.10 + 0.5 ρ_g C_pg v d_p W m⁻¹ K⁻¹ (Task 7b),
   h_w 10 W m⁻² K⁻¹; LDF coefficient from Paper 1's Glueckauf relation with the material's own
   isotherm;
 - materials: from `verify/materials/fit_isotherms.json`; concentration-based −ΔH = 51.3e3

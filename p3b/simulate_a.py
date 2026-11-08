@@ -30,6 +30,7 @@ from p3b.column import Column
 C_W = 33.6           # J mol^-1 K^-1, molar heat capacity of water in both phases
 RTOL, ATOL = 1e-6, 1e-10
 PREWET = 1e-4
+COMPENSATE = True    # the reference uses the hybrid scheme (p3b.column.Column)
 N_PORTS = 5
 PORT_NAMES = ("water_in", "water_out", "energy_in", "energy_out", "wall_heat")
 
@@ -59,7 +60,7 @@ def setup_a(point: dict, material: str, N_z: int):
     phys = mat.bed_physics(point["v"], point["T_ads"])
     schedule = cycle_schedule(point, iso, phys)
     phys.k_LDF = mat.k_ldf(iso, phys, schedule[0][2][0], float(point["T_ads"]))
-    return Column(phys, N_z, C_W, iso=iso), schedule
+    return Column(phys, N_z, C_W, iso=iso, compensate=COMPENSATE), schedule
 
 
 def prewet_state(col: Column, c_in: float, T: float) -> np.ndarray:
