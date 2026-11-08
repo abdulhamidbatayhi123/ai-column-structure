@@ -56,3 +56,7 @@ approval on 2026-11-05. Review codes:
   balances.
 - **Two systems instead of more seeds.** The between-system difference is what a broad
   reader asks about. Seed variance is already reported.
+- **System B's ambient bath fixed at 293.15 K** (implementation, plan 1 Task 5). The draft left
+  the wall-loss ambient open. A store sits in a room whose temperature does not follow the
+  operating point, so it is a constant, not T_cold. It equals the module's reference
+  temperature, which the earlier closure test already used.

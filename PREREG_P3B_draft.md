@@ -129,7 +129,7 @@ The bed starts at equilibrium with a trace humidity of 10⁻⁴ c_in.
 
 **System B, the thermocline store** (formulation Section 7). Water through a packed bed of
 rock, with fluid and solid temperatures, local exchange, conduction in both phases and wall
-loss. Charging: hot water at T_hot enters at z = 0, for α t_front. Discharging: cold water at
+loss to an ambient bath at 293.15 K. Charging: hot water at T_hot enters at z = 0, for α t_front. Discharging: cold water at
 T_cold enters at z = L, for β α t_front. The bed starts uniform at T_cold. Bed and fluid
 properties are those of `verify/thermal_store.py` (ε 0.38, quartzite-like solid, L 1.0 m), with
 N_z = 1024 ⟨grid-convergence check in the pilot⟩.
