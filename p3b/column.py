@@ -30,7 +30,8 @@ class Column:
 
     `phys` is a Paper 1 AdsorptionPhysicsConfig (or anything with the same fields).
     `c_w` is the molar heat capacity of water in both phases (J/mol/K); c_w = 0 is
-    Paper 1's model. `iso` is a MultiTermIsotherm; default: Paper 1's dual-site isotherm.
+    Paper 1's model. `iso` (required, keyword) is a MultiTermIsotherm; Paper 1's dual-site isotherm is
+    `from_paper1(phys)`. There is no default, so a forgotten isotherm cannot silently be Paper 1's.
 
     `compensate=True` is the hybrid scheme (Spalding 1972; Patankar 1980): the upwind truncation
     term is removed from the physical face coefficients, eps*D_L -> max(0, eps*D_L - v dz/2) and,
@@ -40,7 +41,7 @@ class Column:
     holds unchanged. Default False (Paper 1's plain upwind).
     """
 
-    def __init__(self, phys, N, c_w, iso=None, compensate=False):
+    def __init__(self, phys, N, c_w, *, iso, compensate=False):
         self.p = phys
         self.N = N
         self.dz = phys.L / N
@@ -50,7 +51,9 @@ class Column:
         self.Cs = phys.eps_t * phys.rho_g * phys.C_pg + self.A * phys.C_ps
         self.rhoC = phys.rho_g * phys.C_pg                    # carrier, per m3 gas
         self.h_a = 4.0 * phys.h_w / phys.D_in                 # wall, W/m3/K
-        self.iso = iso if iso is not None else from_paper1(phys)
+        if iso is None:
+            raise TypeError("iso is required: pass the material's isotherm, or from_paper1(phys) for Paper 1's")
+        self.iso = iso
         self.dH = self.iso.dH
         self.compensate = bool(compensate)
 

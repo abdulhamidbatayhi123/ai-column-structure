@@ -13,6 +13,8 @@ from __future__ import annotations
 import os
 import time
 
+from p3b._paper1 import PAPER1_SHA256
+from p3b.gates import current_constants
 from p3b.simulate_a import TrajectoryResult, setup_a, simulate_trajectory_a
 from p3b.simulate_b import cycle_schedule as schedule_b
 from p3b.simulate_b import make_store, simulate_trajectory_b
@@ -39,6 +41,7 @@ def generate_trajectory(system: str, point: dict, material: str | None, N_z: int
             meta = dict(material=material, point=point, schedule=schedule, n_snap=n_snap, cpu_s=res.cpu_s,
                         closure_max=max(res.closure), nfev=res.nfev, cycle_cpu_s=res.cycle_cpu_s,
                         cycles_override=None)
+            meta.update(constants=current_constants(system), paper1_sha256=dict(PAPER1_SHA256))
             meta.update(extra_meta or {})
             cz.to_npz(path, meta=meta, ports_end=res.final_ports)
         return res

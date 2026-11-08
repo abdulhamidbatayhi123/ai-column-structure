@@ -30,6 +30,12 @@
  },
  "commit": "104b64d4f7a8bf45747f4c3cedee489639c36609",
  "sampler": "scipy.stats.qmc.Sobol(scramble=True).random_base2, first count points",
+ "versions": {
+  "python": "3.12.10",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1"
+ },
+ "versions_note": "library versions with which these points were reproduced exactly from the seed (tests/test_cs_t6_fixes.py); the points were generated at `commit` in the same environment",
  "points": [
   {
    "RH_ads": 0.361159049347043,

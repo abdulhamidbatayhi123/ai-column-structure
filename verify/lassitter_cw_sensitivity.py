@@ -17,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 P1 = os.path.abspath(os.path.join(HERE, "..", "..", "ai-mof-cof-dynamics"))
 sys.path.insert(0, P1)
-from consistent_column import Column  # noqa: E402
+from consistent_column import Column, from_paper1  # noqa: E402
 import compare_lassitter as cl  # noqa: E402  (Paper 1, read-only)
 
 os.chdir(P1)  # compare_lassitter resolves its data paths relative to Paper 1
@@ -27,7 +27,7 @@ t_end = cl.HORIZON_MIN * 60.0
 out = {"condition": "Lassitter 2024 primary (k 0.20 1/s, d_p 3 mm), h_w 10, C_ps 1000", "N": 400}
 curves = {}
 for cw in (0.0, 33.6):
-    col = Column(p, 400, cw)
+    col = Column(p, 400, cw, iso=from_paper1(p))
     t, y = col.integrate(col.initial_state(cl.T_K), (0.0, t_end), (c_in, cl.T_K, cl.T_K), 601,
                          rtol=1e-7, atol=1e-11)
     n, a, u = col.split(y)

@@ -18,6 +18,7 @@ All gates read only the coarse npz written by p3b.store.Coarsener (via p3b.gener
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 
@@ -38,8 +39,34 @@ def load_meta(npz) -> dict:
     return json.loads(str(_load(npz)["meta"]))
 
 
+def current_constants(system: str) -> dict:
+    """The physical and numerical constants a trajectory of `system` is generated with, as JSON
+    values, read from the modules at call time. Written into every npz meta (p3b.generate)."""
+    from p3b import materials as mat
+    from p3b import simulate_a as sa
+    if system == "A":
+        with open(mat.FIT_PATH, "rb") as f:
+            fit_sha = hashlib.sha256(f.read()).hexdigest()
+        return dict(BED=dict(mat.BED), K_E0=mat.K_E0, DELTA_AX=mat.DELTA_AX, DH_C=dict(mat.DH_C),
+                    EPS_PELLET=mat.EPS_PELLET, D_M_WATER=mat.D_M_WATER, TORTUOSITY=mat.TORTUOSITY,
+                    C_W=sa.C_W, RTOL=sa.RTOL, ATOL=sa.ATOL, PREWET=sa.PREWET, COMPENSATE=sa.COMPENSATE,
+                    fit_isotherms_sha256=fit_sha)
+    from p3b import simulate_b as sb
+    return dict(store=dict(sb.make_store(8).params), T_AMB=sb.T_AMB, D_P_B=sb.D_P_B, RTOL=sa.RTOL, ATOL=sa.ATOL)
+
+
 def model_from_meta(meta: dict):
-    """The fine model the trajectory was generated with (Column for A, ThermalStore for B)."""
+    """The fine model the trajectory was generated with (Column for A, ThermalStore for B).
+
+    The model is rebuilt from the current code, so the constants recorded in the meta must equal
+    the current ones; any difference raises ValueError naming the constants (never a silent
+    rebuild with, say, a revised DELTA_AX)."""
+    if "constants" not in meta:
+        raise ValueError("the npz records no constants; regenerate it with the current code")
+    now = json.loads(json.dumps(current_constants(meta["system"])))
+    diff = sorted(k for k in set(now) | set(meta["constants"]) if now.get(k) != meta["constants"].get(k))
+    if diff:
+        raise ValueError(f"constants changed since the npz was generated: {', '.join(diff)}")
     if meta["system"] == "A":
         from p3b.simulate_a import setup_a
         return setup_a(meta["point"], meta["material"], meta["N_z"])[0]

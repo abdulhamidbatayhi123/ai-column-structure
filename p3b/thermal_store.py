@@ -34,6 +34,8 @@ class ThermalStore:
     def __init__(self, N, L=1.0, eps=0.38, rho_f=990.0, c_f=4180.0, rho_s=2650.0, c_s=830.0,
                  h_v=2.0e4, k_f=1.5, k_s=0.8, h_wall=2.0, D=0.3, d_p=None, delta_ax=0.5, compensate=False):
         self.N, self.L, self.dz = N, L, L / N
+        self.params = dict(L=L, eps=eps, rho_f=rho_f, c_f=c_f, rho_s=rho_s, c_s=c_s, h_v=h_v, k_f=k_f, k_s=k_s,
+                           h_wall=h_wall, D=D, d_p=d_p, delta_ax=delta_ax, compensate=bool(compensate))
         self.Cf = eps * rho_f * c_f           # J/m3/K per bed volume
         self.Cs = (1 - eps) * rho_s * c_s
         self.rhoc = rho_f * c_f               # per m3 of flowing fluid

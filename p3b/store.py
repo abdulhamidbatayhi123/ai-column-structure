@@ -7,7 +7,7 @@ The fine solution is never stored. Per cycle, `Coarsener.add_cycle` keeps:
       before the log; system B (T_f, T_s);
   * the fine outlet state (float32): A (log c_out, log T_out) at z = L; B T_f at the current
     outlet (z = L when charging, z = 0 when discharging, from the direction port);
-  * the exact cumulative wall heat of each block (sum of the fine per-cell integrals);
+  * the exact cumulative wall heat of each block (sum of the fine per-cell integrals, float64);
   * system B only, `ends`: the fine T_f at z = 0 and z = L (float64, for the gates: at a flow
     reversal the outlet of an interval is at the end set by that interval's direction);
   * the cumulative ports and the snapshot times.
@@ -93,7 +93,7 @@ class Coarsener:
         self.t.append(np.asarray(t, dtype=float).copy())
         self.channels.append(ch.astype(np.float32))
         self.outlet.append(out.astype(np.float32))
-        self.wall.append(wall.astype(np.float32))
+        self.wall.append(wall)                       # float64: cumulative, so float32 would lose its increments
         self.ports.append(np.asarray(ports, dtype=float).copy())
         self.conserved.append(cons)
 

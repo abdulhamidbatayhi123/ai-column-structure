@@ -82,7 +82,8 @@ def test_no_fine_history():
             elif isinstance(v, (list, tuple)):
                 yield from (x for x in v if isinstance(x, np.ndarray))
     assert all(N_Z not in a.shape and 4 * N_Z not in a.shape for a in arrays(cz))
-    assert all(a.dtype == np.float32 for a in cz.channels + cz.outlet + cz.wall)
+    assert all(a.dtype == np.float32 for a in cz.channels + cz.outlet)
+    assert all(a.dtype == np.float64 for a in cz.wall)   # cumulative: float64 (cs T6 I7)
 
 
 def test_roundtrip(tmp_path):

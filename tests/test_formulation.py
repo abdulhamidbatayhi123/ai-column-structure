@@ -12,7 +12,7 @@ import pytest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "verify"))
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "ai-mof-cof-dynamics")))
-from consistent_column import Column  # noqa: E402
+from consistent_column import Column, from_paper1  # noqa: E402
 from isotherms import from_fit, from_paper1  # noqa: E402
 import json  # noqa: E402
 from gen_parametric_dataset import build_physics, rh_to_conc  # noqa: E402
@@ -82,7 +82,7 @@ def test_identities_and_production_signs(phys, c_w, iso_name):
 def test_dispersion_is_exact_fick(phys):
     """The Onsager dispersion block reproduces Paper 1's discrete Fick flux exactly."""
     rng = np.random.default_rng(2)
-    col = Column(phys, 30, c_w=33.6)
+    col = Column(phys, 30, c_w=33.6, iso=from_paper1(phys))
     y = random_state(col, rng)
     f = col.fluxes(y, (1.0, 303.15, 303.15))
     c, T = f["c"], f["T"]
@@ -102,7 +102,7 @@ def test_paper1_limit(phys):
     t_end = 0.3 * phys.stoichiometric_time(c_in, COND["T_in"])
     _, _, yp = generate_breakthrough_data(phys, N_z=N, t_final=t_end, c_in=c_in, n_snapshots=6,
                                           rtol=1e-9, atol=1e-13, verbose=False)
-    col = Column(phys, N, c_w=0.0)
+    col = Column(phys, N, c_w=0.0, iso=from_paper1(phys))
     _, ym = col.integrate(col.initial_state(phys.T_w), (0.0, t_end),
                           (c_in, phys.T_in, phys.T_w), 6, rtol=1e-9, atol=1e-13)
     n, a, u = col.split(ym)

@@ -15,7 +15,7 @@ import numpy as np
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 from p3b import _paper1  # noqa: E402,F401
-from p3b.column import Column  # noqa: E402
+from p3b.column import Column, from_paper1  # noqa: E402
 from p3b.provenance import git_commit  # noqa: E402
 from gen_parametric_dataset import build_physics, rh_to_conc  # noqa: E402  (Paper 1, read-only)
 from solver_fd import generate_breakthrough_data  # noqa: E402  (Paper 1, read-only)
@@ -37,7 +37,7 @@ def main():
     t_end = 1.0 * phys.stoichiometric_time(c_in, COND["T_in"])
     _, _, yp = generate_breakthrough_data(phys, N_z=N, t_final=t_end, c_in=c_in, n_snapshots=41,
                                           rtol=1e-9, atol=1e-13, verbose=False)
-    col = Column(phys, N, c_w=0.0)
+    col = Column(phys, N, c_w=0.0, iso=from_paper1(phys))
     _, ym = col.integrate(col.initial_state(phys.T_w), (0.0, t_end), (c_in, phys.T_in, phys.T_w), 41,
                           rtol=1e-9, atol=1e-13)
     n, ad, u = col.split(ym)
