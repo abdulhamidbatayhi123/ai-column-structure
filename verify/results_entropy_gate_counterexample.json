@@ -1,0 +1,97 @@
+{
+ "commit": "fe8902e55b089522ca42d627e6847f4f8105441a-dirty",
+ "cases": [
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.0,
+    "T_des": 348.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "N_z": 256,
+   "N_c": 16,
+   "ok": true,
+   "entropy_gate": {
+    "min_rate": 0.23836464759460893,
+    "tau_ref": 0.0011714170440449167,
+    "tau_source": "provisional (this trajectory)",
+    "passed": true,
+    "min_rate_fine": 0.2383951822828815,
+    "floored_blocks": 0,
+    "n_intervals": 399
+   },
+   "rate_identity_max": 3.1582200844667394e-15,
+   "fine_production_min": -0.0,
+   "stored_closure": 1.0908552550532566e-14,
+   "closure_max": 1.824271451851587e-14,
+   "floor_share": 0.0
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.0,
+    "T_des": 348.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "N_z": 256,
+   "N_c": 256,
+   "ok": true,
+   "entropy_gate": {
+    "min_rate": 0.2383951822828815,
+    "tau_ref": 0.0011714421501291914,
+    "tau_source": "provisional (this trajectory)",
+    "passed": true,
+    "min_rate_fine": 0.2383951822828815,
+    "floored_blocks": 0,
+    "n_intervals": 399
+   },
+   "rate_identity_max": 3.1582200844667394e-15,
+   "fine_production_min": -0.0,
+   "stored_closure": 1.0908552550532566e-14,
+   "closure_max": 1.824271451851587e-14,
+   "floor_share": 0.0
+  },
+  {
+   "system": "B",
+   "material": null,
+   "point": {
+    "T_hot": 363.0,
+    "T_cold": 293.0,
+    "v": 0.003,
+    "alpha": 0.9,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "N_z": 256,
+   "N_c": 32,
+   "ok": true,
+   "entropy_gate": {
+    "min_rate": 18.821454789844157,
+    "tau_ref": 0.053281040884832216,
+    "tau_source": "provisional (this trajectory)",
+    "passed": true,
+    "min_rate_fine": 18.83321036585438,
+    "floored_blocks": 0,
+    "n_intervals": 399
+   },
+   "rate_identity_max": 7.091151517561261e-16,
+   "fine_production_min": -1.2108721181627802e-14,
+   "stored_closure": 2.343631001680011e-15,
+   "closure_max": 1.9615303302878404e-15,
+   "floor_share": 0.0
+  }
+ ]
+}

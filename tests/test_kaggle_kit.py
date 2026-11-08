@@ -46,7 +46,8 @@ def test_generate_chunk_small(tmp_path):
                         "--cycles", "1", "--out", str(out)], capture_output=True, text=True, cwd=ROOT)
     assert r.returncode == 0, r.stderr[-2000:]
     npz = sorted(out.glob("*.npz"))
-    assert [p.name for p in npz] == ["A_primary_long_validation_0000.npz", "A_primary_long_validation_0001.npz"]
+    assert [p.name for p in npz] == ["A_primary_long_validation_0000_smoke.npz",
+                                     "A_primary_long_validation_0001_smoke.npz"]
     rep = json.loads((out / "chunk_0_report.json").read_text())
     assert rep["ok"] is True and len(rep["trajectories"]) == 2 and rep["cycles_override"] == 1
     assert all(t["ok"] for t in rep["trajectories"])

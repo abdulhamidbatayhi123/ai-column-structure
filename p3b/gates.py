@@ -2,11 +2,13 @@
 
 All gates read only the coarse npz written by p3b.store.Coarsener (via p3b.generate):
   * stored_closure: water (A) and energy against the stored cumulative ports, <= 1e-5 relative;
-  * coarse_entropy_margin: per snapshot interval, the change of the coarse entropy (entropy of
-    the block averages) minus the port entropy flux integrated over the interval (inlet stream
-    exact, outlet stream by the trapezoid rule on the stored outlet, wall heat over the bath
-    temperature exactly), divided by the sum of the magnitudes of those terms; the minimum must
-    be positive;
+  * entropy_gate: per snapshot interval, the change of the coarse entropy (entropy of the block
+    averages) minus the port entropy flux over the interval, from the exact cumulative entropy
+    ports; min rate >= -tau_ref (see entropy_gate);
+  * rate_identity_max, fine_production_min: the fine-level quantities computed at every snapshot
+    before the fine state was discarded (rate identities <= 1e-12; production >= 0 above the floor);
+  * closure_ok: the integrated closure with cumulative-flux states, <= 10 x rtol;
+  * production_ready: not a smoke output (no cycle override, the design's cycle count);
   * floor_share: fine cell-snapshots below the concentration/loading floor, < 0.01;
   * css_cycle: the first cycle k >= 2 (1-based) whose release W_k satisfies
     |W_k - W_(k-1)| / |W_k| < CSS_TOL. W is water released in the desorption half (A) or
@@ -69,48 +71,105 @@ def stored_closure(npz) -> float:
     return float(max(errs))
 
 
-def coarse_entropy_margin(npz, model) -> float:
+def _entropy_intervals(npz, model) -> dict:
+    """Per snapshot interval: the port entropy flux (exact: stream entropy from the cumulative entropy
+    ports, wall heat over the bath temperature, constant within a half-cycle), the change of the
+    coarse entropy (entropy of the block averages, blocks floored as in the Global Constraints) and,
+    where stored, of the fine entropy; the turnover is the sum of the magnitudes of the terms."""
     d = _load(npz)
     meta = load_meta(d)
     dz = meta["L"] / meta["N_c"]
     ns = d["t"].shape[1]
-    t, cons, P, out = _flat(d["t"]), _flat(d["conserved_blocks"]), _flat(d["ports_cum"]), \
-        _flat(d["outlet"]).astype(float)
+    t, cons, P = _flat(d["t"]), _flat(d["conserved_blocks"]), _flat(d["ports_cum"])
+    floored = 0
     if meta["system"] == "A":
-        S = model.cell_entropy(cons[..., 0], cons[..., 1], cons[..., 2]).sum(axis=1) * dz
-        v = model.p.v
-        s_out = v * model.stream_entropy(np.exp(out[:, 0]), np.exp(out[:, 1]))
-        wall = P[:, 4]
-
-        def s_in(inp):
-            return v * model.stream_entropy(inp[0], inp[1])
-
-        def s_out_pair(i, inp):
-            return s_out[i], s_out[i + 1]
+        from p3b.store import FLOOR
+        n_min = model.eps * FLOOR * meta["schedule"][0][2][0]
+        a_min = model.A * FLOOR * model.iso.q_capacity
+        floored = int(np.sum((cons[..., 0] < n_min) | (cons[..., 1] < a_min)))
+        with np.errstate(all="ignore"):
+            S = model.cell_entropy(np.maximum(cons[..., 0], n_min), np.maximum(cons[..., 1], a_min),
+                                   cons[..., 2]).sum(axis=1) * dz
+        wall, s_in, s_out = P[:, 4], P[:, 5], P[:, 6]
     else:
         from p3b.thermal_store import T0
         Tf, Ts = T0 + cons[..., 0] / model.Cf, T0 + cons[..., 1] / model.Cs
         S = (model.Cf * np.log(Tf / T0) + model.Cs * np.log(Ts / T0)).sum(axis=1) * dz
-        ends = _flat(d["ends"])                      # T_f at z = 0 and z = L
-        wall = P[:, 2]
-
-        def s_in(inp):
-            return abs(inp[0]) * model.stream_entropy(inp[1])
-
-        def s_out_pair(i, inp):   # outlet of this interval's direction, at both of its ends
-            e = 1 if inp[0] > 0 else 0
-            return abs(inp[0]) * model.stream_entropy(ends[i, e]), abs(inp[0]) * model.stream_entropy(ends[i + 1, e])
+        wall, s_in, s_out = P[:, 2], P[:, 4], P[:, 5]
+    S_fine = _flat(d["S_fine"]) if "S_fine" in d.files else None
     schedule = meta["schedule"]
-    margins = []
-    for i in range(len(t) - 1):
-        inp = schedule[0 if (i % ns) < ns // 2 else 1][2]
-        T_bath = inp[2]
-        dt = t[i + 1] - t[i]
-        o0, o1 = s_out_pair(i, inp)
-        terms = (S[i + 1] - S[i], s_in(inp) * dt, 0.5 * (o0 + o1) * dt, (wall[i + 1] - wall[i]) / T_bath)
-        prod = terms[0] - (terms[1] - terms[2] - terms[3])
-        margins.append(prod / sum(abs(x) for x in terms))
-    return float(min(margins))
+    k = np.arange(len(t) - 1)
+    T_bath = np.array([schedule[0 if (i % ns) < ns // 2 else 1][2][2] for i in k])
+    dt = np.diff(t)
+    phi = np.diff(s_in) - np.diff(s_out) - np.diff(wall) / T_bath
+    dS = np.diff(S)
+    turnover = np.abs(dS) + np.abs(np.diff(s_in)) + np.abs(np.diff(s_out)) + np.abs(np.diff(wall) / T_bath)
+    out = {"dt": dt, "coarse_rate": (dS - phi) / dt, "turnover_rate": turnover / dt,
+           "coarse_margin": (dS - phi) / turnover, "floored_blocks": floored}
+    out["fine_rate"] = (np.diff(S_fine) - phi) / dt if S_fine is not None else None
+    return out
+
+
+def coarse_entropy_margin(npz, model) -> float:
+    """The smallest (dS_coarse - Phi_S) over an interval, relative to the interval's entropy turnover."""
+    m = _entropy_intervals(npz, model)["coarse_margin"]
+    return float(np.min(m)) if np.all(np.isfinite(m)) else float("nan")
+
+
+def entropy_gate(npz, model, tau_ref: float | None = None) -> dict:
+    """PREREG Section 5.3: min_t (dS_coarse/dt - Phi_S) >= -tau_ref, by exact ports.
+
+    tau_ref is the reference's own numerical noise floor for this statistic: at the fine level the
+    production is non-negative by proof, so any negative value of the same statistic computed with
+    the fine entropy is numerical noise. tau_ref = 10 x the 99.9th percentile of its negative part,
+    floored at 10 x rtol x the median entropy turnover rate. A pilot-wide value can be passed in;
+    otherwise it is computed from this trajectory and labelled provisional.
+    """
+    from p3b.simulate_a import RTOL
+    e = _entropy_intervals(npz, model)
+    rate, fine = e["coarse_rate"], e["fine_rate"]
+    floor_tau = 10.0 * RTOL * float(np.median(e["turnover_rate"]))
+    source = "given"
+    if tau_ref is None:
+        source = "provisional (this trajectory)"
+        neg = np.maximum(0.0, -fine[np.isfinite(fine)]) if fine is not None else np.zeros(1)
+        tau_ref = max(10.0 * float(np.percentile(neg, 99.9)) if neg.size else 0.0, floor_tau)
+    finite = bool(np.all(np.isfinite(rate)))
+    min_rate = float(np.min(rate)) if finite else float("nan")
+    return {"min_rate": min_rate, "tau_ref": float(tau_ref), "tau_source": source, "passed": finite and
+            min_rate >= -tau_ref, "min_rate_fine": float(np.nanmin(fine)) if fine is not None else None,
+            "floored_blocks": e["floored_blocks"], "n_intervals": int(rate.size)}
+
+
+def rate_identity_max(npz) -> float:
+    """Largest relative rate-identity residual over all stored snapshots (floored snapshots excluded)."""
+    r = _load(npz)["rate_residual"]
+    return float(np.nanmax(r)) if np.any(np.isfinite(r)) else float("nan")
+
+
+def fine_production_min(npz) -> float:
+    """Smallest mechanism production on cells above the floor, relative to the production per cell."""
+    f = _load(npz)["fine_min_production"]
+    return float(np.nanmin(f)) if np.any(np.isfinite(f)) else float("nan")
+
+
+def closure_ok(npz) -> bool:
+    """Integrated closure with cumulative-flux states, <= 10 x rtol, every half-cycle."""
+    return float(load_meta(npz)["closure_max"]) <= CLOSURE_TOL
+
+
+def production_ready(npz) -> tuple[bool, str]:
+    """Not a smoke output: no cycle override, the design's cycle count, 200 snapshots per cycle."""
+    d = _load(npz)
+    meta = load_meta(d)
+    if meta.get("cycles_override") is not None:
+        return False, f"cycles override {meta['cycles_override']} (smoke output)"
+    n_cyc = d["t"].shape[0]
+    if meta["point"].get("n_cycles") != n_cyc:
+        return False, f"{n_cyc} cycles stored, the design point has {meta['point'].get('n_cycles')}"
+    if d["t"].shape[1] != 200:
+        return False, f"{d['t'].shape[1]} snapshots per cycle, not 200"
+    return True, ""
 
 
 def floor_share(npz) -> float:

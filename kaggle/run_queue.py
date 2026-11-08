@@ -27,6 +27,13 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
+sys.path.insert(0, ROOT)
+from p3b.design import chunk_indices  # noqa: E402
+
+
+def chunk_indices_list(items: list, n: int) -> list[list]:
+    """Split a list into n contiguous parts whose sizes differ by at most one."""
+    return [[items[i] for i in part] for part in chunk_indices(len(items), n)]
 BUILD = os.path.join(HERE, "build")
 REG = os.path.join(HERE, "registry.txt")
 OWNER = "abdulhamidbatayhi"
@@ -106,19 +113,26 @@ def write_kernels(spec: dict) -> list[dict]:
             kernels.append({"name": job["name"], "dir": d, "system": "timing", "set": job["name"],
                             "expect": job["expect"]})
             continue
-        for chunk in range(job["of"]):
+        with open(os.path.join(ROOT, "data", "design", f"{job['system']}_{job['set']}.json")) as f:
+            n_traj = len(json.load(f)["points"])
+        if job["of"] > n_traj:
+            raise ValueError(f"{job['system']}_{job['set']}: {job['of']} chunks for {n_traj} trajectories")
+        for chunk, members in enumerate(chunk_indices(n_traj, job["of"])):
             name = kernel_name(job, chunk)
             d = os.path.join(BUILD, name)
             os.makedirs(d, exist_ok=True)
-            sub = job.get("cores", 4)
-            args = [["--system", job["system"], "--set", job["set"], "--chunk", str(chunk * sub + s),
-                     "--of", str(job["of"] * sub), "--nz", str(spec["nz"])] for s in range(sub)]
+            # sub-chunks of this chunk, one per core, never more than its trajectories; each sub-chunk
+            # is addressed as a chunk of the whole set (generate_chunk's --chunk/--of) by index ranges
+            sub = min(job.get("cores", 4), len(members))
+            args = [["--system", job["system"], "--set", job["set"], "--indices",
+                     ",".join(str(i) for i in part), "--report", f"{chunk}_{s}", "--nz", str(spec["nz"])]
+                    for s, part in enumerate(chunk_indices_list(members, sub))]
             with open(os.path.join(d, "run.py"), "w") as f:
                 f.write(RUN_PY.format(args=args))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
                 json.dump(_metadata(name, spec["kit_slug"]), f, indent=1)
             kernels.append({"name": name, "dir": d, "system": job["system"], "set": job["set"], "chunk": chunk,
-                            "expected_reports": job.get("cores", 4)})
+                            "expected_reports": len(args)})
     return kernels
 
 

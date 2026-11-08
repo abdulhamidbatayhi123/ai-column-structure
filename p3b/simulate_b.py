@@ -10,7 +10,8 @@ As in system A (p3b.simulate_a), the state (u_f, u_s) per cell is augmented with
 wall heat of each cell and two port integrals, so the Jacobian stays banded and the integrated
 closure is solver-limited. The N_PORTS reported ports, per unit cross-section, are:
     0 energy in, 1 energy out (advective, J m^-2), 2 heat to the wall (J m^-2), all cumulative
-    over the trajectory; 3 flow direction at the snapshot (+1 charge, -1 discharge).
+    over the trajectory; 3 flow direction at the snapshot (+1 charge, -1 discharge); 4 entropy in,
+    5 entropy out with the stream (J K^-1 m^-2, cumulative; exact, for the entropy gate).
 """
 from __future__ import annotations
 
@@ -34,8 +35,8 @@ D_P_B = 0.05
 def make_store(N_z: int) -> ThermalStore:
     """The reference thermocline store: flow-dependent fluid dispersion, hybrid scheme."""
     return ThermalStore(N_z, d_p=D_P_B, compensate=True)
-N_PORTS = 4
-PORT_NAMES = ("energy_in", "energy_out", "wall_heat", "direction")
+N_PORTS = 6
+PORT_NAMES = ("energy_in", "energy_out", "wall_heat", "direction", "entropy_in", "entropy_out")
 
 
 def cycle_schedule(point: dict, st: ThermalStore) -> list[tuple[str, float, tuple[float, float, float]]]:
@@ -48,13 +49,15 @@ def cycle_schedule(point: dict, st: ThermalStore) -> list[tuple[str, float, tupl
 
 
 def augmented_sparsity(N: int) -> csr_matrix:
-    """Jacobian pattern of [u_f, u_s, wall heat per cell (N), energy in, energy out]."""
-    S = lil_matrix((3 * N + 2, 3 * N + 2))
+    """Jacobian pattern of [u_f, u_s, wall heat per cell (N), energy in, energy out, entropy in, entropy out]."""
+    S = lil_matrix((3 * N + 4, 3 * N + 4))
     band = diags([1.0, 1.0, 1.0], [-1, 0, 1], shape=(N, N))
     S[:2 * N, :2 * N] = bmat([[band, band], [band, band]])
     S[2 * N:3 * N, :N] = diags([1.0], [0], shape=(N, N))     # wall loss from the fluid of each cell
     S[3 * N + 1, 0] = 1.0                                     # energy out: T_f at z = 0 (discharge)
     S[3 * N + 1, N - 1] = 1.0                                 # or at z = L (charge)
+    S[3 * N + 3, 0] = 1.0                                     # entropy out, likewise
+    S[3 * N + 3, N - 1] = 1.0
     return csr_matrix(S)
 
 
@@ -70,12 +73,13 @@ class _Augmented:
         v, T_in, _ = inputs
         f = st.fluxes(y[:self.n2], inputs)
         T_out = f["Tf"][-1] if v >= 0 else f["Tf"][0]
-        ports = [abs(v) * st.rhoc * (T_in - T0), abs(v) * st.rhoc * (T_out - T0)]
+        ports = [abs(v) * st.rhoc * (T_in - T0), abs(v) * st.rhoc * (T_out - T0),
+                 abs(v) * st.stream_entropy(T_in), abs(v) * st.stream_entropy(T_out)]
         return np.concatenate([st.rhs(t, y[:self.n2], inputs), f["Wwall"] * st.dz, ports])
 
     def ports(self, Y, direction: float) -> np.ndarray:
         return np.column_stack([Y[:, self.P], Y[:, self.P + 1], Y[:, self.n2:self.P].sum(axis=1),
-                                np.full(Y.shape[0], direction)])
+                                np.full(Y.shape[0], direction), Y[:, self.P + 2], Y[:, self.P + 3]])
 
     def energy(self, y) -> float:
         return float(np.sum(y[:self.n2]) * self.st.dz)
@@ -105,7 +109,7 @@ def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
         st = make_store(N_z)
         aug = _Augmented(st)
         schedule = cycle_schedule(point, st)
-        y = np.concatenate([st.initial_state(float(point["T_cold"])), np.zeros(N_z + 2)])
+        y = np.concatenate([st.initial_state(float(point["T_cold"])), np.zeros(N_z + 4)])
         t_abs = 0.0
         half = n_snap // 2
         for k in range(int(point["n_cycles"])):

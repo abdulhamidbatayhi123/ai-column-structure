@@ -488,9 +488,18 @@ What the reference stores per snapshot, and why:
   production signs, `dS̄/dt − Φ_S`, the violation metric) are therefore evaluated on cells with
   `c > 10⁻⁸ c_in` and `q > 10⁻⁸ q_max`. The cells below the floor are counted and reported per
   trajectory, and their share is a reference-gate quantity.
-- **τ_ref** is the reference's own numerical noise floor for entropy production: 10 × the
-  99.9th percentile of |dS/dt − Φ_S − Σσ| over the pilot's float64 solver output. It is a
-  property of the data. Arm S's tolerance τ_S is a separate quantity.
+- **τ_ref** is the reference's own numerical noise floor for entropy production, measured on
+  the gate's own statistic (revised 2026-11-08 after the final code review). The earlier
+  definition, 10 × the 99.9th percentile of |dS/dt − Φ_S − Σσ|, measures the round-off of an
+  algebraic identity (about 10⁻¹⁵). The gate statistic is a difference of stored states and
+  carries the integrator's error (about rtol), so that τ_ref would fail exact data. Now the
+  statistic `(ΔS − Φ_S)/Δt` is computed per snapshot interval with the fine entropy, whose
+  production is non-negative by proof. Its negative part is pure numerical error, and
+  τ_ref = 10 × its 99.9th percentile over the pilot, but at least 10 × rtol × the median
+  entropy turnover rate. Φ_S uses cumulative entropy ports carried as ODE states, so output
+  quadrature never enters (a trapezoid on 200 snapshots gave −0.017 on an exact solve).
+  `p3b/gates.py::entropy_gate`. It is a property of the data. Arm S's tolerance τ_S is a
+  separate quantity.
 - **Reference constants are fixed at e_0 = 0 and s_0 = 0** in all code. Their values cancel
   in exact arithmetic, but a large e_0 makes the cell entropy's Hessian ill-conditioned, and
   any coarse-port residual picks up e_0 and s_0 multiples.

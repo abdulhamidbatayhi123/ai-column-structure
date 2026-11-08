@@ -76,4 +76,4 @@ def test_script_prints_one_line_per_gate(npz_a):
     out = subprocess.run([sys.executable, "scripts/check_reference_gate.py", str(npz_a.parent)],
                          capture_output=True, text=True, check=True).stdout
     lines = [ln for ln in out.splitlines() if ln.startswith(("PASS", "FAIL"))]
-    assert len(lines) == 3 and all(ln.startswith("PASS") for ln in lines), out
+    assert len(lines) == 7 and all(ln.startswith("PASS") for ln in lines), out

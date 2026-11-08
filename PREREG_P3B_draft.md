@@ -303,7 +303,12 @@ hyperparameters of Section 4.
     reported;
   - grid convergence;
   - the cyclic-steady-state cycle per trajectory;
-  - `min_t (dS̄/dt − Φ_S) ≥ −τ_ref` on every stored trajectory.
+  - `min_t (dS̄/dt − Φ_S) ≥ −τ_ref` on every stored trajectory, per snapshot interval, with Φ_S
+    from exact cumulative entropy ports (stored as ODE states, so no output quadrature enters).
+    τ_ref is the reference's own noise floor for this statistic: the same statistic computed
+    with the fine entropy (whose production is non-negative by proof) is negative only through
+    numerical error, and τ_ref is 10 × the 99.9th percentile of that negative part over the
+    pilot, but at least 10 × rtol × the median entropy turnover rate.
 
   Coarse violations are reported, and S is declared over-constrained there.
 

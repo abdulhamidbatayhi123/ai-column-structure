@@ -21,24 +21,14 @@ import sys
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from p3b.design import chunk_indices  # noqa: E402,F401  (re-exported)
+
 ROOT = Path(__file__).resolve().parents[1]
 PAPER1_FILES = ("isotherm.py", "solver_fd.py", "gen_parametric_dataset.py")
 PAPER1_REF = "v2.0.1"
 PAPER1_RAW = "https://raw.githubusercontent.com/abdulhamidbatayhi123/ai-mof-cof-dynamics/{ref}/{name}"
 KIT_SLUG = "abdulhamidbatayhi/p3b-reference-kit"
-
-
-def chunk_indices(n_traj: int, n_chunks: int) -> list[list[int]]:
-    """Contiguous chunks of range(n_traj) whose sizes differ by at most one."""
-    if not 0 < n_chunks <= n_traj:
-        raise ValueError(f"need 0 < n_chunks <= n_traj, got {n_chunks}, {n_traj}")
-    base, extra = divmod(n_traj, n_chunks)
-    out, start = [], 0
-    for k in range(n_chunks):
-        size = base + (k < extra)
-        out.append(list(range(start, start + size)))
-        start += size
-    return out
 
 
 def _copy_tree(src: Path, dst: Path, pattern: str) -> None:

@@ -64,7 +64,7 @@ def test_wall_heat_per_cell_sums_to_wall_port(run):
 
 
 def test_jacobian_pattern_is_banded():
-    col_states = 4 * N_Z + 4
+    col_states = 4 * N_Z + 6
     S = sa.augmented_sparsity(N_Z)
     assert S.shape == (col_states, col_states)
     assert S.getnnz(axis=1).max() <= 12   # no dense row: colored finite differences stay cheap

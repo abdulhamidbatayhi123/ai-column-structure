@@ -59,6 +59,19 @@ def make_set(system: str, set_name: str, seed: int) -> list[dict]:
             for i, row in enumerate(x)]
 
 
+def chunk_indices(n_traj: int, n_chunks: int) -> list[list[int]]:
+    """Contiguous chunks of range(n_traj) whose sizes differ by at most one."""
+    if not 0 < n_chunks <= n_traj:
+        raise ValueError(f"need 0 < n_chunks <= n_traj, got {n_chunks}, {n_traj}")
+    base, extra = divmod(n_traj, n_chunks)
+    out, start = [], 0
+    for k in range(n_chunks):
+        size = base + (k < extra)
+        out.append(list(range(start, start + size)))
+        start += size
+    return out
+
+
 def train_subset(pool: list[dict], k: int) -> list[dict]:
     """The first k points of the train pool (nested subsets)."""
     if not 0 < k <= len(pool):

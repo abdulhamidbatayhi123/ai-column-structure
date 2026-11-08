@@ -83,3 +83,14 @@ approval on 2026-11-05. Review codes:
   everywhere in B before). Numbers: `verify/clip_shares.json`. δ = 0.5 and the 5 cm rock are
   provisional until verified in the full texts (queued). This changes the reference physics,
   so it is the author's to confirm at the freeze.
+- **τ_ref measured on the gate's own statistic; exact entropy ports** (2026-11-08, final code
+  review C2). The previous definition took the round-off of the algebraic entropy identity
+  (about 10⁻¹⁵), but the gate compares differences of stored states, which carry the solver's
+  error. The outlet entropy was also integrated by the trapezoid rule, which gave −0.017 on an
+  exact solve at the fast corner of the box. Entropy in and out are now cumulative ODE states,
+  and τ_ref is set from the same statistic evaluated with the fine entropy (whose production is
+  non-negative by proof). On that counter-example, at 256 cells, the gate passes at 16 and 256
+  coarse cells with a minimum rate of 0.238 W K⁻¹ m⁻² against τ_ref = 1.2 × 10⁻³. The rate
+  identities hold to 3 × 10⁻¹⁵ (`verify/results_entropy_gate_counterexample.json`), below the
+  pre-registered 10⁻¹², and are now computed at every
+  stored snapshot.

@@ -207,7 +207,8 @@ class Column:
         s_here = self.stream_entropy(c, T)
         sig_adv = (v / dz) * (wn * (gn_up - c) + wu * (gu_up - f["g_u"][1:]) - (s_up - s_here))
         sig_wall = f["W"] * (1.0 / T_w - 1.0 / T)
-        return dict(dN=dN, portN=portN, dE=dE, portE=portE, dS=dS, portS=portS,
+        scale_S = np.sum(np.abs(wn * dn) + np.abs(wa * da) + np.abs(wu * du)) * dz   # entropy turnover
+        return dict(dN=dN, portN=portN, dE=dE, portE=portE, dS=dS, portS=portS, scale_S=scale_S,
                     sig_ldf=sig_ldf, sig_face=sig_face, sig_adv=sig_adv, sig_wall=sig_wall,
                     sigma_total=(np.sum(sig_ldf) + np.sum(sig_adv) + np.sum(sig_wall)) * dz
                     + np.sum(sig_face) * dz)

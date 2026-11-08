@@ -8,7 +8,8 @@ starts pre-wetted: c_0 = 1e-4 c_in in equilibrium at T_ads.
 The column state (n, a, u) per cell is augmented with the cumulative wall heat of each cell and
 four port integrals per unit cross-section, integrated in the same BDF solve so the integrated
 closure is limited only by the solver tolerance. The N_PORTS reported ports are:
-    0 water in, 1 water out (mol m^-2), 2 energy in, 3 energy out by convection, 4 heat to the wall (J m^-2).
+    0 water in, 1 water out (mol m^-2), 2 energy in, 3 energy out by convection, 4 heat to the wall (J m^-2),
+    5 entropy in, 6 entropy out with the streams (J K^-1 m^-2; exact, for the entropy gate).
 They are reset to zero at the start of each trajectory and are cumulative over it.
 
 Each half-cycle stores 100 snapshots uniformly on [start, end), so a cycle has 200 snapshots and
@@ -31,8 +32,8 @@ C_W = 33.6           # J mol^-1 K^-1, molar heat capacity of water in both phase
 RTOL, ATOL = 1e-6, 1e-10
 PREWET = 1e-4
 COMPENSATE = True    # the reference uses the hybrid scheme (p3b.column.Column)
-N_PORTS = 5
-PORT_NAMES = ("water_in", "water_out", "energy_in", "energy_out", "wall_heat")
+N_PORTS = 7
+PORT_NAMES = ("water_in", "water_out", "energy_in", "energy_out", "wall_heat", "entropy_in", "entropy_out")
 
 
 @dataclass
@@ -74,13 +75,13 @@ def prewet_state(col: Column, c_in: float, T: float) -> np.ndarray:
 
 
 def augmented_sparsity(N: int) -> csr_matrix:
-    """Jacobian pattern of the augmented state [n, a, u, wall heat per cell (N), 4 port integrals].
+    """Jacobian pattern of the augmented state [n, a, u, wall heat per cell (N), 6 port integrals].
 
     The wall heat is integrated per cell (each row depends on its own cell only), not as one
     total, so no row is dense and colored finite differences stay cheap.
     """
     n3 = 3 * N
-    S = lil_matrix((4 * N + 4, 4 * N + 4))
+    S = lil_matrix((4 * N + 6, 4 * N + 6))
     band = diags([1.0, 1.0, 1.0], [-1, 0, 1], shape=(N, N))
     S[:n3, :n3] = bmat([[band, band, band]] * 3)
     eye = diags([1.0], [0], shape=(N, N))
@@ -89,6 +90,7 @@ def augmented_sparsity(N: int) -> csr_matrix:
     S[P + 1, N - 1] = 1.0                               # water out: c_N = n_N / eps
     for j in (N - 1, 2 * N - 1, 3 * N - 1):
         S[P + 3, j] = 1.0                               # energy out: c_N, T_N
+        S[P + 5, j] = 1.0                               # entropy out: c_N, T_N
     return csr_matrix(S)
 
 
@@ -107,12 +109,14 @@ class _Augmented:
         f = col.fluxes(y[:self.n3], inputs)
         T, c = f["T"], f["c"]
         v = col.p.v
-        ports = [v * c_in, v * c[-1], v * col.stream_energy(c_in, T_in), v * col.stream_energy(c[-1], T[-1])]
+        c_out = max(c[-1], 1e-30)                # an undershoot must not make the log undefined
+        ports = [v * c_in, v * c[-1], v * col.stream_energy(c_in, T_in), v * col.stream_energy(c[-1], T[-1]),
+                 v * col.stream_entropy(c_in, T_in), v * col.stream_entropy(c_out, T[-1])]
         return np.concatenate([col.rhs(t, y[:self.n3], inputs), f["W"] * col.dz, ports])
 
     def ports(self, Y) -> np.ndarray:
         """(n, N_PORTS) cumulative ports from augmented states Y (n, 4N+4); wall = sum of cells."""
-        return np.column_stack([Y[:, self.P:self.P + 4], Y[:, self.n3:self.P].sum(axis=1)])
+        return np.column_stack([Y[:, self.P:self.P + 4], Y[:, self.n3:self.P].sum(axis=1), Y[:, self.P + 4:self.P + 6]])
 
     def totals(self, y) -> tuple[float, float]:
         n, a, u = self.col.split(y[:self.n3])
@@ -147,7 +151,7 @@ def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 20
         col, schedule = setup_a(point, material, N_z)
         c_in = schedule[0][2][0]
         aug = _Augmented(col)
-        y = np.concatenate([prewet_state(col, c_in, float(point["T_ads"])), np.zeros(N_z + 4)])
+        y = np.concatenate([prewet_state(col, c_in, float(point["T_ads"])), np.zeros(N_z + 6)])
         t_abs = 0.0
         half = n_snap // 2
         for k in range(int(point["n_cycles"])):

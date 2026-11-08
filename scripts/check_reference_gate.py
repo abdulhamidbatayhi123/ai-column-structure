@@ -2,7 +2,8 @@
 
     python scripts/check_reference_gate.py data/reference/A_primary/train
 
-Prints one PASS/FAIL line per gate and file (closure, entropy margin, floor share), an INFO line
+Prints one PASS/FAIL line per gate and file (production-ready, integrated and stored closure, rate
+identities, fine production, the entropy gate, floor share), an INFO line
 with the cyclic-steady-state cycle, and exits non-zero if any gate fails.
 """
 import glob
@@ -22,14 +23,21 @@ def main(directory: str) -> int:
     for f in files:
         name = os.path.basename(f)
         meta = gates.load_meta(f)
+        ready, why = gates.production_ready(f)
+        eg = gates.entropy_gate(f, gates.model_from_meta(meta))
         checks = [
-            ("closure", gates.stored_closure(f), lambda x: x <= gates.CLOSURE_TOL, f"<= {gates.CLOSURE_TOL:g}"),
-            ("entropy_margin", gates.coarse_entropy_margin(f, gates.model_from_meta(meta)), lambda x: x > 0, "> 0"),
+            ("production", 0.0 if ready else 1.0, lambda x: x == 0.0, why or "not a smoke output"),
+            ("closure_integ", float(meta["closure_max"]), lambda x: x <= gates.CLOSURE_TOL, f"<= {gates.CLOSURE_TOL:g}"),
+            ("closure_stored", gates.stored_closure(f), lambda x: x <= gates.CLOSURE_TOL, f"<= {gates.CLOSURE_TOL:g}"),
+            ("rate_identity", gates.rate_identity_max(f), lambda x: x <= 1e-12, "<= 1e-12"),
+            ("fine_production", gates.fine_production_min(f), lambda x: x >= -1e-12, ">= -1e-12"),
+            ("entropy_gate", eg["min_rate"], lambda x: eg["passed"], f">= -tau_ref = {-eg['tau_ref']:.3e}, {eg['tau_source']}"),
             ("floor_share", gates.floor_share(f), lambda x: x < gates.FLOOR_SHARE_TOL, f"< {gates.FLOOR_SHARE_TOL:g}"),
         ]
         for gate, value, ok, rule in checks:
-            failed += not ok(value)
-            print(f"{'PASS' if ok(value) else 'FAIL'} {gate:15s} {name} {value:.3e} ({rule})")
+            good = bool(value == value and ok(value))      # a NaN fails
+            failed += not good
+            print(f"{'PASS' if good else 'FAIL'} {gate:15s} {name} {value:.3e} ({rule})")
         print(f"INFO css_cycle       {name} {gates.css_cycle(f)}")
     return 1 if failed else 0
 
