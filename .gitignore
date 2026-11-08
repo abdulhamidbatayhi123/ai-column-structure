@@ -5,3 +5,6 @@ __pycache__/
 
 # Third-party PDFs obtained through library access: read locally, never published.
 private/
+
+# Plan-execution scratch (ledger, briefs)
+.superpowers/

@@ -46,7 +46,9 @@ jobs:
           cache-dependency-path: ai-column-structure/requirements.txt
 
       - name: Install pinned dependencies
-        run: pip install -r ai-column-structure/requirements.txt cffconvert==2.0.0
+        run: |
+          pip install -r ai-column-structure/requirements.txt cffconvert==2.0.0
+          pip install -e ai-column-structure --no-deps
 
       - name: Number bindings against the committed results
         working-directory: ai-column-structure
