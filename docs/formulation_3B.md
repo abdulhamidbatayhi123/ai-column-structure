@@ -54,6 +54,10 @@ Paper 1 means the repository `ai-mof-cof-dynamics` (manuscript Section 2, `solve
    potential exists without extra internal variables), local (cell-wise) second-law
    guarantees in a latent model, and any claim that the structure helps front representation
    (it does not touch it; Paper 1 L5 and arXiv:2210.01074).
+7. **A second system with different physics fits the same framework.** A two-temperature
+   packed-bed thermocline store with flow reversal has fixed E and S, ports and L = 0, and
+   every production term is provably non-negative (Section 7, verified). It is the study's
+   generality test.
 
 ## 1. The reference equations (Paper 1, Section 2)
 
@@ -133,6 +137,13 @@ of heat capacity C.
 
 ### 3.2 The adsorbed phase from the isotherm
 
+Below, the algebra is written for Paper 1's dual-site isotherm, the two-term case. The 3B
+materials use a three-term isotherm whose terms share one heat of adsorption
+(`docs/materials_3B.md`). Every result here holds for any such multi-term isotherm with x as
+the single variable: replace Π by `Σ_k (q_k/n_k) ln(1 + (x/a_k)^{n_k})` and b_H0 by the
+isotherm's prefactor b0. `verify/isotherms.py` implements the general case, and the tests
+check the derivatives for both materials.
+
 Equilibrium requires the adsorbed-phase chemical potential to equal the vapour's at the
 equilibrium concentration: `μ_a(q,T) = μ_v(c*(q,T), T)`, with `c*` the inverse isotherm. For
 the dual-site isotherm, `c* = X(q)/b_H(T)` with `X = Q⁻¹`. So
@@ -199,7 +210,7 @@ ranges (q_max 8 to 30 mol kg⁻¹, ΔH −60 to −38 kJ mol⁻¹, feed 288 to 3
 | difference | size | treatment in 3B |
 |---|---|---|
 | water heat capacity omitted (`c_w = 0`) | adsorbed water at saturation holds 0.27 to 1.01 × the solid's heat capacity at c_w = 33.6 J mol⁻¹ K⁻¹, and 0.60 to 2.25 × at a liquid-like 75 | **included**: primary reference uses c_w = 33.6 (keeps Paper 1's isotherm exact); c_w = 0 is the verification limit |
-| flow work of the vapour (ideal gas versus dilute solute); where it lands depends on the parameter convention: with ΔH = −Q_st (Paper 1's and 3B's choice) the heat is right and the isotherm's temperature shift is RT/\|ΔH\| too strong | RT/\|ΔH\| = 4.1 to 8.4 % of the heat released over 293 to 383 K (the temperatures 3B's cycles visit) and Paper 1's ΔH range; 4.7 to 6.1 % for the MOF-303-like material | not included; the dilute-solute model is kept for continuity with Paper 1 and stated as a limitation |
+| flow work of the vapour (ideal gas versus dilute solute); where it lands depends on the parameter convention: 3B fixes ΔH from the measured temperature shift of the step (docs/materials_3B.md), so the isotherm moves with temperature as measured and the heat released is RT below the measured isosteric heat | RT/\|ΔH\| = 4.1 to 8.4 % of the heat released over 293 to 383 K (the temperatures 3B's cycles visit) and Paper 1's ΔH range; 4.7 to 6.1 % for the MOF-303-like material | not included; the dilute-solute model is kept for continuity with Paper 1 and stated as a limitation |
 | enthalpy carried by vapour in the gas stream | vapour/carrier stream heat capacity 0.9 to 4.3 % (RH 0.2 to 0.9 at 303 K) | included automatically once c_w > 0 |
 | liquid-like heat capacity of the adsorbed phase (c_a ≠ c_v) | would make ΔH temperature-dependent (Kirchhoff), about 4 % over a 50 K swing | not in the primary reference, because it changes the isotherm's T-dependence; it belongs to 3A's potential (INTERFACE_3A.md) |
 
@@ -389,9 +400,16 @@ once per seed and per training size, then frozen) and the latent dynamics.
 
 The full-order system (G) is already known exactly. The reason to learn anything is cost:
 the verified reference needs N_z = 2048 cells (Paper 1 verified 2000) and Paper 1 measured
-about 17 worker-seconds per breakthrough at 2000, and a 50-cycle rollout costs minutes to hours. A latent model of dimension
-d ≈ 16 to 32 can roll out in milliseconds. 3B asks what the structure buys *for such a
-model*, not whether physics can be learned from scratch.
+about 17 worker-seconds per breakthrough at 2000. With the steep real isotherms the cost
+rises further (`verify/timing_materials.json`). A latent model's cost per simulated cycle is
+not yet measured. The structured arms evaluate the decoder and three of its gradients at
+every RK4 stage, and the compute plan budgets about 1 s per trajectory-cycle for them,
+batched. So a latent model is likely 10 to 30 times cheaper than the reference, and possibly
+no cheaper than a coarse consistent solver (arm C). The pilot measures both on the same
+footing (pre-registration, Section 4). 3B asks what the structure buys *for such a model*,
+not whether physics can be learned from scratch. The study keeps its value if arm C wins on
+cost, because its central comparison (structure against information against projection)
+does not depend on cost.
 
 ### 5.2 Decoder, and what exactly is stored
 
@@ -590,7 +608,57 @@ Still to do at the study's resolution, before any data are used:
 5. **Coarse-graining at 2048 → 128 cells** on the pilot trajectories: the entropy
    inequality, and the wall-heat floor that sets the violation threshold.
 
-## 7. Open points this document does not settle
+## 7. System B: a two-temperature packed-bed thermocline store
+
+The study's second system (pre-registration, Section 2). It tests whether a result about
+structure carries to a physically different open dissipative system, not only to a second
+isotherm. A liquid, water, flows through a packed bed of rock. The bed is charged with hot
+fluid entering at z = 0 and discharged with cold fluid entering at z = L, so the flow
+reverses every half-cycle. The fluid and the solid have their own temperatures and exchange
+heat locally, which is Schumann's two-phase model (Schumann, J. Franklin Inst. 208, 405, 1929,
+doi:10.1016/S0016-0032(29)91186-8). There is no sorption and no mass transfer.
+
+**State and potentials.** Per cell, per unit bed volume: the fluid energy
+`u_f = C_f (T_f − T_0)` with `C_f = ε ρ_f c_f`, and the solid energy `u_s = C_s (T_s − T_0)`
+with `C_s = (1−ε) ρ_s c_s`. The energy is `E = Σ (u_f + u_s) Δz`, and the entropy is
+`S = Σ [C_f ln(T_f/T_0) + C_s ln(T_s/T_0)] Δz`, strictly concave. The liquid is incompressible
+with a constant heat capacity, so the carrier model of Section 3.1 is exact here, not an
+approximation. That is one reason a liquid was chosen over air.
+
+**Mechanisms**, each a block of M or a port, as in Section 4:
+- **fluid-solid exchange in each cell**, `W = h_v (T_f − T_s)`. This is the Onsager flux
+  `L (1/T_s − 1/T_f)` with `L = h_v T_f T_s ≥ 0`, a 2 × 2 positive semi-definite block that
+  conserves `u_f + u_s`;
+- **axial conduction in the fluid** (effective, including dispersion) **and in the solid**:
+  two separate face blocks, as in Section 4.2;
+- **convection** of the fluid energy, first-order upwind in the current flow direction: tanks
+  in series, with Bregman production of the concave stream entropy `ρ_f c_f ln(T/T_0)`. The
+  feed port moves to the other end when the flow reverses;
+- **wall loss** from the fluid to an ambient bath: a port, as in Section 4.2.
+
+There is no conserved quantity besides energy, so the latent structure of Section 5.3 keeps
+one equality (Ê) and the entropy inequality. Flow reversal makes the upwind direction an
+input, which a latent model must learn to follow. It does not change any proof, because the
+tanks-in-series argument holds in either direction.
+
+**Verification** (`verify/thermal_store.py`, `tests/test_thermal_store.py`, 2026-11-08):
+- the energy-rate and entropy identities close to round-off in both flow directions;
+- every production term (exchange, both conductions, convection, wall film) is non-negative
+  on random non-equilibrium states;
+- the integrated energy closure over a charge and a discharge step is limited only by output
+  quadrature.
+
+The study-resolution checks (grid convergence, cyclic steady state) follow Section 6 and run
+in the pilot.
+
+**What System B adds, and what it does not.** It changes the physics (no sorption, two
+temperatures, flow reversal), the dominant dissipation (local exchange instead of uptake) and
+the decoder's task (a moving thermocline instead of sorption fronts). It keeps the framework
+(fixed E and S, ports, L = 0). A result that holds on both systems is a statement about
+learned reduced models of open, advection-dominated, dissipative transport. A result on one
+system is not.
+
+## 8. Open points this document does not settle
 
 - **A physically structured transport term (variant, not in the primary design).** The
   entropy-stable split of upwind convection into a skew, entropy-conservative part and a
