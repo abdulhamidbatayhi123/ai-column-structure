@@ -170,8 +170,10 @@ tolerances); explicit Jacobian sparsity.
   - `BOXES: dict[str, dict[str, tuple[float, float]]]`, with keys "A", "A_OOD" and "B";
   - `SET_SIZES: dict[tuple[str, str], tuple[int, int]]`, mapping (system, set) to
     (trajectories, cycles), with systems "A_primary", "A_replication" and "B", and sets
-    "pilot_train", "pilot_val", "train", "validation", "long_validation", "long_test" and
-    "ood";
+    "pilot_train", "pilot_val", "train", "validation", "long_validation", "long_test", "ood"
+    and "scenarios" (A_primary only); A_replication and B use "pilot", "train",
+    "validation", "long_validation" and "long_test". "scenarios" is 8 operating points
+    (RH_ads, T_ads, v) for H6; their cycle count is set later by the cyclic-steady-state rule;
   - `make_set(system: str, set_name: str, seed: int) -> list[dict]`. Each dict holds the
     sampled quantities plus "index" and "n_cycles";
   - `train_subset(pool: list[dict], k: int) -> list[dict]` (first k).
@@ -301,6 +303,9 @@ tolerances); explicit Jacobian sparsity.
     (dS̄/dt − Φ_S)/scale, by finite differences of the stored conserved blocks at the snapshot
     spacing;
   - `floor_share(npz) -> float`;
+  - `css_cycle(npz) -> int | None`: the first cycle k ≥ 2 with |W_k − W_(k−1)| / |W_k| < 1e-3,
+    where W is the net release from `ports_cum`. The threshold 1e-3 is added to the
+    pre-registration's Section 5.3 in this task, with a line in the rationale file;
   - the script prints one PASS/FAIL line per gate for every file in a directory.
 
 - [ ] **Step 1: Write the failing tests** on a trajectory generated in-test (system A,
@@ -308,6 +313,8 @@ tolerances); explicit Jacobian sparsity.
   - `test_stored_closure` ≤ 1e-5.
   - `test_entropy_margin_positive` > 0.
   - `test_floor_share` < 0.01.
+  - `test_css_cycle`: on a synthetic W sequence [10, 6, 5.5, 5.505, 5.5051], `css_cycle`
+    returns 4.
 - [ ] **Step 2: Run.** Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run.** Expected: PASS.
@@ -376,6 +383,9 @@ tolerances); explicit Jacobian sparsity.
   `.github/workflows/verify.yml` (the new tests run in CI; the timing harness stays out of CI)
 - Create: `results/timing_reference.json` (from the run)
 
+- [ ] **Step 0: Run the Paper 1 limit at N_z = 2048** (`verify/run_checks.py` V1 with
+  `N1 = 2048`, on Kaggle CPU). Expected: the same bounds as V1 (below 2e-9 in c, 1e-8 in q,
+  2e-7 K in T). Record the values in `verify/results_v1_2048.json`.
 - [ ] **Step 1: Run the timing harness on Kaggle CPU.** System A for both materials at
   512, 1024 and 2048 cells, 2 cycles each; system B at 512, 1024 and 2048. Download the
   JSON with `queue.py`.
