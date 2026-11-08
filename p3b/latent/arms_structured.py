@@ -18,7 +18,7 @@ import torch
 from torch import nn
 
 from p3b.latent.autoencoder import _mlp
-from p3b.latent.integrate import RANK_TOL
+from p3b.latent.integrate import RANK_TOL, balance_project, rk4_step, stage_quadrature
 
 
 def structure_terms(B, dS, G, A, targets, phi, kappa: float, rank_tol: float = RANK_TOL,
@@ -77,3 +77,75 @@ class SDynamics(nn.Module):
         A = self.A_net(z).reshape(-1, self.d, self.d) if self.metriplectic else None
         return structure_terms(B, t["dS"], G, A, targets, t["Phi_S"], self.kappa, self.rank_tol,
                                self.metriplectic, self.port_projection)
+
+
+class SLDynamics(nn.Module):
+    """Arm S-L: the metriplectic term uses learned potentials E_theta, S_theta (d -> 64 -> 64 -> 1),
+    degenerate with respect to grad E_theta and grad N^ (system B: grad E_theta only); the port
+    term is projected only on the physical water balance (system B: not at all), because a learned
+    energy has no physical port flux. The tLaSDI/GFINN-style control for fixed physical potentials."""
+
+    def __init__(self, d: int, k: int, lf, rank_tol: float = RANK_TOL, width: int = 128, pot_width: int = 64):
+        super().__init__()
+        self.d, self.lf, self.rank_tol = d, lf, float(rank_tol)
+        self.G = _mlp([d + k, width, width, width, d])
+        self.A_net = _mlp([d, width, d * d])
+        self.E_net = _mlp([d, pot_width, pot_width, 1])
+        self.S_net = _mlp([d, pot_width, pot_width, 1])
+
+    def potential_grads(self, z):
+        """grad E_theta, grad S_theta; kept in the graph when gradients are enabled (training)."""
+        keep = torch.is_grad_enabled()
+        with torch.enable_grad():
+            zz = z if z.requires_grad else z.detach().requires_grad_(True)
+            dE = torch.autograd.grad(self.E_net(zz).sum(), zz, create_graph=keep)[0]
+            dS = torch.autograd.grad(self.S_net(zz).sum(), zz, create_graph=keep)[0]
+        return (dE, dS) if keep else (dE.detach(), dS.detach())
+
+    def forward(self, z, feat, raw):
+        dE, dS = self.potential_grads(z)
+        A_sys = self.lf.system == "A"
+        t = self.lf.evaluate(z, raw, grads=A_sys, create_graph=torch.is_grad_enabled())
+        BL = torch.stack([dE, t["dN"]], -1) if A_sys else dE.unsqueeze(-1)
+        A = self.A_net(z).reshape(-1, self.d, self.d)
+        M, info = structure_terms(BL, dS, torch.zeros_like(z), A, None, None, kappa=0.0,
+                                  rank_tol=self.rank_tol, port_projection=False)
+        G = self.G(torch.cat([z, feat], dim=-1))
+        if A_sys:
+            dN = t["dN"].unsqueeze(-2)                                # (n, 1, d)
+            r = t["P_N"] - (t["dN"] * G).sum(-1)
+            G = G + (torch.linalg.pinv(dN, rtol=self.rank_tol) @ r[:, None, None]).squeeze(-1)
+        info["metriplectic"] = M
+        return M + G, info
+
+
+def projected_rk4_step(f, z, raw, h, lf, rank_tol: float = RANK_TOL, iters: int = 20, create_graph: bool = False):
+    """RK4, then the Gauss-Newton projection onto N^ = N^_prev + Q[P_N], E^ = E^_prev + Q[P_E]
+    (formulation 5.4), with the port integrals taken on the same four RK4 stages. System B: E only."""
+    z_new, stages = rk4_step(f, z, h)
+    vals = [lf.evaluate(s, raw, grads=False) for s in stages]
+    v0 = vals[0]
+    names = ["E", "N"] if lf.system == "A" else ["E"]
+    ports = {"E": "P_E", "N": "P_N"}
+    Q = {n: stage_quadrature([v[ports[n]] for v in vals], h) for n in names}
+    target = torch.stack([v0[n] + Q[n] for n in names], -1)
+
+    def cons(x):
+        v = lf.evaluate(x, raw, grads=False)
+        return torch.stack([v[n] for n in names], -1)
+
+    z_new, info = balance_project(z_new, cons, target, iters=iters, rank_tol=rank_tol, create_graph=create_graph)
+    info.update({"Q_" + n: Q[n] for n in names})
+    return z_new, info
+
+
+class ProjectedRollout(nn.Module):
+    """U+proj and U+F+proj: a trained U or U+F rolled out with S's projection after every step.
+    It owns no parameters, so nothing is retrained. `dyn(z, feat, raw) -> dz/dt`."""
+
+    def __init__(self, dyn, lf, rank_tol: float = RANK_TOL, iters: int = 20):
+        super().__init__()
+        self._dyn, self.lf, self.rank_tol, self.iters = dyn, lf, rank_tol, iters
+
+    def step(self, z, feat, raw, h):
+        return projected_rk4_step(lambda x: self._dyn(x, feat, raw), z, raw, h, self.lf, self.rank_tol, self.iters)

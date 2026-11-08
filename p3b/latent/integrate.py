@@ -41,8 +41,10 @@ def _jacobian(cons, z, create_graph):
     return c, torch.stack(rows, dim=-2)          # (batch, m), (batch, m, d)
 
 
-def balance_project(z, cons, target, iters: int = 3, rank_tol: float = RANK_TOL, create_graph: bool = False):
-    """Gauss-Newton with the pseudo-inverse: z <- z - pinv(J) (cons(z) - target), `iters` times.
+def balance_project(z, cons, target, iters: int = 20, rank_tol: float = RANK_TOL, create_graph: bool = False,
+                    tol: float = 1e-12):
+    """Gauss-Newton with the pseudo-inverse: z <- z - pinv(J) (cons(z) - target), until every
+    |cons(z) - target| <= tol |target| or after `iters` updates.
 
     Returns (z, info) with info["residual"] the largest |cons(z) - target| per sample after the
     last update and info["rank_deficient"] True where J had fewer than m singular values above
@@ -51,6 +53,8 @@ def balance_project(z, cons, target, iters: int = 3, rank_tol: float = RANK_TOL,
     deficient = torch.zeros(z.shape[0], dtype=torch.bool)
     for _ in range(iters):
         c, J = _jacobian(cons, z, create_graph)
+        if bool(((c - target).abs() <= tol * target.abs()).all()):
+            break
         s = torch.linalg.svdvals(J)
         deficient |= (s > rank_tol * s[..., :1]).sum(-1) < J.shape[-2]
         dz = (torch.linalg.pinv(J, rtol=rank_tol) @ (c - target).unsqueeze(-1)).squeeze(-1)
