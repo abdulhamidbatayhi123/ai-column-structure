@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -37,18 +36,10 @@ SEEDS: dict[tuple[str, str], int] = {
 }
 
 
-def git_commit() -> str:
-    """HEAD hash, with "-dirty" if tracked files differ from it."""
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True,
-                          check=True).stdout.strip()
-    dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT,
-                           capture_output=True, text=True, check=True).stdout.strip()
-    return head + ("-dirty" if dirty else "")
-
-
 def main(out_dir: str = os.path.join(ROOT, "data", "design")) -> None:
     sys.path.insert(0, ROOT)
     from p3b.design import BOXES, make_set
+    from p3b.provenance import git_commit
 
     os.makedirs(out_dir, exist_ok=True)
     commit = git_commit()
