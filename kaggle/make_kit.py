@@ -66,6 +66,7 @@ def make_kit(out_dir, commit: str, paper1_src=None) -> Path:
     _copy_tree(ROOT, out, "p3b/*.py")
     _copy_tree(ROOT, out, "kaggle/generate_chunk.py")
     _copy_tree(ROOT, out, "scripts/time_reference.py")
+    _copy_tree(ROOT, out, "verify/v1_large_grid.py")
     _copy_tree(ROOT, out, "verify/materials/fit_isotherms.json")
     _copy_tree(ROOT, out, "data/design/*.json")
     p1 = out / "paper1"

@@ -67,10 +67,45 @@ def kernel_name(job: dict, chunk: int) -> str:
     return f"p3b-ref-{job['system']}-{job['set']}-{chunk}-of-{job['of']}".lower().replace("_", "-")
 
 
+RUN_CMDS_PY = r'''import glob, os, shutil, subprocess, sys
+kit = "/kaggle/working/kit"
+if not os.path.exists(kit):
+    src = [os.path.dirname(os.path.dirname(p)) for p in glob.glob("/kaggle/input/**/kaggle/generate_chunk.py", recursive=True)][0]
+    shutil.copytree(src, kit)
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["P3B_PAPER1_DIR"] = os.path.join(kit, "paper1")
+out = "/kaggle/working/out"
+os.makedirs(out, exist_ok=True)
+cmds = {cmds!r}
+procs = [subprocess.Popen([sys.executable, os.path.join(kit, c[0]), *[x.replace("OUT/", out + "/") for x in c[1:]]],
+                          cwd=kit) for c in cmds]
+sys.exit(max(p.wait() for p in procs))
+'''
+
+
+def _metadata(name: str, kit_slug: str) -> dict:
+    return {"id": f"{OWNER}/{name}", "title": name, "code_file": "run.py", "language": "python",
+            "kernel_type": "script", "is_private": True, "enable_gpu": False, "enable_internet": False,
+            "dataset_sources": [kit_slug], "competition_sources": [], "kernel_sources": []}
+
+
 def write_kernels(spec: dict) -> list[dict]:
-    """One kernel per chunk; each kernel runs its chunk split over the 4 CPU cores of a Kaggle session."""
+    """Chunk jobs: one kernel per chunk, split over the 4 CPU cores of a Kaggle session. Command jobs
+    ({"name", "commands", "expect"}): one kernel running each command as its own process; arguments
+    starting with OUT/ point into the kernel's output directory."""
     kernels = []
     for job in spec["jobs"]:
+        if "commands" in job:
+            d = os.path.join(BUILD, job["name"])
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "run.py"), "w") as f:
+                f.write(RUN_CMDS_PY.format(cmds=job["commands"]))
+            with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
+                json.dump(_metadata(job["name"], spec["kit_slug"]), f, indent=1)
+            kernels.append({"name": job["name"], "dir": d, "system": "timing", "set": job["name"],
+                            "expect": job["expect"]})
+            continue
         for chunk in range(job["of"]):
             name = kernel_name(job, chunk)
             d = os.path.join(BUILD, name)
@@ -81,10 +116,7 @@ def write_kernels(spec: dict) -> list[dict]:
             with open(os.path.join(d, "run.py"), "w") as f:
                 f.write(RUN_PY.format(args=args))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
-                json.dump({"id": f"{OWNER}/{name}", "title": name, "code_file": "run.py", "language": "python",
-                           "kernel_type": "script", "is_private": True, "enable_gpu": False,
-                           "enable_internet": False, "dataset_sources": [spec["kit_slug"]],
-                           "competition_sources": [], "kernel_sources": []}, f, indent=1)
+                json.dump(_metadata(name, spec["kit_slug"]), f, indent=1)
             kernels.append({"name": name, "dir": d, "system": job["system"], "set": job["set"], "chunk": chunk,
                             "expected_reports": job.get("cores", 4)})
     return kernels
@@ -113,8 +145,12 @@ def main(jobs_file: str) -> None:
 
     def is_done(k):
         d = out_dir(k)
-        return os.path.isdir(d) and sum(f.endswith("_report.json") for _, _, fs in os.walk(d) for f in fs) \
-            >= k["expected_reports"]
+        if not os.path.isdir(d):
+            return False
+        names = [f for _, _, fs in os.walk(d) for f in fs]
+        if "expect" in k:
+            return all(e in names for e in k["expect"])
+        return sum(f.endswith("_report.json") for f in names) >= k["expected_reports"]
 
     done = {k["name"] for k in kernels if is_done(k)}
     while len(done) < len(kernels):

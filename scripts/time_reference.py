@@ -24,6 +24,9 @@ def parse():
     ap.add_argument("--cycles", type=int, default=2)
     ap.add_argument("--threads", type=int, default=1)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--point", choices=("centre", "corner"), default="centre",
+                    help="centre of the training box, or its fast corner (every quantity at its upper "
+                         "bound, T_cold at its lower bound): the largest cell Peclet number")
     return ap.parse_args()
 
 
@@ -68,9 +71,13 @@ def free_ram_gb() -> float | None:
     return None
 
 
-def centre_point(system: str, cycles: int) -> dict:
+def design_point(system: str, cycles: int, which: str = "centre") -> dict:
     box = BOXES["B" if system == "B" else "A"]
-    return {**{k: 0.5 * (lo + hi) for k, (lo, hi) in box.items()}, "index": 0, "n_cycles": cycles}
+    if which == "centre":
+        vals = {k: 0.5 * (lo + hi) for k, (lo, hi) in box.items()}
+    else:
+        vals = {k: (lo if k == "T_cold" else hi) for k, (lo, hi) in box.items()}
+    return {**vals, "index": 0, "n_cycles": cycles}
 
 
 def outlet_collector(system: str, N: int, store: list):
@@ -86,7 +93,7 @@ def outlet_collector(system: str, N: int, store: list):
 def main():
     a = ARGS
     grids = [int(x) for x in a.nz.split(",")]
-    point = centre_point(a.system, a.cycles)
+    point = design_point(a.system, a.cycles, a.point)
     material = a.material if a.system == "A" else None
     ram = free_ram_gb()
     commit = git_commit()
@@ -107,7 +114,7 @@ def main():
                             "cpu_s": res.cycle_cpu_s[k] if k < len(res.cycle_cpu_s) else None,
                             "nfev": res.nfev[k] if k < len(res.nfev) else None, "ok": bool(ok),
                             "message": res.message, "free_ram_gb_start": ram, "threads": a.threads,
-                            "point": point, "commit": commit})
+                            "point": point, "point_name": a.point, "commit": commit})
             print(json.dumps(records[-1]), flush=True)
         outlets[N] = np.concatenate(store) if store else None
     gc = []
@@ -115,7 +122,8 @@ def main():
         if outlets[Nc] is None or outlets[Nf] is None or outlets[Nc].shape != outlets[Nf].shape:
             gc.append({"system": a.system, "material": material, "N_coarse": Nc, "N_fine": Nf, "value": None})
             continue
-        rec = {"system": a.system, "material": material, "N_coarse": Nc, "N_fine": Nf, "commit": commit}
+        rec = {"system": a.system, "material": material, "N_coarse": Nc, "N_fine": Nf, "commit": commit,
+               "point_name": a.point}
         if a.system == "A":
             out = {}
             for N in (Nc, Nf):

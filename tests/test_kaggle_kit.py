@@ -30,7 +30,7 @@ def test_kit_manifest(tmp_path):
     assert (kit / "kit_commit.txt").read_text().strip() == "abc1234"
     manifest = json.loads((kit / "MANIFEST.json").read_text())
     for need in ("p3b/column.py", "p3b/generate.py", "kaggle/generate_chunk.py", "scripts/time_reference.py",
-                 "verify/materials/fit_isotherms.json", "data/design/A_primary_train.json",
+                 "verify/materials/fit_isotherms.json", "verify/v1_large_grid.py", "data/design/A_primary_train.json",
                  "paper1/solver_fd.py", "paper1/isotherm.py", "paper1/gen_parametric_dataset.py"):
         assert need in manifest["files"], need
     for rel, sha in manifest["files"].items():
@@ -70,3 +70,17 @@ def test_material_must_match_system(tmp_path):
 ])
 def test_status_parsing_never_guesses_absent(text, expected):
     assert q.parse_status(text) == expected
+
+
+def test_command_job_kernel(tmp_path, monkeypatch):
+    monkeypatch.setattr(q, "BUILD", str(tmp_path))
+    spec = {"kit_slug": "o/kit", "nz": 0, "jobs": [
+        {"name": "p3b-timing-a", "commands": [["scripts/time_reference.py", "--system", "A", "--out", "OUT/a.json"],
+                                              ["verify/v1_large_grid.py", "--n", "2048", "--out", "OUT/v1.json"]],
+         "expect": ["a.json", "v1.json"]}]}
+    (k,) = q.write_kernels(spec)
+    assert k["name"] == "p3b-timing-a" and k["expect"] == ["a.json", "v1.json"]
+    run_py = (tmp_path / "p3b-timing-a" / "run.py").read_text()
+    assert "time_reference.py" in run_py and "v1_large_grid.py" in run_py and "/kaggle/working/out" in run_py
+    meta = json.loads((tmp_path / "p3b-timing-a" / "kernel-metadata.json").read_text())
+    assert meta["is_private"] is True and meta["enable_internet"] is False and meta["dataset_sources"] == ["o/kit"]
