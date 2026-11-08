@@ -51,11 +51,12 @@ network on Couette flow (journal C, C17). Two caveats travel with that number: i
 the run with the smallest training loss of 10, and in one of its two ablations the modelling
 loss added nothing once the Jacobian loss was present.
 
-**In every latent GENERIC or metriplectic model found, the energy and entropy are learned
-in latent coordinates without physical meaning.** That now includes a fracture application
+**In every *learned* latent GENERIC or metriplectic model found, the energy and entropy are
+learned in latent coordinates without physical meaning.** That now includes a fracture application
 of tLaSDI (arXiv:2610.20614). The magnetisation paper says explicitly that its learned
 potential is not the Gibbs free energy (journal A, T11). The nearest exception in spirit is
-Physics-conforming Latent Twins (Chung, Bu, Verma, arXiv:2606.15053, CMAME 2026): its latent
+Physics-conforming Latent Twins (Chung, Bu, Verma, CMAME 463, 119351, 2027 issue,
+doi:10.1016/j.cma.2026.119351; arXiv:2606.15053): its latent
 flow preserves or dissipates *prescribed* quantities carried over from the physical state.
 It does not fix a thermodynamic energy-entropy pair, has no GENERIC degeneracy and has no
 ports. That matters for two reasons:
@@ -72,7 +73,30 @@ Fixing a trusted energy is partly anticipated outside latent models:
   parameters are learned (Zakwan et al., IFAC-PapersOnLine 56(2), 5855, 2023;
   arXiv:2211.06130, T17), a lumped thermal model.
 
-None of these is a latent model with E and S fixed from the physics of the decoded fields.
+None of these is a learned latent model with E and S fixed from the physics of the decoded
+fields.
+
+**Projection-based reduced models already keep the full model's energy and entropy.** This
+line of work is intrusive: the reduced dynamics are derived by projection, not learned.
+- Öttinger preserves GENERIC structure in model reduction (Phys. Rev. E 91, 032147, 2015,
+  doi:10.1103/PhysRevE.91.032147).
+- Gruber, Gunzburger, Ju and Wang build energetically consistent reduced models of
+  metriplectic systems (CMAME 404, 115709, 2023, doi:10.1016/j.cma.2022.115709).
+- Chan builds entropy-stable reduced models from entropy-stable finite-volume full models,
+  the same setting as 3B's reference (J. Comput. Phys. 423, 109789, 2020,
+  doi:10.1016/j.jcp.2020.109789).
+- Klein, Sanderse, Costa, Pecnik and Henkes keep the physical entropy of the decoded state on
+  a nonlinear (rational quadratic) manifold (J. Comput. Phys. 528, 113817, 2025,
+  doi:10.1016/j.jcp.2025.113817). That is the closest analogue to 3B's "E and S evaluated on
+  decoded fields".
+
+All four records were checked on Crossref on 2026-11-08 (found by the Claude Science review).
+"E and S fixed from physics in reduced coordinates" is therefore **not new by itself**. What
+3B adds is learned latent dynamics with those fixed potentials, for an open,
+advection-dominated, non-isothermal system with ports, and a pre-declared test of which part
+of the structure helps. An entropy-stable Galerkin reduced model of the reference is a
+natural further non-learned competitor. It is named as future work, because its cost on a
+stiff, steep-isotherm column would need its own study.
 
 **Transport is the documented weak spot.** GENERIC-FNO loses accuracy "on pure transport"
 (T4). In the first version of the Poisson-GENERIC paper (arXiv:2610.05570v1), the friction
@@ -219,7 +243,11 @@ neural networks corrected by data reconciliation on balances and equilibria, wit
   drift-diffusion-Poisson benchmark close in form to a column (arXiv:2606.01366). A
   conservative finite-volume model with a learned flux correction reached a rollout error of
   7×10⁻⁹, against 25 to 67 for unconstrained regressors. Projection after the fact and
-  rollout training did not rescue the unconstrained models.
+  rollout training did not rescue the unconstrained models. This study has already asked
+  part of 3B's question, projection against training. Its abstract lists the controls added
+  to the regressors: Poisson recomputation of the field, charge projection and 4-step
+  rollout training. None of them gives an unconstrained model the structured model's
+  physical features as inputs, which is what 3B's U+F does, as far as the abstract states.
 - **Latent extrapolation:** tLaSDI's extrapolation gains (above).
 - **Function-space operators:** Poisson-GENERIC's 61 of 72 seed-level wins.
 - **Data efficiency:** constrained Hamiltonian and Lagrangian forms improved it on a double
@@ -251,12 +279,24 @@ neural networks corrected by data reconciliation on balances and equilibria, wit
 
 ## 5. The exact gap
 
-> No published work, as of 2026-11-03 within the sources searched (journals A to D), learns a reduced (latent)
-> model of a **non-isothermal adsorption column** whose **energy and entropy are fixed from
-> the adsorbent's and the gas's thermodynamics** (not learned), with the **inlet, outlet and
-> wall as ports**, and **tests, against the same model without structure and under a
-> pre-declared protocol, what that structure buys** in long multi-cycle rollouts, data
-> efficiency and admissibility.
+**The question, as a broad reader would put it.** When physics is built into a learned
+reduced model of an open dissipative system, does it help through the constraint itself,
+through the physical information the constraint supplies, or through a projection at
+rollout? And does fixing the model's energy and entropy from physics beat learning them? No
+study found separates these. Projection against training has been examined on one 1-D
+benchmark (arXiv:2606.01366), whose abstract lists no information-matched control. Fixed against learned
+potentials has not been tested in learned latent models, and projection-based reduced models
+fix them but do not learn.
+
+**The precise novelty statement** (for the related-work section):
+
+> No published work, as of 2026-11-08 within the sources searched (journals A to D and the
+> Claude Science review), learns a reduced (latent) model of a **non-isothermal adsorption
+> column** whose **energy and entropy are fixed from the adsorbent's and the gas's
+> thermodynamics** (not learned), with the **inlet, outlet and wall as ports**, and **tests,
+> against information-matched, projection-matched and learned-potential controls and under a
+> pre-declared protocol, what that structure buys**, on this column and on a second open
+> dissipative system (a thermocline store).
 
 Each qualifier is load-bearing. Here is what each one excludes:
 
@@ -264,7 +304,8 @@ Each qualifier is load-bearing. Here is what each one excludes:
 |---|---|
 | non-isothermal | the isothermal port-based adsorption-column work of the Lyon group: Baaiu et al. 2008, Peng et al. 2007 and Baaiu et al. 2009 (J. Process Control), all isothermal and isobaric by assumption (full texts read 2026-11-05) |
 | learned, latent | the non-ML IPHS, GENERIC and port-based formulations |
-| E and S fixed from thermodynamics | tLaSDI and its fracture application, the thermodynamics-aware reduced models, the magnetisation operator, GENERIC-FNO (all learn them); Physics-conforming Latent Twins (prescribed invariants, not a thermodynamic E and S) |
+| E and S fixed from thermodynamics | among *learned* latent models: tLaSDI and its fracture application, the thermodynamics-aware reduced models, the magnetisation operator, GENERIC-FNO (all learn them); Physics-conforming Latent Twins (prescribed invariants, not a thermodynamic E and S). Projection-based reduced models (Öttinger 2015; Gruber et al. 2023; Chan 2020; Klein et al. 2025) keep the physical potentials but do not learn the dynamics |
+| controls that separate constraint, information and projection | arXiv:2606.01366 examined projection against training, without an information control |
 | adsorption column with ports | port-metriplectic networks and thermodynamics-informed graph networks (no sorption, E and S learned) |
 | tested what structure buys, pre-declared | every sorption surrogate found (unstructured, penalised, or balance-only, none tested this way) |
 

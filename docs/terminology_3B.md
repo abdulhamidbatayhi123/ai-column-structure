@@ -23,6 +23,13 @@ words in these senses only.
 | structure pays / helps / costs | the pre-registered headline rows (pre-registration, Section 5) | only as the frozen decision list assigns them |
 | consistent (thermodynamically) | derived from one fixed energy and entropy, with every production term non-negative | for the reference and for arm C; for the latent model only as "consistent in total, in continuous time" |
 | Paper 1 limit | c_w = 0, where the 3B reference reproduces Paper 1's solver (V1: better than 10⁻⁸) | with the tolerance |
+| SMALL | a real effect below the declared minimum (ratio in (0.8, 1), conditions (a) and (b) hold) | only as a verdict word |
+| REVERSED | the qualifier on REFUTED when the interval lies entirely above 1 (S significantly worse) | only beside REFUTED |
+| CONSISTENT / PARTLY CONSISTENT / INCONSISTENT / NOT INFORMATIVE | the comparison of a primary verdict with the second isotherm or with system B (pre-registration, Section 7) | only as defined there; never "replicated" when both verdicts are INCONCLUSIVE |
+| the constraint / the constraint in training / fixed physical potentials | attribution labels (pre-registration, Section 6) | only when S beats U+F, U+F+proj or S-L respectively |
+| useful against the coarse solver | the Pareto statement of the pre-registration, Section 6 | only when it holds |
+| system A, system B | the adsorption column, and the two-temperature thermocline store | always; "two systems", never "two materials", for A and B |
+| second isotherm | the Al-fumarate-like replication on system A | never "a second system" |
 | dilute-solute gas model | vapour as an ideal solute in an incompressible carrier (formulation, Section 3.1) | always named when a heat of adsorption is compared with 3A's ideal-gas values |
 
 ## Banned phrases and replacements

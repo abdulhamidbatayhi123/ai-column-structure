@@ -63,6 +63,10 @@ jobs:
         working-directory: ai-column-structure
         run: python verify/check_results.py verify/results_run_checks.json
 
+      - name: Headline decision list is an ordered partition (all 64 outcome combinations)
+        working-directory: ai-column-structure
+        run: python verify/check_decision_list.py
+
       - name: Property tests
         working-directory: ai-column-structure
         run: python -m pytest -q tests
