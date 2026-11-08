@@ -43,6 +43,8 @@ class TrajectoryResult:
     cpu_s: float
     closure: list[float] = field(default_factory=list)
     final_ports: list[float] | None = None   # the ports at the end of the last cycle
+    nfev: list[int] = field(default_factory=list)          # right-hand-side calls per cycle
+    cycle_cpu_s: list[float] = field(default_factory=list)  # CPU seconds per cycle
 
 
 def cycle_schedule(point: dict, iso, phys) -> list[tuple[str, float, tuple[float, float, float]]]:
@@ -138,6 +140,8 @@ def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 20
         raise ValueError("n_snap must be even (half per half-cycle)")
     t_cpu = time.process_time()
     closure: list[float] = []
+    nfev: list[int] = []
+    cyc_cpu: list[float] = []
     k = 0
     try:
         col, schedule = setup_a(point, material, N_z)
@@ -148,6 +152,7 @@ def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 20
         half = n_snap // 2
         for k in range(int(point["n_cycles"])):
             ts, ys = [], []
+            t_cyc, nf = time.process_time(), 0
             for phase, dur, inputs in schedule:
                 if not (np.isfinite(dur) and dur > 0):
                     raise ValueError(f"non-positive or non-finite {phase} duration {dur}")
@@ -157,15 +162,18 @@ def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 20
                 if not sol.success or sol.y.shape[1] != half + 1 or not np.all(np.isfinite(sol.y)):
                     raise RuntimeError(f"cycle {k} {phase}: {sol.message}")
                 closure.append(half_cycle_closure(aug, y, sol.y[:, -1]))
+                nf += int(sol.nfev)
                 ts.append(t_abs + sol.t[:-1])
                 ys.append(sol.y[:, :-1].T)
                 y = sol.y[:, -1]
                 t_abs += dur
+            nfev.append(nf)
+            cyc_cpu.append(time.process_time() - t_cyc)
             if on_cycle is not None:
                 Y = np.vstack(ys)
                 on_cycle(k, np.concatenate(ts), Y[:, :aug.P], aug.ports(Y))
     except Exception as exc:  # recorded, never raised: the generator logs and moves on
         return TrajectoryResult(False, k, f"{type(exc).__name__}: {exc}",
-                                time.process_time() - t_cpu, closure)
+                                time.process_time() - t_cpu, closure, None, nfev, cyc_cpu)
     return TrajectoryResult(True, None, "ok", time.process_time() - t_cpu, closure,
-                            aug.ports(y[None, :])[0].tolist())
+                            aug.ports(y[None, :])[0].tolist(), nfev, cyc_cpu)

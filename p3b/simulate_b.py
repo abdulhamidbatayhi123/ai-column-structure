@@ -98,6 +98,8 @@ def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
         raise ValueError("n_snap must be even (half per half-cycle)")
     t_cpu = time.process_time()
     closure: list[float] = []
+    nfev: list[int] = []
+    cyc_cpu: list[float] = []
     k = 0
     try:
         st = make_store(N_z)
@@ -108,6 +110,7 @@ def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
         half = n_snap // 2
         for k in range(int(point["n_cycles"])):
             ts, ps, ys = [], [], []
+            t_cyc, nf = time.process_time(), 0
             for phase, dur, inputs in schedule:
                 if not (np.isfinite(dur) and dur > 0):
                     raise ValueError(f"non-positive or non-finite {phase} duration {dur}")
@@ -117,15 +120,19 @@ def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
                 if not sol.success or sol.y.shape[1] != half + 1 or not np.all(np.isfinite(sol.y)):
                     raise RuntimeError(f"cycle {k} {phase}: {sol.message}")
                 closure.append(half_cycle_closure(aug, y, sol.y[:, -1]))
+                nf += int(sol.nfev)
                 Y = sol.y[:, :-1].T
                 ts.append(t_abs + sol.t[:-1])
                 ys.append(Y[:, :aug.P])
                 ps.append(aug.ports(Y, 1.0 if inputs[0] > 0 else -1.0))
                 y = sol.y[:, -1]
                 t_abs += dur
+            nfev.append(nf)
+            cyc_cpu.append(time.process_time() - t_cyc)
             if on_cycle is not None:
                 on_cycle(k, np.concatenate(ts), np.vstack(ys), np.vstack(ps))
     except Exception as exc:  # recorded, never raised
-        return TrajectoryResult(False, k, f"{type(exc).__name__}: {exc}", time.process_time() - t_cpu, closure)
+        return TrajectoryResult(False, k, f"{type(exc).__name__}: {exc}", time.process_time() - t_cpu, closure,
+                                None, nfev, cyc_cpu)
     return TrajectoryResult(True, None, "ok", time.process_time() - t_cpu, closure,
-                            aug.ports(y[None, :], -1.0)[0].tolist())
+                            aug.ports(y[None, :], -1.0)[0].tolist(), nfev, cyc_cpu)
