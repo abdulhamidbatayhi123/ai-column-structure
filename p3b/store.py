@@ -8,10 +8,14 @@ The fine solution is never stored. Per cycle, `Coarsener.add_cycle` keeps:
   * the fine outlet state (float32): A (log c_out, log T_out) at z = L; B T_f at the current
     outlet (z = L when charging, z = 0 when discharging, from the direction port);
   * the exact cumulative wall heat of each block (sum of the fine per-cell integrals);
+  * system B only, `ends`: the fine T_f at z = 0 and z = L (float64, for the gates: at a flow
+    reversal the outlet of an interval is at the end set by that interval's direction);
   * the cumulative ports and the snapshot times.
 `floored_cells` counts fine cell-snapshots below a floor (A: c or q), out of `checked_cells`.
 """
 from __future__ import annotations
+
+import json
 
 import numpy as np
 
@@ -38,6 +42,7 @@ class Coarsener:
             self.c_floor = FLOOR * c_in
             self.q_floor = FLOOR * model.iso.q_capacity
         self.t, self.channels, self.outlet, self.wall, self.ports, self.conserved = [], [], [], [], [], []
+        self.ends: list[np.ndarray] = []   # system B only: fine T_f at z = 0 and z = L, float64
         self.cycles: list[int] = []
         self.floored_cells = 0
         self.checked_cells = 0
@@ -72,6 +77,7 @@ class Coarsener:
             ch = np.stack(_temps_b(m, [cons[..., 0], cons[..., 1]]), axis=-1)
             direction = np.asarray(ports)[:, 3]
             out = np.where(direction > 0, Tf[:, -1], Tf[:, 0])[:, None]
+            self.ends.append(np.stack([Tf[:, 0], Tf[:, -1]], axis=-1))
         self.checked_cells += ns * N
         self.cycles.append(int(cycle_index))
         self.t.append(np.asarray(t, dtype=float).copy())
@@ -81,15 +87,29 @@ class Coarsener:
         self.ports.append(np.asarray(ports, dtype=float).copy())
         self.conserved.append(cons)
 
-    def to_npz(self, path, meta: dict) -> None:
+    def to_npz(self, path, meta: dict, ports_end=None) -> None:
+        """Write the npz; ports_end (the ports at the end of the last cycle) completes the last cycle."""
+        L = self.model.p.L if self.system == "A" else self.model.L
         meta = dict(meta, commit=git_commit(), N_z=self.N_z, N_c=self.N_c, system=self.system,
-                    floor=FLOOR, cycles=self.cycles)
+                    floor=FLOOR, cycles=self.cycles, L=float(L))
         np.savez_compressed(
             path, channels=np.stack(self.channels), outlet=np.stack(self.outlet),
             wall_heat_blocks=np.stack(self.wall), ports_cum=np.stack(self.ports),
             conserved_blocks=np.stack(self.conserved), t=np.stack(self.t),
+            **({"ends": np.stack(self.ends)} if self.ends else {}),
+            **({"ports_end": np.asarray(ports_end, dtype=float)} if ports_end is not None else {}),
             floored_cells=np.int64(self.floored_cells), checked_cells=np.int64(self.checked_cells),
-            meta=np.array(repr(meta)))
+            meta=np.array(json.dumps(meta, default=_jsonable)))
+
+
+def _jsonable(x):
+    if isinstance(x, np.integer):
+        return int(x)
+    if isinstance(x, np.floating):
+        return float(x)
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    raise TypeError(f"not JSON serialisable: {type(x).__name__}")
 
 
 def _temps_b(st, fields):

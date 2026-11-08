@@ -242,6 +242,9 @@ hyperparameters of Section 4.
 - **Working capacity (A):** `W_k = ∫_des v (c_out − c_in,des) dt`, the net release, from each
   arm's own outlet. Its error is ε_W,k.
 - **Heat delivered (B):** `Q_k = ∫_dis v ρ_f c_f (T_out − T_cold) dt`. Its error is ε_Q,k.
+- **Cyclic steady state (reference):** the first cycle k ≥ 2 with
+  `|W_k − W_(k−1)| / |W_k| < 10⁻³` (system B: Q_k), with W_k and Q_k integrated over the whole
+  half-cycle from the stored reference ports.
 - **Failure at cycle k:** a non-finite state, ε > 0.5 or e_k > 0.5. Values are capped at 0.5
   from then on.
 - **Violations** (every arm, per step):

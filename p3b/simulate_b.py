@@ -118,4 +118,5 @@ def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
                 on_cycle(k, np.concatenate(ts), np.vstack(ys), np.vstack(ps))
     except Exception as exc:  # recorded, never raised
         return TrajectoryResult(False, k, f"{type(exc).__name__}: {exc}", time.process_time() - t_cpu, closure)
-    return TrajectoryResult(True, None, "ok", time.process_time() - t_cpu, closure)
+    return TrajectoryResult(True, None, "ok", time.process_time() - t_cpu, closure,
+                            aug.ports(y[None, :], -1.0)[0].tolist())

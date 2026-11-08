@@ -116,3 +116,6 @@ def test_system_b_channels_and_outlet():
     cz.add_cycle(0, np.arange(4.0), Y, ports)
     assert cz.channels[0].shape == (4, N_C, 2)
     np.testing.assert_allclose(cz.outlet[0][:, 0], [Tf[-1], Tf[-1], Tf[0], Tf[0]], rtol=1e-6)
+    # both fine ends, float64, so a gate can use the outlet of the interval's own flow direction
+    assert cz.ends[0].dtype == np.float64 and cz.ends[0].shape == (4, 2)
+    np.testing.assert_allclose(cz.ends[0], np.tile([Tf[0], Tf[-1]], (4, 1)), rtol=1e-14)

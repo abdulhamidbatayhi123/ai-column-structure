@@ -41,6 +41,7 @@ class TrajectoryResult:
     message: str
     cpu_s: float
     closure: list[float] = field(default_factory=list)
+    final_ports: list[float] | None = None   # the ports at the end of the last cycle
 
 
 def cycle_schedule(point: dict, iso, phys) -> list[tuple[str, float, tuple[float, float, float]]]:
@@ -50,6 +51,15 @@ def cycle_schedule(point: dict, iso, phys) -> list[tuple[str, float, tuple[float
     t_a = float(point["alpha"]) * mat.t_stoich(iso, phys, c_in, T_ads)
     return [("ads", t_a, (c_in, T_ads, T_ads)),
             ("des", float(point["beta"]) * t_a, (c_in, T_des, T_des))]
+
+
+def setup_a(point: dict, material: str, N_z: int):
+    """(Column with the material's isotherm and Glueckauf k_LDF at the feed, cycle schedule)."""
+    iso = mat.load_isotherm(material)
+    phys = mat.bed_physics(point["v"], point["T_ads"])
+    schedule = cycle_schedule(point, iso, phys)
+    phys.k_LDF = mat.k_ldf(iso, phys, schedule[0][2][0], float(point["T_ads"]))
+    return Column(phys, N_z, C_W, iso=iso), schedule
 
 
 def prewet_state(col: Column, c_in: float, T: float) -> np.ndarray:
@@ -129,12 +139,8 @@ def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 20
     closure: list[float] = []
     k = 0
     try:
-        iso = mat.load_isotherm(material)
-        phys = mat.bed_physics(point["v"], point["T_ads"])
-        schedule = cycle_schedule(point, iso, phys)
+        col, schedule = setup_a(point, material, N_z)
         c_in = schedule[0][2][0]
-        phys.k_LDF = mat.k_ldf(iso, phys, c_in, float(point["T_ads"]))
-        col = Column(phys, N_z, C_W, iso=iso)
         aug = _Augmented(col)
         y = np.concatenate([prewet_state(col, c_in, float(point["T_ads"])), np.zeros(N_z + 4)])
         t_abs = 0.0
@@ -160,4 +166,5 @@ def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 20
     except Exception as exc:  # recorded, never raised: the generator logs and moves on
         return TrajectoryResult(False, k, f"{type(exc).__name__}: {exc}",
                                 time.process_time() - t_cpu, closure)
-    return TrajectoryResult(True, None, "ok", time.process_time() - t_cpu, closure)
+    return TrajectoryResult(True, None, "ok", time.process_time() - t_cpu, closure,
+                            aug.ports(y[None, :])[0].tolist())

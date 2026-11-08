@@ -60,3 +60,13 @@ approval on 2026-11-05. Review codes:
   the wall-loss ambient open. A store sits in a room whose temperature does not follow the
   operating point, so it is a constant, not T_cold. It equals the module's reference
   temperature, which the earlier closure test already used.
+- **Cyclic steady state at 10⁻³ relative change of the per-cycle release** (implementation,
+  plan 1 Task 7). The draft used the CSS cycle for the long-validation decoder check and for
+  H6 without a number. 10⁻³ is ten times looser than the integrated closure of the stored
+  data (below 10⁻⁵), so solver noise cannot fake or block it, and tighter than any error the
+  arms are compared at.
+- **Reference entropy gate on the coarse data** (plan 1 Task 7). Per snapshot interval, the
+  change of the entropy of the block averages minus the port entropy flux (outlet by the
+  trapezoid rule, at the outlet of that interval's own flow direction) must be positive. The
+  first test trajectories give margins of about 5 × 10⁻³ (system A) and 1 × 10⁻³ (system B) of
+  the interval's entropy turnover.
