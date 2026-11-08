@@ -560,8 +560,8 @@ desorption at 353 K.
 
 | check | what it tests | result |
 |---|---|---|
-| V1 Paper 1 limit | `c_w = 0` against `solver_fd.py`, N = 200, one stoichiometric time | max difference 7×10⁻¹⁰ in c/c_in, 6×10⁻⁹ in q/q_max, 1.5×10⁻⁷ K in T (temperature rise 16.7 K); passed |
-| V2 balances and signs | two temperature-swing cycles, `c_w = 33.6`, N = 120 | water-rate identity 6×10⁻¹⁵, energy-rate identity 3×10⁻¹⁶, entropy identity `dS/dt = Φ_S + Σσ` 3×10⁻¹⁶ (relative to Σ\|w·ẋ\|); every production term ≥ 0 (worst −7×10⁻²², round-off); passed |
+| V1 Paper 1 limit | `c_w = 0` against `solver_fd.py`, N = 200, one stoichiometric time | max difference below 2×10⁻⁹ in c/c_in, below 10⁻⁸ in q/q_max and below 2×10⁻⁷ K in T (temperature rise 16.7 K), at the solver tolerance; passed |
+| V2 balances and signs | two temperature-swing cycles, `c_w = 33.6`, N = 120 | water-rate, energy-rate and entropy identities (`dS/dt = Φ_S + Σσ`, relative to Σ\|w·ẋ\|) all below 10⁻¹⁴, round-off; every production term ≥ 0 (worst −7×10⁻²², round-off); passed |
 | V3 concavity | relative-coordinate Hessians at 200 random states | stream entropy and cell entropy negative semidefinite (largest eigenvalue ratio −2×10⁻⁵ and −3×10⁻¹⁰); passed |
 | V4 coarse-graining | 400 → 40 cells over one cycle | coarse entropy inequality held at all 602 snapshots, smallest margin +0.012 of scale; wall-heat floor 3.3×10⁻⁵; balances exact only with the stored fine outlet (Section 5.2); passed with that design change |
 

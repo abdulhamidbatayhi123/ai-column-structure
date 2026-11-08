@@ -1,0 +1,7 @@
+{
+  "condition": "Lassitter 2024 primary (k 0.20 1/s, d_p 3 mm), h_w 10, C_ps 1000",
+  "N": 400,
+  "max_abs_diff_outlet_c_over_cin": 0.0013298100065788354,
+  "max_T_rise_K_cw0": 9.08501105163657,
+  "max_T_rise_K_cw33.6": 9.027475656785782
+}

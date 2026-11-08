@@ -100,8 +100,8 @@ runs all of this on every push.
 
 | check | what it tests | result (`verify/results_run_checks.json`) |
 |---|---|---|
-| V1 | the water-heat-capacity-zero limit against Paper 1's solver | 7×10⁻¹⁰ in c, 6×10⁻⁹ in q, 1.5×10⁻⁷ K in T |
-| V2 | water, energy and entropy identities and the sign of every production term over two temperature-swing cycles | identities to 3×10⁻¹⁶ to 6×10⁻¹⁵; every production term ≥ 0 to round-off |
+| V1 | the water-heat-capacity-zero limit against Paper 1's solver | below 2×10⁻⁹ in c, below 10⁻⁸ in q, below 2×10⁻⁷ K in T (solver tolerance) |
+| V2 | water, energy and entropy identities and the sign of every production term over two temperature-swing cycles | identities below 10⁻¹⁴ (round-off); every production term ≥ 0 to round-off |
 | V3 | concavity of the gas-stream and cell entropies at 200 random states | negative semidefinite |
 | V4 | whether coarse-grained data keep the balances and the entropy inequality | yes, with the fine outlet stored; the coarse outlet cell is off by 4.0 % |
 

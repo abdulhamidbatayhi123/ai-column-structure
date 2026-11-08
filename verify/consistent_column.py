@@ -9,7 +9,8 @@ formulation's claims numerically on small grids before anything is frozen:
   * dS/dt = port entropy flux + total production (bookkeeping identity).
 
 State per cell, per unit bed volume: n (vapour mol), a (adsorbed mol), u (internal
-energy, J). Paper 1's isotherm (isotherm.q_star_np) is imported unchanged, read-only.
+energy, J). The isotherm is a MultiTermIsotherm (verify/isotherms.py); by default it is Paper 1's
+dual-site isotherm, built from Paper 1's parameters, which reproduces isotherm.q_star_np.
 """
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ from scipy.sparse import bmat, diags
 
 PAPER1 = os.path.join(os.path.dirname(__file__), "..", "..", "ai-mof-cof-dynamics")
 sys.path.insert(0, os.path.abspath(PAPER1))
-from isotherm import q_star_np  # noqa: E402  (Paper 1, read-only)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from isotherms import from_paper1  # noqa: E402
 
 R = 8.314
 T0 = 298.15          # reference temperature of e_w and s_w
@@ -34,10 +36,10 @@ class Column:
 
     `phys` is a Paper 1 AdsorptionPhysicsConfig (or anything with the same fields).
     `c_w` is the molar heat capacity of water in both phases (J/mol/K); c_w = 0 is
-    Paper 1's model.
+    Paper 1's model. `iso` is a MultiTermIsotherm; default: Paper 1's dual-site isotherm.
     """
 
-    def __init__(self, phys, N, c_w):
+    def __init__(self, phys, N, c_w, iso=None):
         self.p = phys
         self.N = N
         self.dz = phys.L / N
@@ -47,8 +49,8 @@ class Column:
         self.Cs = phys.eps_t * phys.rho_g * phys.C_pg + self.A * phys.C_ps
         self.rhoC = phys.rho_g * phys.C_pg                    # carrier, per m3 gas
         self.h_a = 4.0 * phys.h_w / phys.D_in                 # wall, W/m3/K
-        self.dH = phys.delta_H
-        self.r = phys.b0 / phys.b_H0                           # cluster/Henry affinity ratio
+        self.iso = iso if iso is not None else from_paper1(phys)
+        self.dH = self.iso.dH
 
     # ---- Section 3: thermodynamics -------------------------------------------------
     def e_w(self, T):
@@ -67,47 +69,26 @@ class Column:
     def energy(self, n, a, T):
         return self.Cs * (T - T0) + (n + a) * self.e_w(T) + a * self.dH
 
-    def b_H(self, T):
-        return self.p.b_H0 * np.exp(-self.dH / (R * T))
-
-    def Q_of_x(self, x):
-        p = self.p
-        fH, nn = p.henry_fraction, p.isotherm_n
-        rx = (self.r * x) ** nn
-        return p.q_max * (fH * x / (1 + x) + (1 - fH) * rx / (1 + rx))
+    def X_of_q(self, q):
+        return self.iso.X(q)
 
     def Pi_of_x(self, x):
-        """Reduced spreading pressure: integral_0^x Q(x')/x' dx' (closed form)."""
-        p = self.p
-        fH, nn = p.henry_fraction, p.isotherm_n
-        return p.q_max * (fH * np.log1p(x) + (1 - fH) / nn * np.log1p((self.r * x) ** nn))
-
-    def X_of_q(self, q):
-        """Inverse isotherm x = Q^{-1}(q), by bisection on log x (robust, vectorised)."""
-        q = np.asarray(q, dtype=float)
-        lo = np.full_like(q, -60.0)
-        hi = np.full_like(q, 60.0)
-        for _ in range(200):
-            mid = 0.5 * (lo + hi)
-            below = self.Q_of_x(np.exp(mid)) < q
-            lo = np.where(below, mid, lo)
-            hi = np.where(below, hi, mid)
-        return np.exp(0.5 * (lo + hi))
+        return self.iso.Pi(x)
 
     def q_star(self, c, T):
-        return q_star_np(c, T, self.p)
+        return self.iso.q_star(c, T)
 
     def mu_v_over_T(self, c, T):
         return self.phi_over_T(T) + R * np.log(c / C_REF)
 
     def mu_a_over_T(self, q, T):
-        """mu_a/T = phi°/T + dH/T + R ln(X(q)/(b_H0 c°))  (Section 3.2)."""
-        return self.phi_over_T(T) + self.dH / T + R * np.log(self.X_of_q(q) / (self.p.b_H0 * C_REF))
+        """mu_a/T = phi°/T + dH/T + R ln(X(q)/(b0 c°)), b(T) = b0 exp(-dH/RT)  (Section 3.2)."""
+        return self.phi_over_T(T) + self.dH / T + R * np.log(self.X_of_q(q) / (self.iso.b0 * C_REF))
 
     def s_adsorbed(self, q, T):
         """Entropy of the adsorbed phase per kg solid (Section 3.2)."""
         x = self.X_of_q(q)
-        return q * self.s_w(T) - R * (q * np.log(x / (self.p.b_H0 * C_REF)) - self.Pi_of_x(x))
+        return q * self.s_w(T) - R * (q * np.log(x / (self.iso.b0 * C_REF)) - self.Pi_of_x(x))
 
     def cell_entropy(self, n, a, u):
         T = self.temperature(n, a, u)

@@ -1,0 +1,28 @@
+{
+ "status": "PARTIAL: the run was stopped by a 1,100 s time limit while solving MOF-303 at 512 cells; Al-fumarate was not reached. Re-run on a free machine (pilot).",
+ "machine_note": "single thread; other sessions' jobs were running (RAM was limited)",
+ "records": [
+  {
+   "material": "MOF-303",
+   "N": 128,
+   "k_LDF": 0.0004970171328158144,
+   "t_st_h": 5.874469450659427,
+   "q_feed": 22.200308982832425,
+   "ads_cpu_s": 3.59,
+   "ads_nfev": 1587,
+   "des_cpu_s": 2.5,
+   "des_nfev": 1031
+  },
+  {
+   "material": "MOF-303",
+   "N": 256,
+   "k_LDF": 0.0004970171328158144,
+   "t_st_h": 5.874469450659427,
+   "q_feed": 22.200308982832425,
+   "ads_cpu_s": 17.52,
+   "ads_nfev": 4201,
+   "des_cpu_s": 3.84,
+   "des_nfev": 1045
+  }
+ ]
+}

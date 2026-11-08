@@ -22,11 +22,11 @@
   "V1_paper1_limit": {
     "N": 200,
     "horizon_t_st": 1.0,
-    "max_rel_diff_c": 7.252246874121596e-10,
-    "max_rel_diff_q": 5.820640876315653e-09,
-    "max_abs_diff_T_K": 1.4875479337206343e-07,
+    "max_rel_diff_c": 1.5459187965486724e-09,
+    "max_rel_diff_q": 9.22103630639923e-09,
+    "max_abs_diff_T_K": 1.452218612030265e-07,
     "T_rise_K": 16.66517321536503,
-    "wall_s": 16.1
+    "wall_s": 16.9
   },
   "V2_cycle": {
     "N": 120,
@@ -39,9 +39,9 @@
     "t_A_over_t_st": 0.8,
     "t_D_over_t_st": 0.6,
     "max_rel_rate_residual": {
-      "water": 5.532107206747655e-15,
-      "energy": 2.736955109988808e-16,
-      "entropy_identity": 3.4739541516666656e-16
+      "water": 5.431523533248012e-15,
+      "energy": 2.7369551099874633e-16,
+      "entropy_identity": 4.040361176034773e-16
     },
     "min_production_over_mean_production": {
       "ldf": 0.0,
@@ -52,50 +52,50 @@
     "integrated_closure_trapezoid_401_points": [
       {
         "phase": "ads",
-        "water_closure_rel": 6.154542434537569e-05,
-        "energy_closure_rel": 1.5065457390037485e-05,
-        "water_change_mol_m2": 729.5850363354641
+        "water_closure_rel": 6.154553545864272e-05,
+        "energy_closure_rel": 1.5065396208380028e-05,
+        "water_change_mol_m2": 729.5850362543172
       },
       {
         "phase": "des",
-        "water_closure_rel": 1.314980665341275e-05,
-        "energy_closure_rel": 3.3224291084294796e-05,
-        "water_change_mol_m2": -565.0359298805519
+        "water_closure_rel": 1.3149806622586376e-05,
+        "energy_closure_rel": 3.322429110810983e-05,
+        "water_change_mol_m2": -565.0359298477538
       },
       {
         "phase": "ads",
-        "water_closure_rel": 8.167463010619682e-05,
-        "energy_closure_rel": 7.181605189440604e-05,
-        "water_change_mol_m2": 596.8002783860715
+        "water_closure_rel": 8.167447635593078e-05,
+        "energy_closure_rel": 7.181565591573903e-05,
+        "water_change_mol_m2": 596.8002784164901
       },
       {
         "phase": "des",
-        "water_closure_rel": 1.2854357808681998e-05,
-        "energy_closure_rel": 3.079735675018105e-05,
-        "water_change_mol_m2": -591.977449501547
+        "water_closure_rel": 1.2854359631079542e-05,
+        "energy_closure_rel": 3.079735565557502e-05,
+        "water_change_mol_m2": -591.9774494914492
       }
     ],
-    "wall_s": 77.1
+    "wall_s": 111.2
   },
   "V3_concavity": {
     "samples": 200,
     "max_eig_over_max_abs_eig_stream_entropy": -2.342310279360899e-05,
-    "max_eig_over_max_abs_eig_cell_entropy": -3.4054689639197943e-10,
+    "max_eig_over_max_abs_eig_cell_entropy": -3.405468963873912e-10,
     "note": "largest eigenvalue / largest |eigenvalue| of the relative-coordinate Hessian; <= ~1e-4 means negative semidefinite up to finite-difference error"
   },
   "V4_coarse_graining": {
-    "sigma_c_min_over_scale_coarse_outlet": 0.012129026889471628,
-    "sigma_c_min_over_scale_fine_outlet": 0.011776797879988712,
-    "wall_heat_floor_over_energy_rate": 3.30752164038402e-05,
-    "max_abs_blockT_minus_mean_fineT_K": 0.01586890591380552,
-    "water_rate_rel_coarse_outlet": 0.04025650666159093,
-    "water_rate_rel_fine_outlet": 4.852287435445934e-16,
-    "energy_rate_rel_coarse_ports": 0.0052049426425903,
-    "energy_rate_rel_fine_ports": 4.0642484170315767e-16,
+    "sigma_c_min_over_scale_coarse_outlet": 0.01212902687056455,
+    "sigma_c_min_over_scale_fine_outlet": 0.011776797879063307,
+    "wall_heat_floor_over_energy_rate": 3.30752163964982e-05,
+    "max_abs_blockT_minus_mean_fineT_K": 0.01586890525425133,
+    "water_rate_rel_coarse_outlet": 0.0402565067352666,
+    "water_rate_rel_fine_outlet": 1.967207587751221e-16,
+    "energy_rate_rel_coarse_ports": 0.005204943550231737,
+    "energy_rate_rel_fine_ports": 2.0215983126614633e-16,
     "fraction_times_sigma_c_negative_fine_ports": 0.0,
     "N_fine": 400,
     "N_coarse": 40,
     "snapshots": 602,
-    "wall_s": 27.5
+    "wall_s": 40.4
   }
 }

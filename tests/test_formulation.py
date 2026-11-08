@@ -13,6 +13,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "verify"))
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "ai-mof-cof-dynamics")))
 from consistent_column import Column  # noqa: E402
+from isotherms import from_fit, from_paper1  # noqa: E402
+import json  # noqa: E402
 from gen_parametric_dataset import build_physics, rh_to_conc  # noqa: E402
 from solver_fd import generate_breakthrough_data  # noqa: E402
 
@@ -26,6 +28,24 @@ def phys():
     return build_physics(MAT, COND)
 
 
+FITS = json.load(open(os.path.join(HERE, "..", "verify", "materials", "fit_isotherms.json")))
+DH_C = {"MOF-303": -51.3e3, "Al-fumarate": -48.5e3}   # concentration-based heats, docs/materials_3B.md
+
+
+def iso_for(name, phys):
+    return from_paper1(phys) if name == "paper1" else from_fit(FITS[name], DH_C[name])
+
+
+def test_paper1_isotherm_reproduced(phys):
+    """The two-term MultiTermIsotherm built from Paper 1's parameters equals isotherm.q_star_np."""
+    from isotherm import q_star_np
+    iso = from_paper1(phys)
+    c = np.linspace(0.0, 3.0, 301)
+    for T in (293.15, 320.0, 360.0):
+        assert np.allclose(iso.q_star(c, np.full_like(c, T)), q_star_np(c, np.full_like(c, T), phys),
+                           rtol=1e-12, atol=1e-14)
+
+
 def random_state(col, rng):
     """A non-equilibrium state with a front-like profile and a temperature bump."""
     N = col.N
@@ -37,10 +57,11 @@ def random_state(col, rng):
     return np.concatenate([n, a, col.energy(n, a, T)])
 
 
-@pytest.mark.parametrize("c_w", [0.0, 33.6])
-def test_identities_and_production_signs(phys, c_w):
+@pytest.mark.parametrize("c_w,iso_name", [(0.0, "paper1"), (33.6, "paper1"),
+                                            (33.6, "MOF-303"), (33.6, "Al-fumarate")])
+def test_identities_and_production_signs(phys, c_w, iso_name):
     rng = np.random.default_rng(1)
-    col = Column(phys, 40, c_w=c_w)
+    col = Column(phys, 40, c_w=c_w, iso=iso_for(iso_name, phys))
     c_in = rh_to_conc(0.4, 303.15)
     for inputs in [(c_in, 303.15, 303.15), (c_in, 353.15, 353.15), (0.2 * c_in, 330.0, 340.0)]:
         for _ in range(5):
@@ -90,14 +111,15 @@ def test_paper1_limit(phys):
     assert np.max(np.abs(col.temperature(n, a, u) - yp[2 * N:])) < 1e-5
 
 
-def test_adsorbed_free_energy_derivatives(phys):
+@pytest.mark.parametrize("iso_name", ["paper1", "MOF-303", "Al-fumarate"])
+def test_adsorbed_free_energy_derivatives(phys, iso_name):
     """mu_a = d f_a/dq, s_a = -d f_a/dT and e_a = q (e_w + dH), by finite differences."""
-    col = Column(phys, 2, c_w=33.6)
+    col = Column(phys, 2, c_w=33.6, iso=iso_for(iso_name, phys))
 
     def f_a(q, T):
         x = col.X_of_q(np.array([q]))[0]
         phi = T * col.phi_over_T(T)
-        return q * (phi + col.dH) + 8.314 * T * (q * np.log(x / (phys.b_H0 * 1.0)) - col.Pi_of_x(x))
+        return q * (phi + col.dH) + 8.314 * T * (q * np.log(x / (col.iso.b0 * 1.0)) - col.Pi_of_x(x))
 
     for q in (0.5, 3.0, 12.0, 20.0):
         for T in (295.0, 330.0, 360.0):

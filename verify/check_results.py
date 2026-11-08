@@ -49,15 +49,18 @@ CRITERIA = [
     ("V4_coarse_graining/water_rate_rel_coarse_outlet", "gt", 1e-3, "the coarse outlet is the wrong port (design reason)"),
 ]
 
-# (json path, exact text in docs/formulation_3B.md, value the text states, half-unit of its last digit)
+# Rounded bindings: (json path, exact text in docs/formulation_3B.md, value stated, half-unit of its last digit)
+# Bound bindings use half = None and mean "the value is below the stated bound": numbers set by the
+# solver tolerance or by round-off are quoted as bounds, because they move with the order of
+# floating-point operations (a refactor moved V1 from 7e-10 to 1.5e-9; ledger P3B-24).
 BINDINGS = [
-    ("V1_paper1_limit/max_rel_diff_c", "7×10⁻¹⁰ in c/c_in", 7e-10, 0.5e-10),
-    ("V1_paper1_limit/max_rel_diff_q", "6×10⁻⁹ in q/q_max", 6e-9, 0.5e-9),
-    ("V1_paper1_limit/max_abs_diff_T_K", "1.5×10⁻⁷ K in T", 1.5e-7, 0.05e-7),
+    ("V1_paper1_limit/max_rel_diff_c", "below 2×10⁻⁹ in c/c_in", 2e-9, None),
+    ("V1_paper1_limit/max_rel_diff_q", "below 10⁻⁸ in q/q_max", 1e-8, None),
+    ("V1_paper1_limit/max_abs_diff_T_K", "below 2×10⁻⁷ K in T", 2e-7, None),
     ("V1_paper1_limit/T_rise_K", "temperature rise 16.7 K", 16.7, 0.05),
-    ("V2_cycle/max_rel_rate_residual/water", "water-rate identity 6×10⁻¹⁵", 6e-15, 0.5e-15),
-    ("V2_cycle/max_rel_rate_residual/energy", "energy-rate identity 3×10⁻¹⁶", 3e-16, 0.5e-16),
-    ("V2_cycle/max_rel_rate_residual/entropy_identity", "`dS/dt = Φ_S + Σσ` 3×10⁻¹⁶", 3e-16, 0.5e-16),
+    ("V2_cycle/max_rel_rate_residual/water", "all below 10⁻¹⁴, round-off", 1e-14, None),
+    ("V2_cycle/max_rel_rate_residual/energy", "all below 10⁻¹⁴, round-off", 1e-14, None),
+    ("V2_cycle/max_rel_rate_residual/entropy_identity", "all below 10⁻¹⁴, round-off", 1e-14, None),
     ("V2_cycle/min_production_over_mean_production/adv", "worst −7×10⁻²²", -7e-22, 0.5e-22),
     ("V3_concavity/max_eig_over_max_abs_eig_stream_entropy", "ratio −2×10⁻⁵", -2e-5, 0.5e-5),
     ("V3_concavity/max_eig_over_max_abs_eig_cell_entropy", "and −3×10⁻¹⁰", -3e-10, 0.5e-10),
@@ -86,10 +89,11 @@ def check_bindings(res):
     for path, text, stated, half in BINDINGS:
         v = get(res, path)
         present = text in doc
-        rounds = abs(v - stated) <= half * (1 + 1e-9)
+        rounds = (v < stated) if half is None else (abs(v - stated) <= half * (1 + 1e-9))
         passed = present and rounds
         ok &= passed
-        why = "" if passed else (" (text missing from formulation)" if not present else f" (value {v:.4g} does not round to {stated:g})")
+        what = f"is not below {stated:g}" if half is None else f"does not round to {stated:g}"
+        why = "" if passed else (" (text missing from formulation)" if not present else f" (value {v:.4g} {what})")
         print(f"{'PASS' if passed else 'FAIL'}  bound: {text!r}{why}")
     return ok
 
