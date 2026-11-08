@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from p3b.gates import load_meta
+from p3b.gates import cycle_release, load_meta
 
 F64 = torch.float64
 
@@ -30,6 +30,11 @@ class Dataset:
     meta: list
     system: str
     n_cells: int
+    paths: list = None
+    N_true: torch.Tensor = None    # (traj, cycle, snap) reference water inventory, A only (B: None)
+    E_true: torch.Tensor = None    # (traj, cycle, snap) reference energy
+    W_ref: torch.Tensor = None     # (traj, cycle) release per cycle (A water, B energy; gates.cycle_release)
+    wall_abs: torch.Tensor = None  # (traj, cycle) integral of |wall heat| over the cycle
 
 
 def _inputs(meta: dict, n_cycles: int, n_snap: int):
@@ -49,7 +54,8 @@ def _inputs(meta: dict, n_cycles: int, n_snap: int):
 
 def load_set(paths) -> Dataset:
     """Load equally shaped npz files of one system into float64 tensors."""
-    X, raw, feat, t, metas = [], [], [], [], []
+    X, raw, feat, t, metas, Nt, Et, W, wall = [], [], [], [], [], [], [], [], []
+    paths = [str(p) for p in paths]
     for p in paths:
         d = np.load(p, allow_pickle=False)
         meta = load_meta(d)
@@ -61,9 +67,23 @@ def load_set(paths) -> Dataset:
         feat.append(f)
         t.append(d["t"].astype(float))
         metas.append(meta)
-    return Dataset(torch.tensor(np.stack(X), dtype=F64), torch.tensor(np.stack(raw), dtype=F64),
-                   torch.tensor(np.stack(feat), dtype=F64), torch.tensor(np.stack(t), dtype=F64),
-                   metas, metas[0]["system"], int(metas[0]["N_c"]))
+        dz = meta["L"] / meta["N_c"]
+        cb = d["conserved_blocks"]
+        if meta["system"] == "A":
+            Nt.append((cb[..., 0] + cb[..., 1]).sum(-1) * dz)
+            Et.append(cb[..., 2].sum(-1) * dz)
+            col = 4
+        else:
+            Et.append((cb[..., 0] + cb[..., 1]).sum(-1) * dz)
+            col = 2
+        W.append(cycle_release(d))
+        wc = d["ports_cum"][..., col]
+        nxt = np.append(wc[1:, 0], d["ports_end"][col])
+        seq = np.concatenate([wc, nxt[:, None]], axis=1)
+        wall.append(np.abs(np.diff(seq, axis=1)).sum(axis=1))
+    tt = lambda a: torch.tensor(np.stack(a), dtype=F64)  # noqa: E731
+    return Dataset(tt(X), tt(raw), tt(feat), tt(t), metas, metas[0]["system"], int(metas[0]["N_c"]),
+                   paths, tt(Nt) if Nt else None, tt(Et), tt(W), tt(wall))
 
 
 class Standardiser:
