@@ -85,3 +85,17 @@ def test_command_job_kernel(tmp_path, monkeypatch):
     assert "time_reference.py" in run_py and "v1_large_grid.py" in run_py and "/kaggle/working/out" in run_py
     meta = json.loads((tmp_path / "p3b-timing-a" / "kernel-metadata.json").read_text())
     assert meta["is_private"] is True and meta["enable_internet"] is False and meta["dataset_sources"] == ["o/kit"]
+
+
+def test_kit_carries_every_p3b_module_and_the_training_entry_point(tmp_path):
+    """The kit must hold the whole p3b package (subpackages included: the simulators import
+    p3b.solvers for the exact Jacobian) and the training entry point."""
+    import pathlib
+    from kaggle.make_kit import make_kit
+    root = pathlib.Path(__file__).resolve().parent.parent
+    p1 = root.parent / "ai-mof-cof-dynamics"
+    kit = make_kit(tmp_path / "kit", commit="abc1234", paper1_src=p1)
+    want = {p.relative_to(root).as_posix() for p in (root / "p3b").rglob("*.py")}
+    have = {p.relative_to(kit).as_posix() for p in (kit / "p3b").rglob("*.py")}
+    assert want <= have, sorted(want - have)
+    assert (kit / "kaggle" / "train_chunk.py").exists()

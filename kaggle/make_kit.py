@@ -53,7 +53,9 @@ def make_kit(out_dir, commit: str, paper1_src=None) -> Path:
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    _copy_tree(ROOT, out, "p3b/*.py")
+    _copy_tree(ROOT, out, "p3b/**/*.py")              # the whole package, subpackages included
+    _copy_tree(ROOT, out, "kaggle/train_chunk.py")
+    _copy_tree(ROOT, out, "scripts/pilot_rules.py")
     _copy_tree(ROOT, out, "kaggle/generate_chunk.py")
     _copy_tree(ROOT, out, "scripts/time_reference.py")
     _copy_tree(ROOT, out, "verify/v1_large_grid.py")
