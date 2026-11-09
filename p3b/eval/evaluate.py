@@ -86,3 +86,52 @@ def write_results(path, rows: list, meta: dict) -> None:
     with open(tmp, "w") as f:
         json.dump({"meta": meta, "rows": rows}, f, indent=1)
     os.replace(tmp, path)
+
+
+def evaluate_files(files_by_arm: dict, ds, phys, n_cycles: int, seed: int, floors: dict | None = None,
+                   tau_S: float | None = None) -> list:
+    """Score stored solver-arm files (C, MUSCL-C, C+L; one file per test trajectory, in the order of
+    ds) against the reference with the same metrics as `evaluate`; violations by the trapezoid on
+    the arm's own snapshots, counted when the pilot floors and tau_S are given (None otherwise); the
+    normalised residuals are kept either way."""
+    from p3b.latent.data import load_set
+    A = ds.system == "A"
+    n_out, n_ch = (2, 3) if A else (1, 2)
+    rhoc = None if A else phys.rhoc
+    norm = normalisers(ds)
+    ns, nc = ds.X.shape[2], ds.n_cells
+    rows = []
+    for arm_name, paths in files_by_arm.items():
+        for j, p in enumerate(paths):
+            pred_all = load_set([p]).X[0, :n_cycles]
+            ref = ds.X[j, :n_cycles]
+            finite = torch.isfinite(pred_all).reshape(n_cycles, -1).all(-1)
+            pred = torch.where(torch.isfinite(pred_all), pred_all, ref)
+            e = cycle_errors(pred, ref, phys, nc)
+            raw, t = ds.raw_inputs[j, :n_cycles], ds.t[j, :n_cycles]
+            W_p = release(pred[..., -n_out:], raw, t, ds.system, rhoc)
+            W_r = release(ref[..., -n_out:], raw, t, ds.system, rhoc)
+            eps_raw = relative_error(W_p, W_r)
+            e_c, eps_c, failed = apply_failure(e, eps_raw, finite)
+            X_flat = pred.reshape(-1, pred.shape[-1])
+            t_flat = t.reshape(-1)
+            res = trapezoid_residuals(X_flat, raw.reshape(X_flat.shape[0], -1), t_flat, phys, ds.system, nc)
+            cyc = torch.arange(len(res["E"])) // ns
+            dt = t_flat[1:] - t_flat[:-1]
+            viol = {"N": None, "E": None, "S": None}
+            if floors is not None:
+                if A:
+                    viol["N"] = int(((res["N"] / norm["feed_water"][j, cyc]).abs() > FACTOR * floors["N"]).sum())
+                viol["E"] = int(((res["E"] / norm["energy_scale"][j, cyc]).abs() > FACTOR * floors["E"]).sum())
+                viol["S"] = int(((res["S"] / dt) < -tau_S).sum())
+            rows.append({"arm": arm_name, "trajectory": j, "seed": int(seed), "e": [float(x) for x in e_c],
+                         "eps": [float(x) for x in eps_c], "failed_cycle": failed,
+                         "violations": viol, "violations_method": "trapezoid on own snapshots",
+                         "residuals_normalised": {
+                             "E": [float(x) for x in (res["E"] / norm["energy_scale"][j, cyc])],
+                             **({"N": [float(x) for x in (res["N"] / norm["feed_water"][j, cyc])]} if A else {}),
+                             "S_per_s": [float(x) for x in (res["S"] / dt)]},
+                         "e_uncapped": [float(x) for x in e], "eps_uncapped": [float(x) for x in eps_raw],
+                         "W_pred": [float(x) for x in W_p], "W_ref": [float(x) for x in W_r],
+                         "W_ref_exact": [float(x) for x in ds.W_ref[j, :n_cycles]]})
+    return rows

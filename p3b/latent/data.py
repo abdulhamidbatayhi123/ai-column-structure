@@ -76,11 +76,15 @@ def load_set(paths) -> Dataset:
         else:
             Et.append((cb[..., 0] + cb[..., 1]).sum(-1) * dz)
             col = 2
-        W.append(cycle_release(d))
-        wc = d["ports_cum"][..., col]
-        nxt = np.append(wc[1:, 0], d["ports_end"][col])
-        seq = np.concatenate([wc, nxt[:, None]], axis=1)
-        wall.append(np.abs(np.diff(seq, axis=1)).sum(axis=1))
+        if "ports_end" in d.files:               # reference and C files carry exact ports
+            W.append(cycle_release(d))
+            wc = d["ports_cum"][..., col]
+            nxt = np.append(wc[1:, 0], d["ports_end"][col])
+            seq = np.concatenate([wc, nxt[:, None]], axis=1)
+            wall.append(np.abs(np.diff(seq, axis=1)).sum(axis=1))
+        else:                                    # a stored arm without exact ports (C+L): not defined
+            W.append(np.full(ch.shape[0], np.nan))
+            wall.append(np.full(ch.shape[0], np.nan))
     tt = lambda a: torch.tensor(np.stack(a), dtype=F64)  # noqa: E731
     return Dataset(tt(X), tt(raw), tt(feat), tt(t), metas, metas[0]["system"], int(metas[0]["N_c"]),
                    paths, tt(Nt) if Nt else None, tt(Et), tt(W), tt(wall))

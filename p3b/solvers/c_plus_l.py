@@ -29,6 +29,7 @@ from p3b.thermal_store import T0 as T0_B
 
 F64 = torch.float64
 _INV_SOFTPLUS_1 = math.log(math.e - 1.0)
+STALL_TOL = 1e-8     # Newton may stop where it stalls only below this block-relative residual
 
 
 class Multipliers(nn.Module):
@@ -199,13 +200,15 @@ def colored_jacobian(f, y, n_cells: int, n_var: int):
     return J
 
 
-def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-12, max_iter: int = 50, substeps: int = 1):
+def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: int = 50, substeps: int = 1):
     """y(h) by `substeps` implicit-Euler steps of h/substeps, each solved by Newton with the
     coloured Jacobian; differentiable in y0 and the multiplier weights (see module doc).
 
     Convergence is tested per variable block (n, a, u for system A; u_f, u_s for B), each against
     the larger of its magnitude and its update h f, because the blocks differ by up to 1e13. A Newton solve that does not
-    converge raises RuntimeError: a wrong value with a wrong gradient is never returned."""
+    converge raises RuntimeError: a wrong value with a wrong gradient is never returned. A solve that
+    stalls (the residual no longer halves) is accepted only below STALL_TOL, the round-off floor of
+    some states lying between 1e-12 and 1e-9."""
     n = y0.numel()
     N = rhs.N
     n_var = n // N
@@ -222,11 +225,17 @@ def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-12, max_iter: in
             scale = torch.maximum(base.reshape(n_var, N).abs().amax(-1, keepdim=True),
                                   (hs * f(base)).reshape(n_var, N).abs().amax(-1, keepdim=True)).clamp(min=1e-300)
             ok = False
+            prev = float("inf")
             for _ in range(max_iter):
                 F = y - base - hs * f(y)
-                if bool((F.reshape(n_var, N).abs() <= tol * scale).all()):
+                rel = float((F.reshape(n_var, N).abs() / scale).max())
+                if rel <= tol:
                     ok = True
                     break
+                if rel >= 0.5 * prev and rel <= STALL_TOL:   # stalled at the round-off floor of this state
+                    ok = True
+                    break
+                prev = rel
                 J = colored_jacobian(f, y, N, n_var)
                 y = y - torch.linalg.solve(eye - hs * J, F)
             if not ok:
