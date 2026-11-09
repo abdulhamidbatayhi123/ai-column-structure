@@ -147,15 +147,15 @@ def test_cplusl_K_feeds_choose_K():
 
 
 def test_wall_per_iter_measures_each_arm(pilot_dir):
-    from p3b.latent.arms_structured import SDynamics
     from p3b.latent.arms_unstructured import UDynamics
     from p3b.train.trainer import Arm, time_scale
     ds, val, std, ae, lf = _setup(pilot_dir)
+    # plumbing only: S's windows diverge on this 4-d, 40-snapshot data and its timing is then refused
+    # (test_wall_per_iter_refuses_a_timing_made_of_skipped_windows); the dry run times a working S
     makers = {"U": lambda: Arm("U", UDynamics(4, 4, 8, time_scale=time_scale(ds)), ae, std, lf),
-              "S": lambda: Arm("S", SDynamics(4, 4, lf, kappa=runs.kappa_from_data(lf, ae, std, ds), width=8,
-                                              time_scale=time_scale(ds)), ae, std, lf)}
+              "U16": lambda: Arm("U", UDynamics(4, 4, 16, time_scale=time_scale(ds)), ae, std, lf)}
     out = runs.wall_per_iter(makers, ds, iterations=2, warmup=1, h_steps=1, n_windows=1, n_steps=2)
-    assert set(out) == {"U", "S"} and all(v > 0 and np.isfinite(v) for v in out.values())
+    assert set(out) == {"U", "U16"} and all(v > 0 and np.isfinite(v) for v in out.values())
 
 
 def test_two_seed_rows_trains_a_fresh_arm_per_seed_and_evaluates_validation(pilot_dir):
@@ -190,3 +190,32 @@ def test_cplusl_curve_and_lr_sweep(pilot16):
     sweep = runs.cplusl_lr_sweep(ds, ds, "MOF-303", K=1, rates=(1e-3,), iterations=2, n_coarse=16, n_windows=1,
                                  n_steps=2)
     assert set(sweep) == {1e-3}
+
+
+def test_g2_values_are_raw_and_kappa_is_their_scaled_median(pilot_dir):
+    ds, val, std, ae, lf = _setup(pilot_dir)
+    g2 = runs.g2_from_data(lf, ae, std, ds, n=16)
+    assert len(g2) == 16 and all(v >= 0 for v in g2)
+    assert runs.kappa_from_data(lf, ae, std, ds, n=16) == pytest.approx(1e-3 * float(np.median(g2)))
+
+
+def test_h_check_makes_an_h_with_a_failed_rollout_inadmissible(pilot_dir, monkeypatch):
+    """A rollout that diverges at step 1 leaves almost no residuals; its violation rate must not read 0,
+    or the h rule could choose an h at which S fails (found in the Task 6 dry run)."""
+    import torch
+    from p3b.eval import rollout as ro
+    from p3b.latent.arms_structured import SDynamics
+    from p3b.pilot.rules import choose_h_steps
+    from p3b.train.trainer import Arm, time_scale
+    ds, val, std, ae, lf = _setup(pilot_dir)
+    s = SDynamics(4, 4, lf, kappa=runs.kappa_from_data(lf, ae, std, ds), width=8, time_scale=time_scale(ds))
+
+    def failed(arm, ds_, j, n_cycles, h_steps, track=False):
+        return ro.RolloutResult(X=torch.full((1,), float("nan")), X_end=torch.full((1,), float("nan")),
+                                finite=torch.tensor([False]), failed_cycle=1, cpu_s=0.0,
+                                residuals={"S": torch.zeros(1)}, error="LinAlgError")
+    monkeypatch.setattr(ro, "rollout", failed)
+    out = runs.h_check(Arm("S", s, ae, std, lf), val, tau_S=1e-9, steps=(1, 2))
+    assert all(v["viol_rate"] == 1.0 and v["failed"] == val.X.shape[0] for v in out["h"].values())
+    assert choose_h_steps({k: v["viol_rate"] for k, v in out["h"].items()},
+                          {k: v["stiff_ok"] for k, v in out["h"].items()}) is None

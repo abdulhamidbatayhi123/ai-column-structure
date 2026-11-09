@@ -66,3 +66,15 @@ def test_positive_control_word_on_a_clear_training_effect():
     out = runs.positive_control(full, quarter, draws=500)
     assert out["word"] == "SUPPORTED" and out["hypothesis"] == "H2"
     assert set(out) == {"word", "hypothesis", "alpha"}          # blinding: no error or ratio is written
+
+
+def test_wall_per_iter_refuses_a_timing_made_of_skipped_windows(monkeypatch):
+    """Skipped (diverged) windows cost almost nothing, so they would make an arm look cheap and set
+    U-long's iteration count too small."""
+    from p3b.train import trainer
+
+    def fake_train(arm, ds, cfg):
+        return {"skipped": cfg.iterations, "skipped_grad": 0, "loss": []}
+    monkeypatch.setattr(trainer, "train", fake_train)
+    with pytest.raises(RuntimeError):
+        runs.wall_per_iter({"S": lambda: None}, ds=None, iterations=4, warmup=0)

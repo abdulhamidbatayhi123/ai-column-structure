@@ -108,10 +108,15 @@ def write_data_inputs(dirs_by_key: dict, out_dir, d_grid=(16, 24, 32, 48, 64), e
 
 
 # ---- Task 2: learning rates and iteration curves ----------------------------------------------------
-@torch.no_grad()
 def kappa_from_data(lf, ae, std, ds, n: int = 256, seed: int = 0) -> float:
     """kappa = 1e-3 x the median |P grad S^|^2 over encoded pilot snapshots (PREREG Section 4). It
     needs no trained dynamics, so S's learning-rate sweep can use it."""
+    return 1e-3 * float(np.median(g2_from_data(lf, ae, std, ds, n, seed)))
+
+
+@torch.no_grad()
+def g2_from_data(lf, ae, std, ds, n: int = 256, seed: int = 0) -> list:
+    """|P grad S^|^2 at n encoded pilot snapshots (the raw values p3b.pilot.rules.thresholds takes)."""
     from p3b.latent.arms_structured import structure_terms
     rng = np.random.default_rng(seed)
     X = ds.X.reshape(-1, ds.X.shape[-1])
@@ -122,7 +127,7 @@ def kappa_from_data(lf, ae, std, ds, n: int = 256, seed: int = 0) -> float:
     B = torch.stack([t["dE"], t["dN"]], -1) if lf.system == "A" else t["dE"].unsqueeze(-1)
     _, info = structure_terms(B, t["dS"], torch.zeros_like(z), None, None, None, kappa=1.0,
                               metriplectic=False, port_projection=False)
-    return 1e-3 * float(info["P_gradS_sq"].median())
+    return [float(v) for v in info["P_gradS_sq"].reshape(-1)]
 
 
 def validation_loss(arm, val, h_steps: int, n_cycles: int = 1) -> float:
@@ -195,7 +200,8 @@ def h_check(arm, val, tau_S: float, steps=(1, 2, 4), n_states: int = 8) -> dict:
     rollouts (production per second below -tau_S, per step) and the near-dry stiffness check
     (h rho(J) < 2.5 at the encoded validation states with the smallest concentration, where
     -mu_v/T, and so the metriplectic term, is stiffest; formulation 5.4). Also the projection
-    defects per step of every validation trajectory at the coarsest h."""
+    defects per step of every validation trajectory at the coarsest h. A rollout that fails at some h
+    sets that h's violation rate to 1 (inadmissible) and is counted in "failed"."""
     from p3b.eval.rollout import rollout
     std, ae = arm.std, arm.ae
     X = val.X.reshape(-1, val.X.shape[-1])
@@ -210,9 +216,11 @@ def h_check(arm, val, tau_S: float, steps=(1, 2, 4), n_states: int = 8) -> dict:
         Z = ae.encode(std.encode(X[pick]))
     out, defects = {"h": {}}, []
     for k in steps:
-        viol = total = 0
+        viol = total = n_failed = 0
         for j in range(val.X.shape[0]):
             r = rollout(arm, val, j, val.X.shape[1], k, track=True)
+            if r.failed_cycle is not None:      # a diverged rollout makes this h inadmissible: its few
+                n_failed += 1                   # residuals must not read as a zero violation rate
             if "S" in r.residuals:
                 n = len(r.residuals["S"])
                 tt = val.t[j].reshape(-1)
@@ -227,8 +235,8 @@ def h_check(arm, val, tau_S: float, steps=(1, 2, 4), n_states: int = 8) -> dict:
             f = lambda z: arm.dyn(z, F[pick[i]:pick[i] + 1], R[pick[i]:pick[i] + 1])[0]  # noqa: E731
             rhos.append(spectral_radius(f, Z[i:i + 1]))
         h_rho = (dt / k) * max(rhos)
-        out["h"][k] = {"viol_rate": viol / max(1, total), "stiff_ok": bool(np.isfinite(h_rho) and h_rho < RK4_STABLE),
-                       "h_rho": float(h_rho)}
+        out["h"][k] = {"viol_rate": 1.0 if n_failed else viol / max(1, total), "failed": n_failed,
+                       "stiff_ok": bool(np.isfinite(h_rho) and h_rho < RK4_STABLE), "h_rho": float(h_rho)}
     out["defects_per_step"] = defects
     return out
 
@@ -293,9 +301,11 @@ def wall_per_iter(make_arms: dict, ds, iterations: int = 50, warmup: int = 5, h_
             train(arm, ds, TrainConfig(lr=lr, iterations=warmup, seed=seed, h_steps=h_steps,
                                        n_windows=n_windows, n_steps=n_steps))
         t0 = time.perf_counter()
-        train(arm, ds, TrainConfig(lr=lr, iterations=iterations, seed=seed, h_steps=h_steps,
-                                   n_windows=n_windows, n_steps=n_steps))
+        hist = train(arm, ds, TrainConfig(lr=lr, iterations=iterations, seed=seed, h_steps=h_steps,
+                                          n_windows=n_windows, n_steps=n_steps))
         out[name] = (time.perf_counter() - t0) / iterations
+        if hist["skipped"] + hist["skipped_grad"] > iterations / 2:   # diverged windows cost almost nothing
+            raise RuntimeError(f"{name}: most timed iterations were skipped; the wall-clock is not a training cost")
     return out
 
 
@@ -307,40 +317,42 @@ def wall_per_iter(make_arms: dict, ds, iterations: int = 50, warmup: int = 5, h_
 HYP_STAT = {"H1": ("eps", 50), "H5": ("eps", 20), "H2": ("e", 6), "H4": ("e", 6)}
 
 
-def hypothesis_error(row: dict, hyp: str) -> float:
-    """eps_W at cycle c (H1, H5) or the mean e over cycles 1..c (H2, H4), from a capped evaluation row."""
-    key, c = HYP_STAT[hyp]
+def hypothesis_error(row: dict, hyp: str, stat: dict | None = None) -> float:
+    """eps_W at cycle c (H1, H5) or the mean e over cycles 1..c (H2, H4), from a capped evaluation row;
+    stat overrides HYP_STAT's cycles (tests on short data only)."""
+    key, c = (stat or HYP_STAT)[hyp]
     vals = row[key]
     if len(vals) < c:
         raise ValueError(f"{hyp} needs {c} cycles, the row has {len(vals)}")
     return float(vals[c - 1]) if key == "eps" else float(np.mean(vals[:c]))
 
 
-def _log_ratios(arm_rows: dict, base_rows: dict, hyp: str) -> list:
+def _log_ratios(arm_rows: dict, base_rows: dict, hyp: str, stat: dict | None = None) -> list:
     if set(arm_rows) != set(base_rows):
         raise ValueError(f"seeds differ: {sorted(arm_rows)} against {sorted(base_rows)}")
     seeds = sorted(base_rows)
     by = {s: ({r["trajectory"]: r for r in arm_rows[s]}, {r["trajectory"]: r for r in base_rows[s]}) for s in seeds}
     trajs = sorted(by[seeds[0]][1])
-    v = np.array([[math.log(hypothesis_error(by[s][0][t], hyp) / hypothesis_error(by[s][1][t], hyp)) for s in seeds]
+    v = np.array([[math.log(hypothesis_error(by[s][0][t], hyp, stat) / hypothesis_error(by[s][1][t], hyp, stat))
+                   for s in seeds]
                   for t in trajs])
     if not np.isfinite(v).all():
         raise ValueError(f"{hyp}: a non-finite log error ratio")
     return v.tolist()
 
 
-def sds_values(u_rows: dict, s_rows: dict) -> dict:
+def sds_values(u_rows: dict, s_rows: dict, stat: dict | None = None) -> dict:
     """{hypothesis: [[log(err_S / err_U) per seed] per trajectory]} from {seed: evaluation rows} of U
     and S (seed k of S paired with seed k of U), the input of p3b.pilot.rules.upper80_sd."""
-    return {h: _log_ratios(s_rows, u_rows, h) for h in HYP_STAT}
+    return {h: _log_ratios(s_rows, u_rows, h, stat) for h in HYP_STAT}
 
 
 def positive_control(full_rows: dict, quarter_rows: dict, hyp: str = "H2", alpha: float = 0.05,
-                     draws: int = 10_000, seed: int = 0) -> dict:
+                     draws: int = 10_000, seed: int = 0, stat: dict | None = None) -> dict:
     """U at full iterations against U at a quarter of them through the full directional rule (PREREG
     Section 9) on the H2 statistic at alpha 0.05. Only the word is written (blinding)."""
     from p3b.pilot.power import directional_rule
-    word = directional_rule(_log_ratios(full_rows, quarter_rows, hyp), alpha, draws, seed)
+    word = directional_rule(_log_ratios(full_rows, quarter_rows, hyp, stat), alpha, draws, seed)
     return {"word": word, "hypothesis": hyp, "alpha": alpha}
 
 

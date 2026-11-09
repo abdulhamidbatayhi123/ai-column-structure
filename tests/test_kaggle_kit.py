@@ -99,3 +99,23 @@ def test_kit_carries_every_p3b_module_and_the_training_entry_point(tmp_path):
     have = {p.relative_to(kit).as_posix() for p in (kit / "p3b").rglob("*.py")}
     assert want <= have, sorted(want - have)
     assert (kit / "kaggle" / "train_chunk.py").exists()
+
+
+def test_kit_carries_the_pilot_runner_its_stage_and_autoencoders(tmp_path, monkeypatch):
+    """Plan 5 Task 6: pilot phases 1-4 read results/pilot_stage.json and the phase-1 autoencoders
+    (results/pilot_ae/, found by p3b.train.cells._load_ae under /kaggle/input/*/**) from the kit."""
+    from p3b import _paper1
+    from kaggle import make_kit as mk
+    root = tmp_path / "repo"
+    for rel in ("results/pilot_stage.json", "results/pilot_ae/ae_A_MOF-303_pilot_s0.pt",
+                "data/pilot/A_MOF-303/train/A_primary_pilot_train_0000.npz"):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(b"x")
+    import shutil
+    for d in ("p3b", "kaggle", "scripts", "verify", "data/design"):
+        shutil.copytree(mk.ROOT / d, root / d, dirs_exist_ok=True)
+    monkeypatch.setattr(mk, "ROOT", root)
+    kit = mk.make_kit(tmp_path / "kit", "abc1234", paper1_src=_paper1.PAPER1_DIR)
+    for rel in ("kaggle/pilot_chunk.py", "results/pilot_stage.json", "results/pilot_ae/ae_A_MOF-303_pilot_s0.pt",
+                "data/pilot/A_MOF-303/train/A_primary_pilot_train_0000.npz"):
+        assert (kit / rel).exists(), rel

@@ -66,3 +66,10 @@ def test_h4_margin_rule():
     assert h4_margin({1.10: 0.85, 1.15: 0.95}) == 1.10
     assert h4_margin({1.10: 0.6, 1.15: 0.81, 1.20: 0.9}) == 1.15
     assert h4_margin({1.10: 0.3, 1.15: 0.5, 1.20: 0.7}) == "demoted"
+
+
+def test_tau_S_alone_equals_the_thresholds_value():
+    from p3b.pilot import rules
+    prod = [-3e-6, 1e-5, -1e-7, 2e-6, -5e-8]
+    th = rules.thresholds({"N": 1e-6, "E": 1e-7}, prod, [1.0, 2.0], [0.0, 1e-5], 1e-9)
+    assert rules.tau_S_from(prod) == th["tau_S"]

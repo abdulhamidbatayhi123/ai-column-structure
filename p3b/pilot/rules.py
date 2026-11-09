@@ -72,6 +72,16 @@ def choose_h(viol_rates: dict, stiff_ok: dict):
     return max(ok) if ok else None
 
 
+def tau_S_from(ref_production) -> float:
+    """10 x the 99.9th percentile of the negative part of the reference's model-style production
+    rates (see thresholds); needed alone before S is trained (the pilot's h check)."""
+    prod = np.asarray(ref_production, dtype=float)
+    if prod.size == 0:
+        raise ValueError("tau_S needs the reference production rates; none given")
+    neg = -prod[prod < 0]
+    return 10.0 * float(np.percentile(neg, 99.9)) if neg.size else 0.0
+
+
 def thresholds(floors: dict, ref_production, g2, defects_per_step, tau_ref: float) -> dict:
     """Per system and material: violation thresholds (10 x the reference floors), tau_S, kappa (1e-3 x
     the median |P grad S|^2), the projection-defect bound (10 x the 99.9th percentile of defect steps
@@ -83,11 +93,7 @@ def thresholds(floors: dict, ref_production, g2, defects_per_step, tau_ref: floa
     quadrature and storage noise every arm also sees). Calibrating on S itself would make S's
     entropy check tautological and circular with h (plan 4 review)."""
     out = {f"violation_{k}": 10.0 * v for k, v in floors.items()}
-    prod = np.asarray(ref_production, dtype=float)
-    if prod.size == 0:
-        raise ValueError("tau_S needs the reference production rates; none given")
-    neg = -prod[prod < 0]
-    out["tau_S"] = 10.0 * float(np.percentile(neg, 99.9)) if neg.size else 0.0
+    out["tau_S"] = tau_S_from(ref_production)
     out["kappa"] = 1e-3 * float(np.median(np.asarray(g2, dtype=float)))
     out["defect_bound"] = min(10.0 * float(np.percentile(np.asarray(defects_per_step, float), 99.9)), DEFECT_CAP)
     out["tau_ref"] = float(tau_ref)
