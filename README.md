@@ -29,7 +29,7 @@ in advance, so a negative answer is as publishable as a positive one.
 | thermodynamic formulation, both systems | done; three independent review rounds; verified numerically (`verify/`, CI on every push) |
 | materials | fitted to the published isotherms (`docs/materials_3B.md`) |
 | pre-registration | approved by the author 2026-11-05; Stage-1 revision of 2026-11-08 |
-| study code (`p3b/`) | reference simulators with an exact sparse Jacobian, latent model and every arm, training, evaluation, statistics, pilot rules, power simulation and Kaggle jobs; each plan reviewed independently; 401 tests pass (CI) |
+| study code (`p3b/`) | reference simulators with an exact sparse Jacobian, latent model and every arm, training, evaluation, statistics, pilot rules, power simulation and Kaggle jobs; each plan reviewed independently; 404 tests pass (CI) |
 | reference timing on Kaggle | done: system A 18 to 26 CPU-s per cycle at 2048 cells, so the data-cost contingency is not applied (`docs/compute_3B.md`) |
 | pilot (data, learning rates, step size, variance, thresholds, decoder gate) | runner complete and independently reviewed: five Kaggle phases with a blinded collector (`kaggle/pilot_jobs.py`, `scripts/pilot_collect.py`); pilot data generation running on Kaggle |
 | freeze | after the pilot, before any confirmatory data |
@@ -105,7 +105,7 @@ python verify/materials/fit_isotherms.py    # refits the isotherms (fetches the 
 | V2 | balance and entropy identities, and the sign of every production term, over temperature-swing cycles | identities below 10⁻¹⁴; every term ≥ 0 |
 | V3 | concavity of the gas-stream and cell entropies | negative semidefinite |
 | V4 | whether coarse-grained data keep the balances and the entropy inequality | yes, with the fine outlet stored; the coarse outlet cell is off by 4.0 % |
-| tests | the same identities for both fitted isotherms and for system B in both flow directions, plus the pipeline | 401 pass |
+| tests | the same identities for both fitted isotherms and for system B in both flow directions, plus the pipeline | 404 pass |
 
 ## Related work by the same author
 
