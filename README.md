@@ -19,19 +19,21 @@ measures what each part buys in long multi-cycle stability, data efficiency, sho
 accuracy and design decisions. Every hypothesis, metric, threshold and verdict word is fixed
 in advance, so a negative answer is as publishable as a positive one.
 
-## Status (2026-11-08)
+## Status (2026-11-09)
 
-**Design complete and verified on small grids; Stage-1 pre-registration drafted. No study data exist yet.**
+**Design complete; the full study pipeline is implemented and tested; the pilot is starting. No confirmatory data exist yet.**
 
 | step | state |
 |---|---|
 | literature review and gap | done; checked live, two reference-audit rounds plus an independent Claude Science review; Lyon prior art read in full |
 | thermodynamic formulation, both systems | done; three independent review rounds; verified numerically (`verify/`, CI on every push) |
 | materials | fitted to the published isotherms (`docs/materials_3B.md`) |
-| pre-registration | approved by the author 2026-11-05; Stage-1 revision of 2026-11-08 under review |
-| pilot (timing, variance, thresholds, decoder gate) | next; on Kaggle |
+| pre-registration | approved by the author 2026-11-05; Stage-1 revision of 2026-11-08 |
+| study code (`p3b/`) | reference simulators with an exact sparse Jacobian, latent model and every arm, training, evaluation, statistics, pilot rules, power simulation and Kaggle jobs; each plan reviewed independently; 353 tests pass |
+| reference timing on Kaggle | done: system A 18 to 26 CPU-s per cycle at 2048 cells, so the data-cost contingency is not applied (`docs/compute_3B.md`) |
+| pilot (data, learning rates, step size, variance, thresholds, decoder gate) | pilot data generation queued on Kaggle; pilot runner being completed |
 | freeze | after the pilot, before any confirmatory data |
-| confirmatory study | about 620 CPU-equivalent hours, mainly on Kaggle |
+| confirmatory study | about 620 CPU-equivalent hours, on Kaggle CPU |
 
 ## The design in brief
 
@@ -68,12 +70,16 @@ in advance, so a negative answer is as publishable as a positive one.
 | [`docs/formulation_3B.md`](docs/formulation_3B.md) | state, energy, entropy, friction operator, ports and latent model, for both systems |
 | [`docs/materials_3B.md`](docs/materials_3B.md) | the MOF-303 and Al-fumarate isotherms fitted to the published figures, and the heats from the measured step shift |
 | [`docs/lit_review_3B.md`](docs/lit_review_3B.md) | the literature and the exact gap |
-| [`docs/compute_3B.md`](docs/compute_3B.md) | compute plan, ceiling and reduction order |
+| [`docs/compute_3B.md`](docs/compute_3B.md) | compute plan, measured reference cost, ceiling and reduction order |
 | [`docs/INTERFACE_3A.md`](docs/INTERFACE_3A.md) | what this study needs from Paper 3A's learned isotherm potential |
 | [`docs/terminology_3B.md`](docs/terminology_3B.md) | every term defined once, and the phrases the paper must not use |
 | [`RETRACTIONS_P3B.md`](RETRACTIONS_P3B.md) | the correction ledger: every error found, its cause, its fix and how it was found |
+| [`p3b/`](p3b/) | the study code: reference simulators (`simulate_a.py`, `simulate_b.py`, `exact_jacobian.py`), data generation and gates, latent model and arms (`latent/`), coarse solvers C, C+L and MUSCL-C (`solvers/`), training (`train/`), evaluation (`eval/`), statistics and verdict words (`stats/`), pilot rules, runner and power simulation (`pilot/`) |
+| [`kaggle/`](kaggle/) | the read-only code kit, job lists and the resumable queue that runs every heavy job on Kaggle |
+| [`scripts/`](scripts/) | pilot rules, power simulation and timing merge entry points |
+| [`results/`](results/) | measured results that the design depends on (reference timing and the data-cost decision) |
 | [`verify/`](verify/) | design verification: the consistent column and thermocline store, multi-term isotherms, checks, results, timing, the isotherm fits, the number gate and the decision-list check |
-| [`tests/`](tests/) | property tests of the thermodynamics of both systems |
+| [`tests/`](tests/) | property tests of the thermodynamics of both systems and unit tests of the whole pipeline |
 | [`research/`](research/) | the source journals and every review report |
 
 ## Reproduce the verification
@@ -89,7 +95,7 @@ pip install -r requirements.txt
 python verify/run_checks.py                 # writes verify/results_run_checks.json
 python verify/check_results.py --bindings   # pass criteria and number bindings
 python verify/check_decision_list.py        # the headline list is an ordered partition
-python -m pytest -q tests                   # thermodynamic property tests, both systems
+python -m pytest -q tests                   # thermodynamic property tests and pipeline tests
 python verify/materials/fit_isotherms.py    # refits the isotherms (fetches the open figure; needs Pillow)
 ```
 
@@ -99,7 +105,7 @@ python verify/materials/fit_isotherms.py    # refits the isotherms (fetches the 
 | V2 | balance and entropy identities, and the sign of every production term, over temperature-swing cycles | identities below 10⁻¹⁴; every term ≥ 0 |
 | V3 | concavity of the gas-stream and cell entropies | negative semidefinite |
 | V4 | whether coarse-grained data keep the balances and the entropy inequality | yes, with the fine outlet stored; the coarse outlet cell is off by 4.0 % |
-| tests | the same identities for both fitted isotherms and for system B in both flow directions | 13 pass |
+| tests | the same identities for both fitted isotherms and for system B in both flow directions, plus the pipeline | 353 pass |
 
 ## Related work by the same author
 
