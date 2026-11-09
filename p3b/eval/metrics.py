@@ -38,7 +38,8 @@ def cycle_errors(pred_X, true_X, phys, n_cells: int):
 def release(outlet, raw, t, system: str, rhoc: float | None = None, closing=None):
     """W_k (A) or Q_k (B) per cycle from the outlet channels (cycles, snaps, n_out), the raw inputs
     (cycles, snaps, k) and the times (cycles, snaps). `closing` = (outlet, time) after the last
-    snapshot closes the last cycle of system A; without it, A returns one value fewer."""
+    snapshot closes the last cycle of system A by the trapezoid; without it, the last interval is
+    the left rectangle (evaluation uses the same rule for model and reference)."""
     nc, ns = t.shape
     half = ns // 2
     out_f = outlet.reshape(nc * ns, -1)
@@ -60,8 +61,10 @@ def release(outlet, raw, t, system: str, rhoc: float | None = None, closing=None
                 o_end, t_end = out_f[i1], t_f[i1]
             elif closing is not None:
                 o_end, t_end = closing[0], torch.as_tensor(closing[1], dtype=t.dtype)
-            else:
-                break
+            else:                                    # no closing state: left rectangle, as in B
+                W = W + y[-1] * (tt[-1] - tt[-2])
+                vals.append(W)
+                continue
             W = W + 0.5 * (y[-1] + f(o_end, r)) * (t_end - tt[-1])
         else:
             t_end = t_f[i1] if k + 1 < nc else tt[-1] + (tt[-1] - tt[-2])

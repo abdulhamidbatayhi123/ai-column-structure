@@ -43,6 +43,9 @@ class FNO1d(nn.Module):
         self.field_head = nn.Sequential(nn.Linear(width, head, dtype=F64), nn.GELU(),
                                         nn.Linear(head, n_ch, dtype=F64))
         self.outlet_head = nn.Linear(width, n_out, dtype=F64)
+        for head in (self.field_head[-1], self.outlet_head):      # start at the identity map
+            nn.init.zeros_(head.weight)
+            nn.init.zeros_(head.bias)
 
     def forward(self, x, feat, dt):
         b, n, c = x.shape[0], self.n_cells, self.n_ch

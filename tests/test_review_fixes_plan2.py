@@ -110,6 +110,7 @@ def test_s_training_gradient_through_projected_steps_matches_finite_differences(
     lf, raw = _lf()
     torch.manual_seed(9)
     s = SDynamics(6, 4, lf, kappa=1e-10)
+    torch.nn.init.normal_(s.G[-1].weight, std=0.1)         # G starts at zero (Plan 3 init); give it a slope
     for p_ in s.parameters():
         p_.data.mul_(0.1)
     feat = torch.randn(3, 4, dtype=F64)
@@ -143,6 +144,7 @@ def test_functionals_stay_attached_when_grad_is_enabled():
     t = lf.evaluate(z, raw)
     assert t["S"].requires_grad and t["dS"].requires_grad
     uf = UFDynamics(6, 4, 16, "A")
+    torch.nn.init.normal_(uf.net[-1].weight, std=0.1)       # starts at zero (Plan 3 init); give it a slope
     out = uf(z, torch.zeros(3, 4, dtype=F64), {k: v / (v.detach().abs().mean() + 1) for k, v in t.items()})
     (gz,) = torch.autograd.grad(out.sum(), z)
     t_det = {k: v.detach() / (v.detach().abs().mean() + 1) for k, v in t.items()}

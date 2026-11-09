@@ -33,7 +33,10 @@ def rk4_step(f, z, h):
 
 
 def stage_quadrature(g, h):
-    """The RK4 weights applied to a quantity evaluated at the four stages: h/6 (g1 + 2 g2 + 2 g3 + g4)."""
+    """The RK4 weights applied to a quantity evaluated at the four stages: h/6 (g1 + 2 g2 + 2 g3 + g4).
+    A per-sample step h of shape (batch, 1) (as used for the states) is applied per sample."""
+    if torch.is_tensor(h) and h.dim() == 2 and g[0].dim() == 1:
+        h = h[:, 0]
     return (h / 6.0) * (g[0] + 2 * g[1] + 2 * g[2] + g[3])
 
 

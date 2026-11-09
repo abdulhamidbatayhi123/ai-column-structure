@@ -30,6 +30,26 @@ def _mlp(sizes):
     return nn.Sequential(*layers)
 
 
+def zero_last(net: nn.Module) -> nn.Module:
+    """Zero the last Linear layer: a state-update network starts at a zero increment (every
+    dynamics arm starts from rest: U at dz/dt = 0, S at the physics-minimal field, FNO at the
+    identity), the same choice for every arm."""
+    last = [m for m in net.modules() if isinstance(m, nn.Linear)][-1]
+    nn.init.zeros_(last.weight)
+    nn.init.zeros_(last.bias)
+    return net
+
+
+def small_last(net: nn.Module, scale: float = 1e-2) -> nn.Module:
+    """Scale the last Linear layer down (bias zero): for S's A(z), whose term A A^T vanishes
+    quadratically, so it cannot start at exactly zero (its gradient would vanish too)."""
+    last = [m for m in net.modules() if isinstance(m, nn.Linear)][-1]
+    with torch.no_grad():
+        last.weight.mul_(scale)
+        last.bias.zero_()
+    return net
+
+
 class MLPAutoencoder(nn.Module):
     def __init__(self, n_in: int, d: int, width: int = 256):
         super().__init__()

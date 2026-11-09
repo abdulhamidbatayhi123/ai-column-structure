@@ -17,7 +17,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from p3b.latent.autoencoder import _mlp
+from p3b.latent.autoencoder import _mlp, small_last, zero_last
 from p3b.latent.integrate import RANK_TOL, balance_project, rank_deficient, rk4_step, stage_quadrature
 
 
@@ -64,18 +64,19 @@ class SDynamics(nn.Module):
     """Arm S (and S-M with metriplectic=False, S-Pi with port_projection=False)."""
 
     def __init__(self, d: int, k: int, lf, kappa: float, rank_tol: float = RANK_TOL, width: int = 128,
-                 metriplectic: bool = True, port_projection: bool = True):
+                 metriplectic: bool = True, port_projection: bool = True, time_scale: float = 1.0):
         super().__init__()
         self.d, self.lf, self.kappa, self.rank_tol = d, lf, float(kappa), float(rank_tol)
+        self.time_scale = float(time_scale)    # G / tau and A / sqrt(tau): networks in reference-time units
         self.metriplectic, self.port_projection = metriplectic, port_projection
-        self.G = _mlp([d + k, width, width, width, d])
-        self.A_net = _mlp([d, width, d * d]) if metriplectic else None
+        self.G = zero_last(_mlp([d + k, width, width, width, d]))
+        self.A_net = small_last(_mlp([d, width, d * d])) if metriplectic else None
 
     def forward(self, z, feat, raw):
         t = self.lf.evaluate(z, raw, grads=True)
         B, targets = _physical_b(t, self.lf.system)
-        G = self.G(torch.cat([z, feat], dim=-1))
-        A = self.A_net(z).reshape(-1, self.d, self.d) if self.metriplectic else None
+        G = self.G(torch.cat([z, feat], dim=-1)) / self.time_scale
+        A = (self.A_net(z).reshape(-1, self.d, self.d) / self.time_scale ** 0.5) if self.metriplectic else None
         return structure_terms(B, t["dS"], G, A, targets, t["Phi_S"], self.kappa, self.rank_tol,
                                self.metriplectic, self.port_projection)
 
@@ -87,11 +88,12 @@ class SLDynamics(nn.Module):
     revised after cs T5 F3), so S and S-L differ in the bracket's potentials alone."""
 
     def __init__(self, d: int, k: int, lf, kappa: float, rank_tol: float = RANK_TOL, width: int = 128,
-                 pot_width: int = 64):
+                 pot_width: int = 64, time_scale: float = 1.0):
         super().__init__()
         self.d, self.lf, self.kappa, self.rank_tol = d, lf, float(kappa), float(rank_tol)
-        self.G = _mlp([d + k, width, width, width, d])
-        self.A_net = _mlp([d, width, d * d])
+        self.time_scale = float(time_scale)
+        self.G = zero_last(_mlp([d + k, width, width, width, d]))
+        self.A_net = small_last(_mlp([d, width, d * d]))
         self.E_net = _mlp([d, pot_width, pot_width, 1])
         self.S_net = _mlp([d, pot_width, pot_width, 1])
 
@@ -109,10 +111,10 @@ class SLDynamics(nn.Module):
         t = self.lf.evaluate(z, raw, grads=True)
         A_sys = self.lf.system == "A"
         BL = torch.stack([dE_th, t["dN"]], -1) if A_sys else dE_th.unsqueeze(-1)
-        A = self.A_net(z).reshape(-1, self.d, self.d)
+        A = self.A_net(z).reshape(-1, self.d, self.d) / self.time_scale ** 0.5
         M, info_m = structure_terms(BL, dS_th, torch.zeros_like(z), A, None, None, kappa=1.0,
                                     rank_tol=self.rank_tol, port_projection=False)
-        G = self.G(torch.cat([z, feat], dim=-1))
+        G = self.G(torch.cat([z, feat], dim=-1)) / self.time_scale
         B, targets = _physical_b(t, self.lf.system)
         Pi, info = structure_terms(B, t["dS"], G, None, targets, t["Phi_S"], self.kappa, self.rank_tol,
                                    metriplectic=False)
@@ -146,6 +148,10 @@ def projected_rk4_step(f, z, raw, h, lf, rank_tol: float = RANK_TOL, iters: int 
 
     z_new, info = balance_project(z_new, cons, target, iters=iters, rank_tol=rank_tol, scale=scale)
     info.update({"Q_" + n: Q[n] for n in names})
+    info["Q_S"] = stage_quadrature([v["Phi_S"] for v in vals], h)       # entropy port, same stages
+    info["E0"], info["S0"] = v0["E"], v0["S"]
+    if "N" in v0:
+        info["N0"] = v0["N"]
     return z_new, info
 
 
@@ -166,6 +172,7 @@ def structured_step(dyn, z, feat, raw, h, rank_tol: float = RANK_TOL, iters: int
            "projection_rank_deficient": pinfo["rank_deficient"],
            "projection_converged": pinfo["converged"],
            "projection_residual": pinfo["residual"]}
+    out.update({k: pinfo[k] for k in ("Q_E", "Q_N", "Q_S", "E0", "N0", "S0") if k in pinfo})
     return z_new, out
 
 

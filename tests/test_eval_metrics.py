@@ -50,12 +50,9 @@ def test_release_by_trapezoid_matches_the_exact_ports(files):
         n_state = X.shape[-1]
         W = release(X[..., n_state - (2 if sys_ == "A" else 1):], ds.raw_inputs[0], ds.t[0], sys_,
                     rhoc=None if sys_ == "A" else phys.rhoc)
-        if sys_ == "A":
-            assert W.shape == (1,)                      # A: the last cycle needs a closing snapshot
-        else:
-            assert W.shape == (2,)                      # B: last interval by the left rectangle
+        assert W.shape == (2,)                          # last interval by the left rectangle
         for k in range(W.shape[0]):
-            assert float(W[k]) == pytest.approx(float(W_exact[k]), rel=2e-3)
+            assert float(W[k]) == pytest.approx(float(W_exact[k]), rel=2e-3 if (sys_ == "B" or k == 0) else 1e-2)
 
 
 def test_release_with_a_closing_state_covers_every_cycle(files):

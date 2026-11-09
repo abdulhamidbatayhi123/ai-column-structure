@@ -14,18 +14,22 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from p3b.latent.autoencoder import _mlp
+from p3b.latent.autoencoder import _mlp, zero_last
 
 F64 = torch.float64
 
 
 class UDynamics(nn.Module):
-    def __init__(self, d: int, k: int, width: int = 128):
+    """dz/dt = f_theta(z, u) / time_scale: the network works in units of the reference time
+    (the training set's median snapshot interval), the integrator in seconds."""
+
+    def __init__(self, d: int, k: int, width: int = 128, time_scale: float = 1.0):
         super().__init__()
-        self.net = _mlp([d + k, width, width, width, d])
+        self.net = zero_last(_mlp([d + k, width, width, width, d]))
+        self.time_scale = float(time_scale)
 
     def forward(self, z, feat):
-        return self.net(torch.cat([z, feat], dim=-1))
+        return self.net(torch.cat([z, feat], dim=-1)) / self.time_scale
 
 
 class UFDynamics(nn.Module):
@@ -34,17 +38,17 @@ class UFDynamics(nn.Module):
     SCALARS = {"A": ("E", "N", "S", "P_E", "P_N", "Phi_S"), "B": ("E", "S", "P_E", "Phi_S")}
     GRADS = {"A": ("dE", "dN", "dS"), "B": ("dE", "dS")}
 
-    def __init__(self, d: int, k: int, width: int, system: str):
+    def __init__(self, d: int, k: int, width: int, system: str, time_scale: float = 1.0):
         super().__init__()
-        self.system = system
+        self.system, self.time_scale = system, float(time_scale)
         n_extra = len(self.SCALARS[system]) + len(self.GRADS[system]) * d
-        self.net = _mlp([d + k + n_extra, width, width, width, d])
+        self.net = zero_last(_mlp([d + k + n_extra, width, width, width, d]))
 
     def forward(self, z, feat, terms: dict):
         """`terms`: LatentFunctionals.evaluate output. Scalars should be standardised by the caller."""
         s = torch.stack([terms[n] for n in self.SCALARS[self.system]], dim=-1)
         g = torch.cat([terms[n] for n in self.GRADS[self.system]], dim=-1)
-        return self.net(torch.cat([z, feat, s, g], dim=-1))
+        return self.net(torch.cat([z, feat, s, g], dim=-1)) / self.time_scale
 
 
 def count_params(module) -> int:
