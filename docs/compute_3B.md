@@ -39,6 +39,17 @@ of each training box (Task 10, `results/timing_reference.json`):
 | the Paper 1 limit at 2048 cells | c 1.8e-9, q 8.9e-9, T 1.8e-7 K, all within their bounds | `verify/results_v1_2048.json` |
 | structured-arm block of 2560 dynamics evaluations | 4.6 s (unstructured 0.42 s), laptop CPU, 4 threads | 2026-10-12 benchmark |
 
+**Open: the structured arms' training cost (2026-11-09).** On the laptop, under load from other
+sessions, at 128 stored cells, 200 snapshots per cycle and d = 16, 10 training iterations of 8
+windows × 20 steps took 0.47 CPU-s per iteration for U and 10.5 for S at h = 1 step per snapshot
+interval (20.5 at h = 2), so S cost about 22 × U against the 14 × the budget of Section 2 assumes.
+The absolute values are not trustworthy: on the same machine an exponential of 3,000 values took
+180 µs on one thread and 720 µs on four. The pilot's timing piece measures every arm on Kaggle at 4
+threads and at 1 thread; Section 2 is then replaced by measured values, the job layout (one 4-thread
+job or four 1-thread jobs per session) is chosen from them, and the ceiling's reduction order applies
+if the total exceeds 700 hours. A run longer than a Kaggle session (12 h) needs resuming across
+sessions before phase 2 of the pilot.
+
 **The stall and its fix.** scipy's BDF estimates the Jacobian by finite differences. On the steep
 MOF-303 isotherm that estimate failed as the front crossed the isotherm step, so the solver
 crawled. Integral states and undershoots were ruled out. The reference simulators now pass the exact Jacobian:
