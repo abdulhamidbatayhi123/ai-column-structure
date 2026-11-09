@@ -67,7 +67,8 @@ class SDynamics(nn.Module):
                  metriplectic: bool = True, port_projection: bool = True, time_scale: float = 1.0):
         super().__init__()
         self.d, self.lf, self.kappa, self.rank_tol = d, lf, float(kappa), float(rank_tol)
-        self.time_scale = float(time_scale)    # G / tau and A / sqrt(tau): networks in reference-time units
+        # G / tau and A / sqrt(tau): networks in reference-time units; a buffer, so it is saved
+        self.register_buffer("time_scale", torch.tensor(float(time_scale), dtype=torch.float64))
         self.metriplectic, self.port_projection = metriplectic, port_projection
         self.G = zero_last(_mlp([d + k, width, width, width, d]))
         self.A_net = small_last(_mlp([d, width, d * d])) if metriplectic else None
@@ -91,7 +92,7 @@ class SLDynamics(nn.Module):
                  pot_width: int = 64, time_scale: float = 1.0):
         super().__init__()
         self.d, self.lf, self.kappa, self.rank_tol = d, lf, float(kappa), float(rank_tol)
-        self.time_scale = float(time_scale)
+        self.register_buffer("time_scale", torch.tensor(float(time_scale), dtype=torch.float64))
         self.G = zero_last(_mlp([d + k, width, width, width, d]))
         self.A_net = small_last(_mlp([d, width, d * d]))
         self.E_net = _mlp([d, pot_width, pot_width, 1])

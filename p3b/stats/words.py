@@ -120,9 +120,19 @@ ROWS = [
 LABELS = ["1"] + [r[0] for r in ROWS] + ["14"]
 
 
+DIRECTIONAL = ("SUPPORTED", "SMALL", REFUTED, "REFUTED (REVERSED)", "INCONCLUSIVE", "NOT TESTABLE")
+H4_WORDS = ("EQUIVALENT", "S BETTER", "S WORSE", "INCONCLUSIVE", "unresolved")
+
+
 def headline(gate_failed: bool, h1: str, h2: str, h4: str, h3a: str):
     """(row label, headline text) by the ordered decision list; H4 "INCONCLUSIVE" counts as
-    "unresolved"."""
+    "unresolved"; NOT TESTABLE counts as INCONCLUSIVE. Unknown inputs raise ValueError."""
+    for name, v, allowed in (("H1", h1, DIRECTIONAL), ("H2", h2, DIRECTIONAL), ("H4", h4, H4_WORDS),
+                             ("H3a", h3a, ("pass", "defect"))):
+        if v not in allowed:
+            raise ValueError(f"{name} = {v!r} is not one of {allowed}")
+    h1 = "INCONCLUSIVE" if h1 == "NOT TESTABLE" else h1
+    h2 = "INCONCLUSIVE" if h2 == "NOT TESTABLE" else h2
     if gate_failed:
         return "1", "the gate outcome only"
     h1, h2 = _base(h1), _base(h2)
@@ -135,3 +145,74 @@ def headline(gate_failed: bool, h1: str, h2: str, h4: str, h3a: str):
     if len(hits) > 1:
         raise AssertionError(f"rows overlap: {[h[0] for h in hits]}")
     return hits[0] if hits else ("14", "No measurable benefit at this power")
+
+
+NAMES = {"H1": "long-horizon stability", "H2": "data efficiency"}
+SHORT = {"H1": "stability", "H2": "data efficiency"}
+
+
+def compose_headline(row: str, carrying: list, h1: str, h2: str, attribution: list, consistency: dict,
+                     coarse: str, h4: str, m: float) -> str:
+    """The printed headline (PREREG Section 8): the row's text with [H] filled; "+ no [stability |
+    data efficiency]" and "(REVERSED)" for the other hypothesis; an EQUIVALENT H4's margin; then the
+    qualifiers in order: attribution, consistency words (a SUPPORTED hypothesis INCONSISTENT on the
+    second isotherm or on system B is demoted: "pays" -> "helps in one setting", naming where it
+    holds), and the coarse-solver statement. consistency: {H: (word second isotherm, word system B)}."""
+    text = dict((lab, t) for lab, _, t in ROWS)[row]
+    words = {"H1": h1, "H2": h2}
+    demoted = [h for h in carrying if words[h] == "SUPPORTED" and "INCONSISTENT" in consistency.get(h, ())]
+    if demoted and "pays" in text:
+        text = text.replace("pays", "helps in one setting")
+        where = []
+        for h in demoted:
+            r, b = consistency[h]
+            places = ["system A (MOF-303)"] + (["the second isotherm"] if r != "INCONSISTENT" else []) \
+                + (["system B"] if b != "INCONSISTENT" else [])
+            where.append(f"{SHORT[h]} holds in {', '.join(places)}")
+        text = text.rstrip(".") + " (" + "; ".join(where) + ")."
+    text = text.replace("[H]", " and ".join(NAMES[h] for h in carrying))
+    for h in carrying:
+        other = "H2" if h == "H1" else "H1"
+        if other not in carrying and words[other].startswith(REFUTED):
+            text = text.rstrip(".") + f" + no {SHORT[other]}" + (" (REVERSED)" if "REVERSED" in words[other] else "") + "."
+    if h4 == "EQUIVALENT":
+        text = text.rstrip(".") + f" (accuracy equivalent within ±{(m - 1) * 100:.0f} %)."
+    quals = list(attribution)
+    for h in carrying:
+        if h in consistency:
+            quals.append(f"{h}: second isotherm {consistency[h][0]}, system B {consistency[h][1]}")
+    quals.append(coarse)
+    return text + " " + "; ".join(quals) + "."
+
+
+def h3b_test(drift, error, n_perm: int = 10_000, seed: int = 0):
+    """H3b: Spearman's rho between balance drift and error in U over test trajectories, with a
+    one-sided (positive association) permutation p-value. Described as an association."""
+    import numpy as np
+    from scipy import stats as st
+    drift, error = np.asarray(drift, float), np.asarray(error, float)
+    rho = float(st.spearmanr(drift, error).statistic)
+    rng = np.random.default_rng(seed)
+    perm = np.array([st.spearmanr(drift, rng.permutation(error)).statistic for _ in range(n_perm)])
+    return rho, float((1 + np.sum(perm >= rho)) / (n_perm + 1))
+
+
+def h6_ratio(regret_s, regret_u, floor: float = 0.01):
+    """H6: the floored regret ratio (r_S + 0.01) / (r_U + 0.01) per scenario (PREREG Section 6)."""
+    import numpy as np
+    return (np.asarray(regret_s, float) + floor) / (np.asarray(regret_u, float) + floor)
+
+
+def variance_decomposition(values) -> dict:
+    """Trajectory x seed variance components of the log error ratios (two-way crossed layout without
+    replication, method of moments, negative estimates set to 0), reported beside every test."""
+    import numpy as np
+    v = np.asarray(values, float)
+    n_t, n_s = v.shape
+    gm = v.mean()
+    ms_t = n_s * np.sum((v.mean(1) - gm) ** 2) / (n_t - 1)
+    ms_s = n_t * np.sum((v.mean(0) - gm) ** 2) / (n_s - 1)
+    resid = v - v.mean(1, keepdims=True) - v.mean(0, keepdims=True) + gm
+    ms_e = np.sum(resid ** 2) / ((n_t - 1) * (n_s - 1))
+    return {"trajectory": float(max(0.0, (ms_t - ms_e) / n_s)), "seed": float(max(0.0, (ms_s - ms_e) / n_t)),
+            "residual": float(ms_e)}

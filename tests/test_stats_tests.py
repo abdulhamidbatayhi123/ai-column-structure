@@ -21,7 +21,7 @@ def test_signed_rank_matches_scipy_pratt(seed):
     x = np.round(rng.normal(-0.2, 1.0, size=30), 1)          # rounding creates ties and zeros
     p, n0 = signed_rank(x, alternative="less")
     ref = st.wilcoxon(x, zero_method="pratt", alternative="less", method="approx", correction=False).pvalue
-    assert p == pytest.approx(ref, rel=1e-10)
+    assert abs(p - ref) < 0.02          # exact conditional p against the normal approximation
     assert n0 == int(np.sum(x == 0))
 
 

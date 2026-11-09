@@ -16,13 +16,19 @@ import torch
 from p3b._paper1 import PAPER1_SHA256
 from p3b.eval.metrics import apply_failure, cycle_errors, relative_error, release
 from p3b.eval.rollout import rollout
-from p3b.eval.violations import FACTOR, normalisers
+from p3b.eval.violations import FACTOR, normalisers, trapezoid_residuals
+from p3b.latent.metrics import field_nrmse
 from p3b.provenance import git_commit
 
 
 def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: float, seed: int) -> list:
+    """One row per test trajectory. Violations: latent arms by their own RK4 stages (they need
+    LatentFunctionals, else ValueError); the FNO by the trapezoid on its own snapshots
+    (violations_method says which); None where not computed, never a silent 0."""
     A = ds.system == "A"
-    n_out = 2 if A else 1
+    if arm.kind != "FNO" and arm.lf is None:
+        raise ValueError("a latent arm needs its LatentFunctionals (lf) for the violation counts")
+    n_out, n_ch = (2, 3) if A else (1, 2)
     rhoc = None if A else phys.rhoc
     norm = normalisers(ds)
     ns = ds.X.shape[2]
@@ -32,23 +38,42 @@ def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: fl
         ref = ds.X[j, :n_cycles]
         pred = torch.where(torch.isfinite(r.X), r.X, ref)              # failed snapshots: capped below
         e = cycle_errors(pred, ref, phys, ds.n_cells)
+        nc = ds.n_cells
+        e_fields = []
+        for k in range(n_cycles):
+            P_ = phys.physical_fields(pred[k][:, :nc * n_ch].reshape(-1, nc, n_ch)).reshape(ns, -1)
+            T_ = phys.physical_fields(ref[k][:, :nc * n_ch].reshape(-1, nc, n_ch)).reshape(ns, -1)
+            e_fields.append([float(v) for v in field_nrmse(P_, T_, nc, n_ch, per_field=True)])
         raw, t = ds.raw_inputs[j, :n_cycles], ds.t[j, :n_cycles]
         W_p = release(pred[..., -n_out:], raw, t, ds.system, rhoc)
         W_r = release(ref[..., -n_out:], raw, t, ds.system, rhoc)
-        e, eps, failed = apply_failure(e, relative_error(W_p, W_r), r.finite)
-        viol = {"N": 0, "E": 0, "S": 0}
-        if r.residuals:
-            n_int = len(r.residuals["E"])
+        eps_raw = relative_error(W_p, W_r)
+        e_c, eps_c, failed = apply_failure(e, eps_raw, r.finite)
+        viol, method = {"N": None, "E": None, "S": None}, None
+        res = r.residuals
+        t_flat = t.reshape(-1)
+        if arm.kind == "FNO" and r.failed_cycle is None:
+            X_flat = pred.reshape(-1, pred.shape[-1])
+            res = trapezoid_residuals(X_flat, raw.reshape(X_flat.shape[0], -1), t_flat, phys, ds.system, nc)
+            method = "trapezoid on own snapshots"
+        elif res:
+            method = "RK4 stages"
+        if res:
+            n_int = len(res["E"])
             cyc = torch.arange(n_int) // ns
-            dt = (t.reshape(-1)[1:] - t.reshape(-1)[:-1])
-            dt = torch.cat([dt, dt[-1:]])[:n_int]
-            if "N" in r.residuals and A:
-                viol["N"] = int(((r.residuals["N"] / norm["feed_water"][j, cyc]).abs() > FACTOR * floors["N"]).sum())
-            viol["E"] = int(((r.residuals["E"] / norm["energy_scale"][j, cyc]).abs() > FACTOR * floors["E"]).sum())
-            viol["S"] = int(((r.residuals["S"] / dt) < -tau_S).sum())
-        rows.append({"trajectory": j, "seed": int(seed), "e": [float(x) for x in e],
-                     "eps": [float(x) for x in eps], "failed_cycle": failed, "violations": viol,
-                     "flags": {k: int(v) for k, v in r.flags.items()}, "cpu_s": float(r.cpu_s)})
+            dt = torch.cat([t_flat[1:] - t_flat[:-1], (t_flat[-1:] - t_flat[-2:-1])])[:n_int]
+            viol = {"N": None, "E": None, "S": None}
+            if A and "N" in res:
+                viol["N"] = int(((res["N"] / norm["feed_water"][j, cyc]).abs() > FACTOR * floors["N"]).sum())
+            viol["E"] = int(((res["E"] / norm["energy_scale"][j, cyc]).abs() > FACTOR * floors["E"]).sum())
+            viol["S"] = int(((res["S"] / dt) < -tau_S).sum())
+        rows.append({"trajectory": j, "seed": int(seed), "e": [float(x) for x in e_c],
+                     "eps": [float(x) for x in eps_c], "failed_cycle": failed, "violations": viol,
+                     "violations_method": method, "flags": {k: int(v) for k, v in r.flags.items()},
+                     "cpu_s": float(r.cpu_s), "e_fields": e_fields,
+                     "e_uncapped": [float(x) for x in e], "eps_uncapped": [float(x) for x in eps_raw],
+                     "W_pred": [float(x) for x in W_p], "W_ref": [float(x) for x in W_r],
+                     "W_ref_exact": [float(x) for x in ds.W_ref[j, :n_cycles]]})
     return rows
 
 

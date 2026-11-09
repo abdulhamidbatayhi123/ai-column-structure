@@ -54,35 +54,56 @@ def _dH(meta) -> float:
     return float(meta["constants"]["DH_C"][meta["material"]])
 
 
+def trapezoid_residuals(X, raw, t, phys, system: str, n_cells: int) -> dict:
+    """Per snapshot interval of one trajectory (flattened snapshots X (T, n_state), raw inputs
+    (T, k), times (T,)): r = Q(i+1) - Q(i) - trapezoid of the model-style ports, for E, N (A) and S
+    (Phi_S), each interval with its own inputs at both ends. Used for the reference floor and for
+    arms without RK4 stages (FNO)."""
+    A = system == "A"
+    n_ch = 3 if A else 2
+    ch = X[:, :n_cells * n_ch].reshape(-1, n_cells, n_ch)
+    out = X[:, n_cells * n_ch:]
+    left = phys.ports(ch[:-1], out[:-1], raw[:-1])
+    right = phys.ports(ch[1:], out[1:], raw[:-1])
+    dt = t[1:] - t[:-1]
+    idx = {"N": 0, "E": 1, "S": 2} if A else {"E": 0, "S": 1}
+    vals = {"E": phys.E(ch), "S": phys.S(ch)}
+    if A:
+        vals["N"] = phys.N(ch)
+    return {q: vals[q][1:] - vals[q][:-1] - 0.5 * (left[i] + right[i]) * dt for q, i in idx.items()}
+
+
 def reference_floor(ds, phys, pct: float = PCT) -> dict:
-    """99.9th percentile of the normalised model-style residuals of the stored data."""
+    """99.9th percentiles of the normalised model-style residuals of the stored data: by the
+    trapezoid of model-style ports ("N", "E"), and against the exact cumulative ports stored with
+    the reference ("N_exact", "E_exact"), so the quadrature share of the floor is known."""
+    import numpy as _np
     A = ds.system == "A"
-    n_ch, nc = (3 if A else 2), ds.n_cells
     norm = normalisers(ds)
-    rN, rE = [], []
+    ns = ds.X.shape[2]
+    acc = {k: [] for k in ("N", "E", "N_exact", "E_exact")}
     for j in range(ds.X.shape[0]):
         X = ds.X[j].reshape(-1, ds.X.shape[-1])
         raw = ds.raw_inputs[j].reshape(X.shape[0], -1)
         t = ds.t[j].reshape(-1)
-        ch = X[:, :nc * n_ch].reshape(-1, nc, n_ch)
-        out = X[:, nc * n_ch:]
-        E = phys.E(ch)
-        ports = phys.ports(ch, out, raw)
-        P_E = ports[1] if A else ports[0]
-        ns = ds.X.shape[2]
         cyc = torch.arange(X.shape[0] - 1) // ns
-        dt = t[1:] - t[:-1]
-        # the interval's own inputs at both ends (inputs are constant over an interval)
-        P_E_right = (phys.ports(ch[1:], out[1:], raw[:-1])[1 if A else 0])
-        rE.append(((E[1:] - E[:-1] - 0.5 * (P_E[:-1] + P_E_right) * dt) / norm["energy_scale"][j, cyc]).abs())
+        r = trapezoid_residuals(X, raw, t, phys, ds.system, ds.n_cells)
+        acc["E"].append((r["E"] / norm["energy_scale"][j, cyc]).abs())
         if A:
+            acc["N"].append((r["N"] / norm["feed_water"][j, cyc]).abs())
+        P = torch.tensor(_np.load(ds.paths[j])["ports_cum"], dtype=torch.float64).reshape(X.shape[0], -1)
+        n_ch = 3 if A else 2
+        ch = X[:, :ds.n_cells * n_ch].reshape(-1, ds.n_cells, n_ch)
+        E = phys.E(ch)
+        if A:
+            net_E = P[:, 2] - P[:, 3] - P[:, 4]
             N = phys.N(ch)
-            P_N, P_N_right = ports[0], phys.ports(ch[1:], out[1:], raw[:-1])[0]
-            rN.append(((N[1:] - N[:-1] - 0.5 * (P_N[:-1] + P_N_right) * dt) / norm["feed_water"][j, cyc]).abs())
-    res = {"E": float(np.percentile(torch.cat(rE).numpy(), pct))}
-    if A:
-        res["N"] = float(np.percentile(torch.cat(rN).numpy(), pct))
-    return res
+            net_N = P[:, 0] - P[:, 1]
+            acc["N_exact"].append(((N[1:] - N[:-1]) - (net_N[1:] - net_N[:-1])).abs() / norm["feed_water"][j, cyc])
+        else:
+            net_E = P[:, 0] - P[:, 1] - P[:, 2]
+        acc["E_exact"].append(((E[1:] - E[:-1]) - (net_E[1:] - net_E[:-1])).abs() / norm["energy_scale"][j, cyc])
+    return {k: float(np.percentile(torch.cat(v).numpy(), pct)) for k, v in acc.items() if v}
 
 
 def count_violations(r, scale, floor: float, factor: float = FACTOR) -> int:

@@ -26,7 +26,7 @@ class UDynamics(nn.Module):
     def __init__(self, d: int, k: int, width: int = 128, time_scale: float = 1.0):
         super().__init__()
         self.net = zero_last(_mlp([d + k, width, width, width, d]))
-        self.time_scale = float(time_scale)
+        self.register_buffer("time_scale", torch.tensor(float(time_scale), dtype=F64))
 
     def forward(self, z, feat):
         return self.net(torch.cat([z, feat], dim=-1)) / self.time_scale
@@ -40,7 +40,8 @@ class UFDynamics(nn.Module):
 
     def __init__(self, d: int, k: int, width: int, system: str, time_scale: float = 1.0):
         super().__init__()
-        self.system, self.time_scale = system, float(time_scale)
+        self.system = system
+        self.register_buffer("time_scale", torch.tensor(float(time_scale), dtype=F64))
         n_extra = len(self.SCALARS[system]) + len(self.GRADS[system]) * d
         self.net = zero_last(_mlp([d + k + n_extra, width, width, width, d]))
 

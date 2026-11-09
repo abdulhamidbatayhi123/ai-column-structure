@@ -28,6 +28,7 @@ from p3b.latent.data import windows
 from p3b.latent.integrate import rk4_step, stage_quadrature
 
 PROJECTED = ("S", "S-M", "S-Pi", "S-L")
+KINDS = ("U", "U+F", "P", "S", "S-M", "S-Pi", "S-L", "FNO", "U+proj", "U+F+proj")
 FLAG_KEYS = ("rank_deficient", "kappa_binds", "projection_rank_deficient")
 
 
@@ -86,8 +87,10 @@ class Arm:
     """A learned arm in training: its dynamics module and how it steps."""
 
     def __init__(self, kind: str, dyn, ae, std, lf, terms: TermsStandardiser | None = None):
+        if kind not in KINDS:
+            raise ValueError(f"unknown arm kind {kind!r}; known: {KINDS}")
         self.kind, self.dyn, self.ae, self.std, self.lf, self.terms = kind, dyn, ae, std, lf, terms
-        if kind == "U+F" and terms is None:
+        if kind.startswith("U+F") and terms is None:
             raise ValueError("U+F needs a TermsStandardiser")
 
     def step(self, z, feat, raw, dt, h_steps: int, track: bool = False):
@@ -148,7 +151,7 @@ def train(arm: Arm, ds, cfg: TrainConfig) -> dict:
     opt = torch.optim.Adam(params, lr=cfg.lr)
     std = arm.std
     norm = normalisers(ds) if arm.kind == "P" else None
-    hist = {"loss": [], "lr": [], "params": count_params(arm.dyn), "skipped": 0,
+    hist = {"loss": [], "lr": [], "params": count_params(arm.dyn), "skipped": 0, "skipped_grad": 0,
             "flags": {k: 0 for k in FLAG_KEYS + ("projection_converged",)} if arm.kind in PROJECTED else {}}
     t0 = time.process_time()
     for it in range(cfg.iterations):
@@ -168,6 +171,12 @@ def train(arm: Arm, ds, cfg: TrainConfig) -> dict:
             continue
         opt.zero_grad()
         loss.backward()
+        if not all(bool(torch.isfinite(p.grad).all()) for p in params if p.grad is not None):
+            hist["skipped_grad"] += 1                 # a finite loss with a non-finite gradient: not applied
+            opt.zero_grad()
+            hist["loss"].append(float(loss.detach()))
+            hist["lr"].append(lr)
+            continue
         opt.step()
         hist["loss"].append(float(loss.detach()))
         hist["lr"].append(lr)
