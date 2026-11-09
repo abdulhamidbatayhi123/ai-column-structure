@@ -61,6 +61,12 @@ def make_kit(out_dir, commit: str, paper1_src=None) -> Path:
     _copy_tree(ROOT, out, "verify/v1_large_grid.py")
     _copy_tree(ROOT, out, "verify/materials/fit_isotherms.json")
     _copy_tree(ROOT, out, "data/design/*.json")
+    # the pilot (Plan 5 Task 6): its runner, the chosen values of earlier phases, the phase-1
+    # autoencoders and, when staged locally, the pilot data; absent files are simply not copied
+    _copy_tree(ROOT, out, "kaggle/pilot_chunk.py")
+    _copy_tree(ROOT, out, "results/pilot_stage.json")
+    _copy_tree(ROOT, out, "results/pilot_ae/*.pt")
+    _copy_tree(ROOT, out, "data/pilot/**/*.npz")
     p1 = out / "paper1"
     p1.mkdir()
     if paper1_src is None:

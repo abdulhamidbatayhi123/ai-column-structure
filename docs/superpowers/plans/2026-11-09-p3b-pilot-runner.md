@@ -71,5 +71,33 @@ rules consuming these files); `docs/compute_3B.md` (pilot block, 50 h).
 ### Task 6: `pilot_jobs.py` and `pilot_collect.py`, and an end-to-end dry run on tiny data feeding
 `pilot_rules.main`
 
+**Task 6 design (2026-11-09).** The pilot's choices depend on each other: d (decoder gate) comes
+before any training, the learning rates come before the curves, the iterations before S's h check,
+and h before the two-seed runs. So the Kaggle pilot runs in five phases. Between phases,
+`scripts/pilot_collect.py stage N` applies only the rule functions of `p3b/pilot/rules.py` that the
+next phase needs, and writes `pilot_stage.json`. That file holds chosen values only (d, K, tau_S,
+lr, iterations, h_steps), the values `pilot_rules.py` prints anyway, so no error value leaves a
+results file.
+
+| phase | jobs (one kernel each) | piece files | stage written after it |
+|---|---|---|---|
+| 0 | `data-<key>` (3 keys), `cplk-A_MOF-303` (C+L runs on system A primary only) | `data_<key>.json` (CSS, decoder gate, reference noise), `cplusl_K_<key>.json` | d, K, tau_S per key |
+| 1 | `ae-<key>` (3), `lr-<arm>` (9 arms, system A primary, after its autoencoder) | `lr_<arm>.json` | lr per arm |
+| 2 | `curve-<arm>` (9) | `curve_<arm>.json` | iterations |
+| 3 | `s-<key>` (3: S at h_steps 1, h check, raw g2, defects), `wall` (U and S) | `s_<key>.json`, `wall_per_iter.json` | h_steps per key |
+| 4 | `two-<arm>-s<seed>` (U and S, seeds 0 and 1), `pcq-s<seed>` (U at a quarter of the iterations) | `rows_<arm>_s<seed>.json` | - |
+
+`scripts/pilot_collect.py final` then assembles the ten input files of `pilot_rules.py`.
+
+The data layout in the kit is `data/pilot/<key>/{train,validation}`:
+- system A primary: pilot_train and pilot_val;
+- A_replication and B (one set of 8 × 60): design indices 0-5 for training and 6-7 for validation.
+
+CSS and the reference noise use every trajectory of a key that has the key's full cycle count.
+
+C+L's learning-rate sweep and curve use a deterministic validation loss: one cycle from each
+validation trajectory's first stored state, standardised MSE in its own variables. It is the
+counterpart of the latent arms' one-cycle rollout loss.
+
 Each task: the test first (tiny generated data), RED, implement, GREEN, then commit. Each output
 JSON has a fixed schema, the one `pilot_rules.py` already reads.

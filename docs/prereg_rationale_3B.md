@@ -36,6 +36,7 @@ approval on 2026-11-05. Review codes:
 | A hard ceiling of 700 CPU-equivalent hours, with heavy work on Kaggle (free) | the worst case exceeded the budget without a stopping rule; the laptop's free RAM (often under 1 GB) cannot host the heavy runs | R3-45, R3-46 |
 | The Section 1 background quotes Paper 1's current physics-loss result (a 9 % gain at weight 10⁻⁵ on held-out materials, none on held-out times) | the draft misquoted it as "ties or hurts" (ledger P3B-25) | none |
 | Long test 32 → 48, OOD 16 → 24, mandatory second isotherm, FNO arm | power and generality (2026-11-05) | none |
+| Section 10 made exact (2026-11-09): h as 1, 2, 4 RK4 steps per snapshot interval (100 snapshots per half-cycle of unequal length), violation and defect rates per snapshot interval, an interval counted once per defect, a failed pilot rollout makes an h inadmissible, the stiffness check at each state's own interval | the pilot runner's review (plan 5, opus, I2 to I4, M12) found that rates divided by RK4 steps let finer steps pass k times more easily and that a median interval hid long ones; no threshold value changes | plan 5 review I2, I3, I4, M12 |
 
 ## Reasons for rules that may look arbitrary
 

@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 
 import torch
 
+DEFECT_FLAGS = ("rank_deficient", "kappa_binds", "projection_rank_deficient")
+
 
 @dataclass
 class RolloutResult:
@@ -65,6 +67,10 @@ def rollout(arm, ds, j: int, n_cycles: int, h_steps: int, track: bool = False) -
             for k, v in fl.items():
                 if v.dtype == torch.bool:
                     flags[k] = flags.get(k, 0) + int(v.sum())
+            # a defect interval (PREREG 5, "rank or kappa binding"): any defect flag, counted once
+            hit = [fl[k] for k in DEFECT_FLAGS if k in fl]
+            if hit:
+                flags["any_defect"] = flags.get("any_defect", 0) + int(torch.stack([h.any() for h in hit]).any())
             if track and "Q_E" in fl:
                 v0 = arm.lf.evaluate(z_prev, R[i:i + 1], grads=False)
                 v1 = arm.lf.evaluate(z, R[i:i + 1], grads=False)

@@ -163,7 +163,8 @@ flow-dependent dispersion, `k_f = 1.5 + δ ρ_f c_f |v| d_p` with rock d_p = 5 c
 For the replication isotherm the RH_ads box straddles the step. R-H1 and R-H2 are
 therefore also reported stratified by RH_ads below and above 1.2 × the step RH at T_ads.
 
-**Stored per snapshot** (formulation Section 5.2), float32, 200 snapshots per cycle:
+**Stored per snapshot** (formulation Section 5.2), float32, 200 snapshots per cycle, 100 in each
+half-cycle (the half-cycles differ in length, so the snapshot interval differs between them):
 - block averages of the conserved variables over 16 fine cells (A: (n, a, u); B: (u_f, u_s));
 - the fine outlet state;
 - the exact wall heat per block;
@@ -542,10 +543,13 @@ no error value is seen by arm (blinding). It sets exactly the following, and not
   seed), by validation rollout loss over one cycle;
 - **iterations:** one value for every arm, the smallest at which every arm's pooled
   validation loss improves by less than 2 % per 1,000 iterations;
-- **h:** the largest in {T_cycle/200, /400, /800} at which S's entropy-violation rate is below
-  10⁻⁴ of steps and the near-dry stiffness check passes;
+- **h:** the largest of 1, 2 and 4 RK4 steps per snapshot interval (T_half/100, /200, /400 within
+  each half-cycle, about T_cycle/200, /400, /800) at which S's entropy-violation rate is below 10⁻⁴
+  of snapshot intervals, no pilot rollout fails, and the near-dry stiffness check passes (h ρ(J) <
+  2.5 at each checked state's own interval);
 - **thresholds:** the violation thresholds, τ_S, τ_ref, κ, and the projection-defect bound
-  (10 × the pilot's 99.9th percentile of defect steps per 10⁴ steps, capped at 10⁻³ of steps);
+  (10 × the pilot's 99.9th percentile of defect intervals per 10⁴ snapshot intervals at the chosen h,
+  capped at 10⁻³; an interval counts once if any defect flag is set in it);
   each is set separately per system and material;
 - **SDs:** the upper-80 % trajectory and seed SDs for the power simulation and the H4 margin;
 - **timing:** the reference timing at 512, 1024 and 2048 cells, grid convergence at
