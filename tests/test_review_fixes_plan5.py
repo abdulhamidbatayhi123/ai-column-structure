@@ -294,3 +294,23 @@ def test_M3_stage3_stops_when_any_key_has_no_admissible_h(tmp_path):
         pieces._write(tmp_path, f"s_{key}.json", {"h_check": hc, "g2": [1.0], "defects_per_step": {}}, stage=stage)
     with pytest.raises(RuntimeError, match="B"):
         collect.stage(3, tmp_path, stage, keys=(KEY, "B"))
+
+
+def test_wall_piece_also_times_one_thread_for_the_job_layout(monkeypatch, tmp_path):
+    """Small tensors may gain nothing from 4 intra-op threads; one-thread timings decide whether a
+    Kaggle session runs one 4-thread job or four 1-thread jobs (recorded in the piece's meta)."""
+    calls = []
+    monkeypatch.setattr(pieces, "files", lambda *a: [])
+    import p3b.latent.data as data
+    monkeypatch.setattr(data, "load_set", lambda f: None)
+
+    def fake(makers, ds, **k):
+        calls.append(torch.get_num_threads())
+        return {a: float(torch.get_num_threads()) for a in makers}
+    monkeypatch.setattr(runs, "wall_per_iter", fake)
+    torch.set_num_threads(4)
+    p = pieces.piece_wall(tmp_path, {}, tmp_path, {})
+    obj = json.loads(open(p).read())
+    assert calls == [4, 1] and torch.get_num_threads() == 4
+    assert all(v == 4.0 for v in obj["value"].values())
+    assert all(v == 1.0 for v in obj["meta"]["used"]["timing_1_thread"].values())

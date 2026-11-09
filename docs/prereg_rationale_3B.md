@@ -37,6 +37,7 @@ approval on 2026-11-05. Review codes:
 | The Section 1 background quotes Paper 1's current physics-loss result (a 9 % gain at weight 10⁻⁵ on held-out materials, none on held-out times) | the draft misquoted it as "ties or hurts" (ledger P3B-25) | none |
 | Long test 32 → 48, OOD 16 → 24, mandatory second isotherm, FNO arm | power and generality (2026-11-05) | none |
 | Section 10 made exact (2026-11-09): h as 1, 2, 4 RK4 steps per snapshot interval (100 snapshots per half-cycle of unequal length), violation and defect rates per snapshot interval, an interval counted once per defect, a failed pilot rollout makes an h inadmissible, the stiffness check at each state's own interval | the pilot runner's review (plan 5, opus, I2 to I4, M12) found that rates divided by RK4 steps let finer steps pass k times more easily and that a median interval hid long ones; no threshold value changes | plan 5 review I2, I3, I4, M12 |
+| S's metriplectic term also divided by √(10³κ), the pilot median \|P∇Ŝ\| (2026-11-09, before any pilot data) | at the study's size (128 cells, 200 snapshots, d = 16) the term carried \|P∇Ŝ\| ≈ 40 in J/K per latent unit; after Adam's first update it moved z by several latent units per step and 6 of 10 training iterations of S and S−Π were skipped (S−M, without the term, none); with the scaling, none of 10 at h = 1 and 2. S's vector field is now invariant to the units of entropy (tests/test_s_metriplectic_scale.py) | pilot dry run at study size |
 
 ## Reasons for rules that may look arbitrary
 

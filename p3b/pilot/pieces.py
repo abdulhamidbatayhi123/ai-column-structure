@@ -264,8 +264,15 @@ def piece_wall(data_root, stage: dict, out, q: dict | None = None) -> str:
     ds = load_set(tr)
     used = {"data": _data_used(tr)}
     makers = {a: (lambda a=a: make_arm(a, PRIMARY_KEY, 0, stage, ds, out, q, used)) for a in LATENT_ARMS}
-    res = runs.wall_per_iter(makers, ds, iterations=q.get("wall_iterations", 50), warmup=q.get("wall_warmup", 5),
-                             n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20))
+    kw = dict(iterations=q.get("wall_iterations", 50), warmup=q.get("wall_warmup", 5),
+              n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20))
+    res = runs.wall_per_iter(makers, ds, **kw)                  # at the session's threads (the rule input)
+    threads = torch.get_num_threads()
+    try:                                                        # one thread: whether four 1-thread jobs per
+        torch.set_num_threads(1)                                # session beat one 4-thread job (job layout)
+        used["timing_1_thread"] = runs.wall_per_iter(makers, ds, **kw)
+    finally:
+        torch.set_num_threads(threads)
     return _write(out, "wall_per_iter.json", res, stage, q, used, seeds=[0])
 
 
