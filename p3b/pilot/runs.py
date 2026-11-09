@@ -104,3 +104,63 @@ def write_data_inputs(dirs_by_key: dict, out_dir, d_grid=(16, 24, 32, 48, 64), e
             json.dump(obj, f)
         written.append(path)
     return written
+
+
+# ---- Task 2: learning rates and iteration curves ----------------------------------------------------
+@torch.no_grad()
+def kappa_from_data(lf, ae, std, ds, n: int = 256, seed: int = 0) -> float:
+    """kappa = 1e-3 x the median |P grad S^|^2 over encoded pilot snapshots (PREREG Section 4). It
+    needs no trained dynamics, so S's learning-rate sweep can use it."""
+    from p3b.latent.arms_structured import structure_terms
+    rng = np.random.default_rng(seed)
+    X = ds.X.reshape(-1, ds.X.shape[-1])
+    R = ds.raw_inputs.reshape(X.shape[0], -1)
+    idx = torch.as_tensor(rng.choice(X.shape[0], size=min(n, X.shape[0]), replace=False))
+    z = ae.encode(std.encode(X[idx]))
+    t = lf.evaluate(z, R[idx], grads=True, create_graph=False)
+    B = torch.stack([t["dE"], t["dN"]], -1) if lf.system == "A" else t["dE"].unsqueeze(-1)
+    _, info = structure_terms(B, t["dS"], torch.zeros_like(z), None, None, None, kappa=1.0,
+                              metriplectic=False, port_projection=False)
+    return 1e-3 * float(info["P_gradS_sq"].median())
+
+
+def validation_loss(arm, val, h_steps: int, n_cycles: int = 1) -> float:
+    """MSE of the decoded standardised channels over the first n_cycles of every validation
+    trajectory (the training loss's metric on a rollout); NaN if any rollout failed."""
+    from p3b.eval.rollout import rollout
+    losses = []
+    for j in range(val.X.shape[0]):
+        r = rollout(arm, val, j, n_cycles, h_steps)
+        if r.failed_cycle is not None:
+            return float("nan")
+        d = arm.std.encode(r.X) - arm.std.encode(val.X[j, :n_cycles])
+        losses.append(float((d ** 2).mean()))
+    return float(np.mean(losses))
+
+
+def train_curve(arm, ds, val, lr: float, iterations: int, every: int, h_steps: int, seed: int,
+                n_windows: int = 8, n_steps: int = 20) -> list:
+    """Train with one cosine schedule over `iterations`, pausing every `every` iterations (a
+    checkpoint) to record the pooled validation loss: [(iteration, loss), ...]."""
+    import tempfile
+
+    from p3b.train.trainer import TrainConfig, train
+    curve = []
+    with tempfile.TemporaryDirectory() as tmp:
+        ck = os.path.join(tmp, "ck.pt")
+        done = 0
+        while done < iterations:
+            step = min(every, iterations - done)
+            train(arm, ds, TrainConfig(lr=lr, iterations=iterations, seed=seed, h_steps=h_steps,
+                                       n_windows=n_windows, n_steps=n_steps, checkpoint=ck, every=every,
+                                       stop_after=step))
+            done += step
+            curve.append((done, validation_loss(arm, val, h_steps)))
+    return curve
+
+
+def lr_sweep(make_arm, ds, val, rates=(3e-4, 1e-3, 3e-3), iterations: int = 2000, h_steps: int = 1, seed: int = 0,
+             n_windows: int = 8, n_steps: int = 20) -> dict:
+    """{lr: validation rollout loss over one cycle after `iterations`} for a fresh arm per rate."""
+    return {lr: train_curve(make_arm(), ds, val, lr, iterations, iterations, h_steps, seed,
+                            n_windows, n_steps)[-1][1] for lr in rates}

@@ -50,3 +50,46 @@ def test_write_inputs_creates_the_files_pilot_rules_reads(pilot_dir, tmp_path):
         assert (tmp_path / name).exists()
     css = json.loads((tmp_path / "css.json").read_text())
     assert set(css) == {"A_MOF-303"} and files
+
+
+def _setup(pilot_dir):
+    import torch
+    from p3b.latent.autoencoder import MLPAutoencoder, train_autoencoder
+    from p3b.latent.data import Standardiser, load_set
+    from p3b.latent.functionals import LatentFunctionals
+    ds = load_set(sorted((pilot_dir / "train").glob("*.npz")))
+    val = load_set(sorted((pilot_dir / "validation").glob("*.npz")))
+    std = Standardiser.fit(ds.X, 8, 3, 2, features=ds.features)
+    torch.manual_seed(0)
+    ae = MLPAutoencoder(26, 4, width=8)
+    train_autoencoder(ae, std.encode(ds.X), epochs=2, seed=0)
+    lf = LatentFunctionals(ae.decode, std, runs._physics(ds), "A", 8)
+    return ds, val, std, ae, lf
+
+
+def test_kappa_from_encoded_data_is_positive(pilot_dir):
+    ds, val, std, ae, lf = _setup(pilot_dir)
+    k = runs.kappa_from_data(lf, ae, std, ds)
+    assert k > 0 and np.isfinite(k)
+
+
+def test_train_curve_records_validation_loss_at_checkpoints(pilot_dir):
+    from p3b.latent.arms_unstructured import UDynamics
+    from p3b.train.trainer import Arm, time_scale
+    ds, val, std, ae, lf = _setup(pilot_dir)
+    arm = Arm("U", UDynamics(4, 4, 8, time_scale=time_scale(ds)), ae, std, lf)
+    curve = runs.train_curve(arm, ds, val, lr=1e-3, iterations=4, every=2, h_steps=1, seed=0,
+                             n_windows=1, n_steps=2)
+    assert [it for it, _ in curve] == [2, 4] and all(np.isfinite(v) or v != v for _, v in curve)
+
+
+def test_lr_sweep_writes_one_loss_per_rate(pilot_dir):
+    from p3b.latent.arms_unstructured import UDynamics
+    from p3b.train.trainer import Arm, time_scale
+    ds, val, std, ae, lf = _setup(pilot_dir)
+
+    def make():
+        return Arm("U", UDynamics(4, 4, 8, time_scale=time_scale(ds)), ae, std, lf)
+
+    out = runs.lr_sweep(make, ds, val, rates=(3e-4, 1e-3), iterations=2, h_steps=1, seed=0, n_windows=1, n_steps=2)
+    assert set(out) == {3e-4, 1e-3}
