@@ -81,7 +81,7 @@ results file.
 
 | phase | jobs (one kernel each) | piece files | stage written after it |
 |---|---|---|---|
-| 0 | `data-<key>` (3 keys), `cplk-<key>` (2 system A keys) | `data_<key>.json` (CSS, decoder gate, reference noise), `cplusl_K_<key>.json` | d, K, tau_S per key |
+| 0 | `data-<key>` (3 keys), `cplk-A_MOF-303` (C+L runs on system A primary only) | `data_<key>.json` (CSS, decoder gate, reference noise), `cplusl_K_<key>.json` | d, K, tau_S per key |
 | 1 | `ae-<key>` (3), `lr-<arm>` (9 arms, system A primary, after its autoencoder) | `lr_<arm>.json` | lr per arm |
 | 2 | `curve-<arm>` (9) | `curve_<arm>.json` | iterations |
 | 3 | `s-<key>` (3: S at h_steps 1, h check, raw g2, defects), `wall` (U and S) | `s_<key>.json`, `wall_per_iter.json` | h_steps per key |

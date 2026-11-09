@@ -3,7 +3,7 @@
     python scripts/pilot_collect.py data GEN_DIR [GEN_DIR ...] DATA_ROOT      # lay out the pilot data
     python scripts/pilot_collect.py stage N PIECES_DIR [results/pilot_stage.json]
     python scripts/pilot_collect.py ae PIECES_DIR [results/pilot_ae]          # after phase 1, before the kit
-    python scripts/pilot_collect.py final PIECES_DIR INPUTS_DIR               # then scripts/pilot_rules.py INPUTS_DIR
+    python scripts/pilot_collect.py final PIECES_DIR INPUTS_DIR [results/pilot_stage.json]   # then pilot_rules.py
 """
 from __future__ import annotations
 
@@ -37,7 +37,10 @@ def main(argv):
         for p in collect.collect_ae(argv[1], dst):
             print(p.name)
     elif cmd == "final":
-        for p in collect.final(argv[1], argv[2]):
+        path = argv[3] if len(argv) > 3 else os.path.join(ROOT, "results", "pilot_stage.json")
+        with open(path) as f:
+            st = json.load(f)
+        for p in collect.final(argv[1], argv[2], st):
             print(os.path.basename(p))
     else:
         raise SystemExit(__doc__)

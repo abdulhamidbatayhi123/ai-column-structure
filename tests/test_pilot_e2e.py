@@ -1,11 +1,12 @@
-"""Plan 5 Task 6: an end-to-end dry run of the pilot on tiny generated data. Every piece runs through
-kaggle/pilot_chunk.py's dispatcher, the collector assembles the ten inputs, and scripts/pilot_rules.py
-reads them. The data are small (16 cells, 2 cycles) but at the study's 200 snapshots per cycle with
-d = 8, where S trains and rolls out (at d = 4 and 40 snapshots it diverges). Small models cannot
-meet the real rules (decoder gate, 2 % plateau, h check), so the stage values are set here by hand; the rules themselves are tested in test_pilot_collect.py and
+"""Plan 5 Task 6: an end-to-end dry run of the pilot on small generated data. Every piece runs through
+kaggle/pilot_chunk.py's dispatcher into its own folder (as the queue downloads them), the collector
+finds them by stage hash, assembles the ten inputs, and scripts/pilot_rules.py reads them. The data
+are small (16 cells, 2 cycles) but at the study's 200 snapshots per cycle with d = 8, where S trains
+and rolls out (at d = 4 and 40 snapshots it diverges). Small models cannot meet every real rule
+(decoder gate, 2 % plateau, h check), so d, K, iterations and h are set by hand; stage 1 (the
+learning rates) runs the real rule. The rules are tested in test_pilot_collect.py and
 test_pilot_rules.py."""
 import importlib.util
-import json
 import pathlib
 
 import pytest
@@ -46,18 +47,19 @@ def test_pilot_dry_run_end_to_end(gen, tmp_path):
     data, pieces, inputs = tmp_path / "data", tmp_path / "pieces", tmp_path / "inputs"
     assert collect.stage_data([gen], data) == {f"{KEY}/train": 2, f"{KEY}/validation": 2}
 
-    def run(name, stage):
-        return chunk.run_piece(name, str(data), stage, str(pieces), Q)
+    def run(name, stage):                      # each piece in its own folder, like the queue's downloads
+        return chunk.run_piece(name, str(data), stage, str(pieces / name / "out"), Q)
 
     run(f"data-{KEY}", {})
     run(f"cplk-{KEY}", {})
-    noise = json.loads((pieces / f"data_{KEY}.json").read_text())["reference_noise"]
-    stage = {"d": {KEY: 8}, "K": {KEY: 1}, "tau_S": {KEY: rules.tau_S_from(noise["ref_production"])}}
+    noise = collect.load_piece(pieces, f"data_{KEY}.json", {})["reference_noise"]
+    stage = {"d": {KEY: 8}, "K": {KEY: 1}, "tau_S": {KEY: rules.tau_S_from(noise["ref_production"])},
+             "ae_input_root": str(pieces)}
     for s in TWO_SEEDS:
         run(f"ae-{KEY}-s{s}", stage)
     for a in LR_ARMS:
         run(f"lr-{_tag(a)}", stage)
-    stage["lr"] = {a: 1e-3 for a in LR_ARMS}
+    stage = {**collect.stage(1, pieces, stage, keys=(KEY,)), "ae_input_root": str(pieces)}   # the real rule
     for a in LR_ARMS:
         run(f"curve-{_tag(a)}", stage)
     stage["iterations"] = 2
@@ -70,7 +72,7 @@ def test_pilot_dry_run_end_to_end(gen, tmp_path):
     for s in TWO_SEEDS:
         run(f"pcq-s{s}", stage)
 
-    paths = collect.final(pieces, inputs, keys=(KEY,), hyp_stat=STAT, draws=200)
+    paths = collect.final(pieces, inputs, stage, keys=(KEY,), hyp_stat=STAT, draws=200)
     assert len(paths) == 10
     pr = _load("scripts/pilot_rules.py", "pilot_rules")
     out = pr.main(str(inputs), str(tmp_path / "pilot_values.json"))

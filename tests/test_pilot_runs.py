@@ -111,7 +111,8 @@ def test_h_check_reports_rates_stability_and_defects(pilot_dir):
     assert set(out["h"]) == {1, 2}
     for v in out["h"].values():
         assert 0 <= v["viol_rate"] <= 1 and isinstance(v["stiff_ok"], bool) and v["h_rho"] >= 0
-    assert len(out["defects_per_step"]) == val.X.shape[0]
+    assert set(out["defects_per_step"]) == {1, 2}
+    assert all(len(v) == val.X.shape[0] for v in out["defects_per_step"].values())
 
 
 # ---- Task 4: C+L's substeps K, wall-clock per iteration ----------------------------------------------
@@ -162,9 +163,9 @@ def test_two_seed_rows_trains_a_fresh_arm_per_seed_and_evaluates_validation(pilo
     from p3b.latent.arms_unstructured import UDynamics
     from p3b.train.trainer import Arm, time_scale
     ds, val, std, ae, lf = _setup(pilot_dir)
-    out = runs.two_seed_rows(lambda: Arm("U", UDynamics(4, 4, 8, time_scale=time_scale(ds)), ae, std, lf), ds, val,
-                             lr=1e-3, iterations=2, h_steps=1, seeds=(0, 1), n_windows=1, n_steps=2)
-    assert set(out) == {0, 1}
+    out, train = runs.two_seed_rows(lambda: Arm("U", UDynamics(4, 4, 8, time_scale=time_scale(ds)), ae, std, lf),
+                                    ds, val, lr=1e-3, iterations=2, h_steps=1, seeds=(0, 1), n_windows=1, n_steps=2)
+    assert set(out) == {0, 1} and set(train) == {0, 1} and all(t["iterations"] == 2 for t in train.values())
     for s, rows in out.items():
         assert len(rows) == val.X.shape[0] and all(r["seed"] == s for r in rows)
         assert all(len(r["e"]) == val.X.shape[1] for r in rows)

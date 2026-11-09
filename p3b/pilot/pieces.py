@@ -3,11 +3,17 @@ the pilot data under data_root/<key>/{train,validation} and the chosen values of
 (stage: p3b.pilot.collect.stage), and writes one piece file into out. Pieces with losses or errors
 are read only by p3b.pilot.collect, which writes chosen values only; nothing here prints a loss.
 
+Every piece file is {"meta": provenance, "value": ...}. The meta holds the SHA-256 of the stage the
+piece ran under, so the collector never mixes pieces of different stages (plan 5 review I6), and
+the kit commit, the SHA-256 of every data file and autoencoder used, q, the seeds and the torch
+version (PREREG 10: reproducibility).
+
 q holds overrides for tests on tiny data (grids, iterations, widths); the study runs with q = {}.
 """
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
 import os
 
@@ -15,16 +21,73 @@ import numpy as np
 import torch
 
 from p3b.pilot import runs
+from p3b.pilot.rules import pilot_key
 
-KEYS = {"A_MOF-303": ("A", "MOF-303"), "A_Al-fumarate": ("A", "Al-fumarate"), "B": ("B", None)}
-PRIMARY_KEY = "A_MOF-303"
+KEYS = {k: v for k, v in ((pilot_key(*sm), sm) for sm in (("A", "MOF-303"), ("A", "Al-fumarate"), ("B", None)))}
+PRIMARY_KEY = pilot_key("A", "MOF-303")
 LATENT_ARMS = ("U", "U+F", "P", "S", "S-L", "S-M", "S-Pi", "FNO")
 LR_ARMS = LATENT_ARMS + ("C+L",)
 CURVE_MAX, CURVE_EVERY = 16_000, 1_000          # PREREG Section 10: every 1,000 iterations up to 16,000
 LR_ITERATIONS = 2_000
 TWO_SEEDS = (0, 1)
+STRUCTURED = ("S", "S-L", "S-M", "S-Pi")
+# the stage keys each phase adds (p3b.pilot.collect.stage); a phase-p piece runs under the keys of phases < p
+PHASE_KEYS = (("d", "K", "tau_S"), ("lr",), ("iterations",), ("h_steps",))
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
+# ---- stage and provenance ------------------------------------------------------------------------------
+def restrict(stage: dict, phase: int) -> dict:
+    """The stage a phase-`phase` piece runs under: the keys of phases before it."""
+    keep = {k for p in PHASE_KEYS[:phase] for k in p}
+    return {k: v for k, v in (stage or {}).items() if k in keep}
+
+
+def stage_sha(stage: dict) -> str:
+    """SHA-256 of the stage's chosen values (the phase keys only; runtime settings such as
+    ae_input_root do not change what a piece computes)."""
+    chosen = {k: v for k, v in (stage or {}).items() if any(k in p for p in PHASE_KEYS)}
+    return hashlib.sha256(json.dumps(chosen, sort_keys=True).encode()).hexdigest()
+
+
+def _sha_file(path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _data_used(*file_lists) -> dict:
+    return {os.path.basename(p): _sha_file(p) for fl in file_lists for p in fl}
+
+
+def _kit_commit() -> str | None:
+    p = os.path.join(_ROOT, "kit_commit.txt")
+    if os.path.exists(p):
+        return open(p).read().strip()
+    try:
+        import subprocess
+        return subprocess.run(["git", "-C", _ROOT, "rev-parse", "HEAD"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+    except Exception:                                     # no git: recorded as unknown, never invented
+        return None
+
+
+def _write(out, name: str, value, stage: dict | None = None, q: dict | None = None, used: dict | None = None,
+           seeds=None) -> str:
+    os.makedirs(str(out), exist_ok=True)
+    path = os.path.join(str(out), name)
+    meta = {"stage_sha256": stage_sha(stage), "kit_commit": _kit_commit(), "q": q or {}, "used": used or {},
+            "seeds": list(seeds) if seeds is not None else None, "torch": torch.__version__}
+    tmp = path + ".partial"
+    with open(tmp, "w") as f:
+        json.dump({"meta": meta, "value": value}, f)
+    os.replace(tmp, path)
+    return path
+
+
+# ---- data ------------------------------------------------------------------------------------------------
 def files(data_root, key: str, split: str) -> list:
     from p3b.gates import load_meta
     fs = glob.glob(os.path.join(str(data_root), key, split, "*.npz"))
@@ -40,33 +103,25 @@ def long_files(data_root, key: str) -> list:
     return [p for p in fs if n[p] == top]
 
 
-def _write(out, name: str, obj) -> str:
-    os.makedirs(str(out), exist_ok=True)
-    path = os.path.join(str(out), name)
-    tmp = path + ".partial"
-    with open(tmp, "w") as f:
-        json.dump(obj, f)
-    os.replace(tmp, path)
-    return path
-
-
 # ---- phase 0 -------------------------------------------------------------------------------------------
-def piece_data(data_root, key: str, out, q: dict | None = None) -> str:
+def piece_data(data_root, key: str, out, q: dict | None = None, stage: dict | None = None) -> str:
     """CSS per long trajectory, the decoder gate over the d grid, the reference noise."""
     q = q or {}
-    lf = long_files(data_root, key)
-    gate = runs.decoder_gate_grid(files(data_root, key, "train"), files(data_root, key, "validation"),
-                                  q.get("d_grid", (16, 24, 32, 48, 64)), q.get("ae_epochs", 60), q.get("ae_width", 256))
-    return _write(out, f"data_{key}.json", {"css": runs.css_cycles(lf), "decoder_gate": {str(k): v for k, v in gate.items()},
-                                            "reference_noise": runs.reference_noise(lf)})
+    lf, tr, va = long_files(data_root, key), files(data_root, key, "train"), files(data_root, key, "validation")
+    gate = runs.decoder_gate_grid(tr, va, q.get("d_grid", (16, 24, 32, 48, 64)), q.get("ae_epochs", 60),
+                                  q.get("ae_width", 256))
+    value = {"css": runs.css_cycles(lf), "decoder_gate": {str(k): v for k, v in gate.items()},
+             "reference_noise": runs.reference_noise(lf)}
+    return _write(out, f"data_{key}.json", value, stage, q, {"data": _data_used(tr, va)}, seeds=[0])
 
 
-def piece_cplk(data_root, key: str, out, q: dict | None = None) -> str:
+def piece_cplk(data_root, key: str, out, q: dict | None = None, stage: dict | None = None) -> str:
     q = q or {}
     sys_, mat = KEYS[key]
-    eps = runs.cplusl_K(files(data_root, key, "validation"), mat, n_coarse=q.get("n_coarse", 32),
-                        Ks=q.get("Ks", (1, 2, 4, 8)))
-    return _write(out, f"cplusl_K_{key}.json", {str(k): v for k, v in eps.items()})
+    va = files(data_root, key, "validation")
+    eps = runs.cplusl_K(va, mat, n_coarse=q.get("n_coarse", 32), Ks=q.get("Ks", (1, 2, 4, 8)))
+    return _write(out, f"cplusl_K_{key}.json", {str(k): v for k, v in eps.items()}, stage, q,
+                  {"data": _data_used(va)})
 
 
 # ---- arms ------------------------------------------------------------------------------------------------
@@ -84,7 +139,8 @@ def _std(ds):
 
 def piece_ae(data_root, key: str, seed: int, stage: dict, out, q: dict | None = None) -> str:
     """The pilot autoencoder of (key, seed) at the chosen d, saved under the study's naming
-    (ae_<system>_<material>_pilot_s<seed>.pt) so p3b.train.cells._build finds it."""
+    (ae_<system>_<material>_pilot_s<seed>.pt) so p3b.train.cells._build finds it; its SHA-256 is
+    recorded by every piece that uses it."""
     from p3b.latent.autoencoder import MLPAutoencoder, train_autoencoder
     from p3b.latent.data import load_set
     q = q or {}
@@ -100,38 +156,48 @@ def piece_ae(data_root, key: str, seed: int, stage: dict, out, q: dict | None = 
     return path
 
 
-def _kappa(key, seed, stage, ds, out, q):
+def _pilot(stage, key, kappa):
+    return {"d": stage["d"][key], "kappa": kappa, "ae_input_root": stage.get("ae_input_root", "/kaggle/input")}
+
+
+def _kappa(key, seed, stage, ds, out, q, used=None):
     from p3b.latent.autoencoder import MLPAutoencoder
     from p3b.latent.functionals import LatentFunctionals
     from p3b.train.cells import _load_ae, _physics
     c = _cell("S", key, seed)
     std = _std(ds)
     ae = MLPAutoencoder(ds.X.shape[-1], int(stage["d"][key]), width=q.get("ae_width", 256))
-    _load_ae(c, ae, str(out), _pilot(stage, key, None), {**q, "require_ae": True}, std, ds)
+    meta = _load_ae(c, ae, str(out), _pilot(stage, key, None), {**q, "require_ae": True}, std, ds)
+    if used is not None:
+        used.setdefault("autoencoders", {})[meta["file"]] = meta["sha256"]
     lf = LatentFunctionals(ae.decode, std, _physics(c.system, c.material, ds), c.system, ds.n_cells)
     return runs.kappa_from_data(lf, ae, std, ds), runs.g2_from_data(lf, ae, std, ds)
 
 
-def _pilot(stage, key, kappa):
-    return {"d": stage["d"][key], "kappa": kappa, "ae_input_root": stage.get("ae_input_root", "/kaggle/input")}
-
-
-def make_arm(arm: str, key: str, seed: int, stage: dict, ds, out, q: dict | None = None):
+def make_arm(arm: str, key: str, seed: int, stage: dict, ds, out, q: dict | None = None, used: dict | None = None):
     """A fresh pilot arm built exactly as the study builds its cells (p3b.train.cells._build): matched
-    widths, the shared autoencoder of (key, seed), S's kappa from the encoded pilot data."""
+    widths, the shared autoencoder of (key, seed), S's kappa from the encoded pilot data. The
+    autoencoder's SHA-256 goes into `used`."""
     from p3b.train.cells import _build
     q = q or {}
-    kappa = _kappa(key, seed, stage, ds, out, q)[0] if arm in ("S", "S-L", "S-M", "S-Pi") else None
-    built, _, _, _ = _build(_cell(arm, key, seed), _pilot(stage, key, kappa), {**q, "require_ae": True}, ds, str(out))
+    kappa = _kappa(key, seed, stage, ds, out, q)[0] if arm in STRUCTURED else None
+    built, _, _, meta = _build(_cell(arm, key, seed), _pilot(stage, key, kappa), {**q, "require_ae": True}, ds,
+                               str(out))
+    if used is not None and meta.get("autoencoder"):
+        used.setdefault("autoencoders", {})[meta["autoencoder"]["file"]] = meta["autoencoder"]["sha256"]
     return built
+
+
+def _primary(data_root):
+    from p3b.latent.data import load_set
+    tr, va = files(data_root, PRIMARY_KEY, "train"), files(data_root, PRIMARY_KEY, "validation")
+    return load_set(tr), load_set(va), {"data": _data_used(tr, va)}
 
 
 # ---- phase 1 and 2 ---------------------------------------------------------------------------------------
 def piece_lr(arm: str, data_root, stage: dict, out, q: dict | None = None) -> str:
-    from p3b.latent.data import load_set
     q = q or {}
-    ds = load_set(files(data_root, PRIMARY_KEY, "train"))
-    val = load_set(files(data_root, PRIMARY_KEY, "validation"))
+    ds, val, used = _primary(data_root)
     rates = q.get("lr_grid", (3e-4, 1e-3, 3e-3))
     its = q.get("lr_iterations", LR_ITERATIONS)
     nw, ns = q.get("n_windows", 8), q.get("n_steps", 20)
@@ -139,16 +205,14 @@ def piece_lr(arm: str, data_root, stage: dict, out, q: dict | None = None) -> st
         res = runs.cplusl_lr_sweep(ds, val, KEYS[PRIMARY_KEY][1], int(stage["K"][PRIMARY_KEY]), rates, its,
                                    n_coarse=q.get("n_coarse", 32), n_windows=nw, n_steps=ns)
     else:
-        res = runs.lr_sweep(lambda: make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q), ds, val, rates, its,
+        res = runs.lr_sweep(lambda: make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, rates, its,
                             h_steps=1, seed=0, n_windows=nw, n_steps=ns)
-    return _write(out, f"lr_{_tag(arm)}.json", {str(k): v for k, v in res.items()})
+    return _write(out, f"lr_{_tag(arm)}.json", {str(k): v for k, v in res.items()}, stage, q, used, seeds=[0])
 
 
 def piece_curve(arm: str, data_root, stage: dict, out, q: dict | None = None) -> str:
-    from p3b.latent.data import load_set
     q = q or {}
-    ds = load_set(files(data_root, PRIMARY_KEY, "train"))
-    val = load_set(files(data_root, PRIMARY_KEY, "validation"))
+    ds, val, used = _primary(data_root)
     its, every = q.get("curve_iterations", CURVE_MAX), q.get("curve_every", CURVE_EVERY)
     nw, ns = q.get("n_windows", 8), q.get("n_steps", 20)
     lr = stage["lr"][arm]
@@ -156,9 +220,9 @@ def piece_curve(arm: str, data_root, stage: dict, out, q: dict | None = None) ->
         curve = runs.cplusl_curve(ds, val, KEYS[PRIMARY_KEY][1], lr, its, every, int(stage["K"][PRIMARY_KEY]), 0,
                                   n_coarse=q.get("n_coarse", 32), n_windows=nw, n_steps=ns)
     else:
-        curve = runs.train_curve(make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q), ds, val, lr, its, every, 1, 0,
-                                 nw, ns)
-    return _write(out, f"curve_{_tag(arm)}.json", [list(x) for x in curve])
+        curve = runs.train_curve(make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, lr, its, every,
+                                 1, 0, nw, ns)
+    return _write(out, f"curve_{_tag(arm)}.json", [list(x) for x in curve], stage, q, used, seeds=[0])
 
 
 def _tag(arm: str) -> str:
@@ -169,43 +233,53 @@ def _tag(arm: str) -> str:
 def piece_s(key: str, data_root, stage: dict, out, q: dict | None = None) -> str:
     """S trained at its pilot lr and iterations with one RK4 step per snapshot interval on the key's
     pilot training data; the h check on its validation data with the reference's tau_S; the raw
-    |P grad S|^2 values and the projection defects per step (threshold inputs)."""
+    |P grad S|^2 values and the projection defects per step and h (threshold inputs). An S whose
+    training skipped more than 5 % of its iterations is not checked: the piece stops (review I5)."""
     from p3b.latent.data import load_set
-    from p3b.train.trainer import TrainConfig, train
+    from p3b.train import trainer
     q = q or {}
-    ds = load_set(files(data_root, key, "train"))
-    val = load_set(files(data_root, key, "validation"))
-    arm = make_arm("S", key, 0, stage, ds, out, q)
-    train(arm, ds, TrainConfig(lr=stage["lr"]["S"], iterations=int(q.get("iterations", stage["iterations"])), seed=0,
-                               h_steps=1, n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20)))
+    tr, va = files(data_root, key, "train"), files(data_root, key, "validation")
+    ds, val = load_set(tr), load_set(va)
+    used = {"data": _data_used(tr, va)}
+    arm = make_arm("S", key, 0, stage, ds, out, q, used)
+    its = int(q.get("iterations", stage["iterations"]))
+    hist = trainer.train(arm, ds, trainer.TrainConfig(lr=stage["lr"]["S"], iterations=its, seed=0, h_steps=1,
+                                                      n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20)))
+    if runs.too_many_skipped(hist, its):
+        raise RuntimeError(f"S on {key}: more than 5 % of its training iterations were skipped; no h check")
     hc = runs.h_check(arm, val, float(stage["tau_S"][key]), steps=q.get("h_steps_grid", (1, 2, 4)))
-    g2 = _kappa(key, 0, stage, ds, out, q)[1]
-    return _write(out, f"s_{key}.json", {"h_check": {str(k): v for k, v in hc["h"].items()}, "g2": g2,
-                                         "defects_per_step": hc["defects_per_step"]})
+    g2 = _kappa(key, 0, stage, ds, out, q, used)[1]
+    value = {"h_check": {str(k): v for k, v in hc["h"].items()}, "g2": g2,
+             "defects_per_step": {str(k): v for k, v in hc["defects_per_step"].items()},
+             "train": {"iterations": its, "skipped": hist.get("skipped", 0), "skipped_grad": hist.get("skipped_grad", 0)}}
+    return _write(out, f"s_{key}.json", value, stage, q, used, seeds=[0])
 
 
 def piece_wall(data_root, stage: dict, out, q: dict | None = None) -> str:
+    """Training seconds per iteration of every latent arm (PREREG 10: the cost of every arm; U and S
+    set U-long's iteration count)."""
     from p3b.latent.data import load_set
     q = q or {}
-    ds = load_set(files(data_root, PRIMARY_KEY, "train"))
-    makers = {a: (lambda a=a: make_arm(a, PRIMARY_KEY, 0, stage, ds, out, q)) for a in ("U", "S")}
+    tr = files(data_root, PRIMARY_KEY, "train")
+    ds = load_set(tr)
+    used = {"data": _data_used(tr)}
+    makers = {a: (lambda a=a: make_arm(a, PRIMARY_KEY, 0, stage, ds, out, q, used)) for a in LATENT_ARMS}
     res = runs.wall_per_iter(makers, ds, iterations=q.get("wall_iterations", 50), warmup=q.get("wall_warmup", 5),
                              n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20))
-    return _write(out, "wall_per_iter.json", res)
+    return _write(out, "wall_per_iter.json", res, stage, q, used, seeds=[0])
 
 
 # ---- phase 4 ---------------------------------------------------------------------------------------------
 def piece_two(arm: str, seed: int, data_root, stage: dict, out, q: dict | None = None, quarter: bool = False) -> str:
     """One seed of U or S (or U at a quarter of the iterations: the positive control) on system A
-    primary's pilot data at the chosen lr, iterations and h; evaluation rows on pilot_val."""
-    from p3b.latent.data import load_set
+    primary's pilot data at the chosen lr, iterations and h; evaluation rows on pilot_val and the
+    run's training counts."""
     q = q or {}
-    ds = load_set(files(data_root, PRIMARY_KEY, "train"))
-    val = load_set(files(data_root, PRIMARY_KEY, "validation"))
+    ds, val, used = _primary(data_root)
     its = int(q.get("iterations", stage["iterations"]))
     its = max(1, its // 4) if quarter else its
-    rows = runs.two_seed_rows(lambda: make_arm(arm, PRIMARY_KEY, seed, stage, ds, out, q), ds, val,
-                              stage["lr"][arm], its, int(stage["h_steps"][PRIMARY_KEY]), seeds=(seed,),
-                              n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20))[seed]
+    rows, train = runs.two_seed_rows(lambda: make_arm(arm, PRIMARY_KEY, seed, stage, ds, out, q, used), ds, val,
+                                     stage["lr"][arm], its, int(stage["h_steps"][PRIMARY_KEY]), seeds=(seed,),
+                                     n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20))
     name = f"rows_{'Uq' if quarter else _tag(arm)}_s{seed}.json"
-    return _write(out, name, rows)
+    return _write(out, name, {"rows": rows[seed], "train": train[seed]}, stage, q, used, seeds=[seed])

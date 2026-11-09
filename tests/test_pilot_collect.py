@@ -9,8 +9,9 @@ from p3b.pilot.pieces import LR_ARMS, PRIMARY_KEY, _tag
 KEY = PRIMARY_KEY
 
 
-def _w(d, name, obj):
-    (d / name).write_text(json.dumps(obj))
+def _w(d, name, obj, stage=None):
+    from p3b.pilot.pieces import _write
+    _write(d, name, obj, stage=stage or {})
 
 
 def _phase0(d, gate=None, K=None):
@@ -35,16 +36,18 @@ def test_stage0_stops_when_no_d_passes(tmp_path):
 
 
 def test_stage1_to_3_add_lr_iterations_and_h(tmp_path):
+    s0 = {"d": {KEY: 24}}
     for a in LR_ARMS:
-        _w(tmp_path, f"lr_{_tag(a)}.json", {"0.0003": 2.0, "0.001": 1.0, "0.003": float("nan")})
-        _w(tmp_path, f"curve_{_tag(a)}.json", [[1000, 1.0], [2000, 0.5], [3000, 0.495]])
-    _w(tmp_path, f"s_{KEY}.json", {"h_check": {"1": {"viol_rate": 0.0, "stiff_ok": True, "h_rho": 1.0},
-                                               "2": {"viol_rate": 0.0, "stiff_ok": True, "h_rho": 0.5}},
-                                   "g2": [1.0], "defects_per_step": [0.0]})
-    s = collect.stage(1, tmp_path, {"d": {KEY: 24}}, keys=(KEY,))
+        _w(tmp_path, f"lr_{_tag(a)}.json", {"0.0003": 2.0, "0.001": 1.0, "0.003": float("nan")}, s0)
+    s = collect.stage(1, tmp_path, s0, keys=(KEY,))
     assert set(s["lr"]) == set(LR_ARMS) and all(v == 1e-3 for v in s["lr"].values()) and s["d"] == {KEY: 24}
+    for a in LR_ARMS:
+        _w(tmp_path, f"curve_{_tag(a)}.json", [[1000, 1.0], [2000, 0.5], [3000, 0.495]], s)
     s = collect.stage(2, tmp_path, s, keys=(KEY,))
     assert s["iterations"] == 3000
+    _w(tmp_path, f"s_{KEY}.json", {"h_check": {"1": {"viol_rate": 0.0, "stiff_ok": True, "h_rho": 1.0},
+                                               "2": {"viol_rate": 0.0, "stiff_ok": True, "h_rho": 0.5}},
+                                   "g2": [1.0], "defects_per_step": {"1": [0.0], "2": [0.0]}}, s)
     s = collect.stage(3, tmp_path, s, keys=(KEY,))
     assert s["h_steps"] == {KEY: 1}
 

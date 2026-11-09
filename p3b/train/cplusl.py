@@ -111,25 +111,26 @@ def train_cplusl(mult, ds, material: str, n_coarse: int, lr: float, iterations: 
         if loss is None or not math.isfinite(float(loss)):
             hist["skipped"] += 1
             hist["loss"].append(float("nan"))
-            _checkpoint(it, every, callback, mult)
+            _checkpoint(it, every, callback, mult, hist)
             continue
         opt.zero_grad()
         loss.backward()
         if not all(bool(torch.isfinite(p.grad).all()) for p in params if p.grad is not None):
             hist["skipped_grad"] += 1
             hist["loss"].append(float(loss.detach()))
-            _checkpoint(it, every, callback, mult)
+            _checkpoint(it, every, callback, mult, hist)
             continue
         opt.step()
         hist["loss"].append(float(loss.detach()))
-        _checkpoint(it, every, callback, mult)
+        _checkpoint(it, every, callback, mult, hist)
     return hist
 
 
-def _checkpoint(it: int, every: int, callback, mult) -> None:
-    """callback(iterations done, mult) after every `every` iterations (the pilot's curves)."""
+def _checkpoint(it: int, every: int, callback, mult, hist) -> None:
+    """callback(iterations done, mult, hist so far) after every `every` iterations (the pilot's curves;
+    hist carries the skipped counts, review I5)."""
     if callback is not None and every and (it + 1) % every == 0:
-        callback(it + 1, mult)
+        callback(it + 1, mult, hist)
 
 
 @torch.no_grad()

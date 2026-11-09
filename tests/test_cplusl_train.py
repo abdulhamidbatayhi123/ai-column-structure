@@ -71,5 +71,5 @@ def test_train_cplusl_calls_back_at_each_checkpoint(paths):
     ds = load_set(paths)
     seen = []
     train_cplusl(Multipliers(n_out=3), ds, "MOF-303", n_coarse=4, lr=1e-3, iterations=4, seed=0, n_windows=1,
-                 n_steps=2, every=2, callback=lambda it, mult: seen.append(it))
+                 n_steps=2, every=2, callback=lambda it, mult, hist: seen.append(it))
     assert seen == [2, 4]

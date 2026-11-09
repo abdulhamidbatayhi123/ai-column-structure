@@ -147,22 +147,33 @@ def validation_loss(arm, val, h_steps: int, n_cycles: int = 1) -> float:
 def train_curve(arm, ds, val, lr: float, iterations: int, every: int, h_steps: int, seed: int,
                 n_windows: int = 8, n_steps: int = 20) -> list:
     """Train with one cosine schedule over `iterations`, pausing every `every` iterations (a
-    checkpoint) to record the pooled validation loss: [(iteration, loss), ...]."""
+    checkpoint) to record the pooled validation loss: [(iteration, loss), ...]. A checkpoint after more
+    than SKIP_LIMIT of the iterations so far were skipped (diverged windows leave a barely trained,
+    finite model) records NaN: not finished (plan 5 review I5)."""
     import tempfile
 
-    from p3b.train.trainer import TrainConfig, train
+    from p3b.train import trainer
     curve = []
     with tempfile.TemporaryDirectory() as tmp:
         ck = os.path.join(tmp, "ck.pt")
         done = 0
         while done < iterations:
             step = min(every, iterations - done)
-            train(arm, ds, TrainConfig(lr=lr, iterations=iterations, seed=seed, h_steps=h_steps,
-                                       n_windows=n_windows, n_steps=n_steps, checkpoint=ck, every=every,
-                                       stop_after=step))
+            hist = trainer.train(arm, ds, trainer.TrainConfig(lr=lr, iterations=iterations, seed=seed,
+                                                              h_steps=h_steps, n_windows=n_windows,
+                                                              n_steps=n_steps, checkpoint=ck, every=every,
+                                                              stop_after=step))
             done += step
-            curve.append((done, validation_loss(arm, val, h_steps)))
+            loss = float("nan") if too_many_skipped(hist, done) else validation_loss(arm, val, h_steps)
+            curve.append((done, loss))
     return curve
+
+
+SKIP_LIMIT = 0.05      # PREREG 4: a run with more than 5 % of its iterations skipped is a deviation
+
+
+def too_many_skipped(hist: dict, iterations: int) -> bool:
+    return (hist.get("skipped", 0) + hist.get("skipped_grad", 0)) > SKIP_LIMIT * iterations
 
 
 def lr_sweep(make_arm, ds, val, rates=(3e-4, 1e-3, 3e-3), iterations: int = 2000, h_steps: int = 1, seed: int = 0,
@@ -195,58 +206,71 @@ def spectral_radius(f, z, iters: int = 30, seed: int = 0) -> float:
     return rho
 
 
+def snapshot_intervals(val) -> torch.Tensor:
+    """The interval after each snapshot, flattened like val.X.reshape(-1, n) (trajectory, cycle,
+    snapshot); a trajectory's last snapshot takes the interval before it. The two half-cycles have
+    different lengths, so the intervals differ within and across trajectories."""
+    out = []
+    for j in range(val.t.shape[0]):
+        tt = val.t[j].reshape(-1)
+        out.append(torch.cat([tt[1:] - tt[:-1], tt[-1:] - tt[-2:-1]]))
+    return torch.cat(out)
+
+
 def h_check(arm, val, tau_S: float, steps=(1, 2, 4), n_states: int = 8) -> dict:
-    """For each h (RK4 steps per snapshot interval): S's entropy-violation rate on the validation
-    rollouts (production per second below -tau_S, per step) and the near-dry stiffness check
-    (h rho(J) < 2.5 at the encoded validation states with the smallest concentration, where
-    -mu_v/T, and so the metriplectic term, is stiffest; formulation 5.4). Also the projection
-    defects per step of every validation trajectory at the coarsest h. A rollout that fails at some h
-    sets that h's violation rate to 1 (inadmissible) and is counted in "failed"."""
-    from p3b.eval.rollout import rollout
+    """For each h (k RK4 steps per snapshot interval):
+    - viol_rate: the share of snapshot intervals in which S's production per second falls below
+      -tau_S (residuals and flags are per interval at every k, so the rate is per interval; plan 5
+      review I2). A rollout that fails sets the rate to 1 (inadmissible) and is counted in "failed";
+    - the near-dry stiffness check: h rho(J) < 2.5 with each picked state's own interval divided by k
+      (review I3), at the encoded validation states with the smallest concentration, where -mu_v/T,
+      and so the metriplectic term, is stiffest (formulation 5.4);
+    - defects_per_step[k]: per validation trajectory, the share of intervals with any projection
+      defect flag (counted once per interval), NaN for a failed rollout (review I4)."""
+    from p3b.eval import rollout as ro
     std, ae = arm.std, arm.ae
     X = val.X.reshape(-1, val.X.shape[-1])
     R = val.raw_inputs.reshape(X.shape[0], -1)
     F = std.encode_features(val.features.reshape(X.shape[0], -1))
-    t = val.t.reshape(-1)
-    dt = float(torch.median(t[1:] - t[:-1]))
+    dts = snapshot_intervals(val)
     n_ch = 3 if val.system == "A" else 2
     dryness = X[:, 0:val.n_cells * n_ch:n_ch].min(dim=1).values          # smallest log c (A) or T_f (B)
     pick = torch.argsort(dryness)[:n_states]
     with torch.no_grad():
         Z = ae.encode(std.encode(X[pick]))
-    out, defects = {"h": {}}, []
+    rhos = []
+    for i in range(Z.shape[0]):
+        f = lambda z: arm.dyn(z, F[pick[i]:pick[i] + 1], R[pick[i]:pick[i] + 1])[0]  # noqa: E731
+        rhos.append(spectral_radius(f, Z[i:i + 1]))
+    out = {"h": {}, "defects_per_step": {}}
+    n_int = val.X.shape[1] * val.X.shape[2]
     for k in steps:
         viol = total = n_failed = 0
+        defects = []
         for j in range(val.X.shape[0]):
-            r = rollout(arm, val, j, val.X.shape[1], k, track=True)
-            if r.failed_cycle is not None:      # a diverged rollout makes this h inadmissible: its few
-                n_failed += 1                   # residuals must not read as a zero violation rate
+            r = ro.rollout(arm, val, j, val.X.shape[1], k, track=True)
+            failed = r.failed_cycle is not None
+            n_failed += int(failed)
             if "S" in r.residuals:
                 n = len(r.residuals["S"])
                 tt = val.t[j].reshape(-1)
                 d_t = torch.cat([tt[1:] - tt[:-1], tt[-1:] - tt[-2:-1]])[:n]
                 viol += int(((r.residuals["S"] / d_t) < -tau_S).sum())
-                total += n * k
-            if k == min(steps):
-                bad = sum(r.flags.get(key, 0) for key in ("rank_deficient", "kappa_binds", "projection_rank_deficient"))
-                defects.append(bad / max(1, val.X.shape[1] * val.X.shape[2] * k))
-        rhos = []
-        for i in range(Z.shape[0]):
-            f = lambda z: arm.dyn(z, F[pick[i]:pick[i] + 1], R[pick[i]:pick[i] + 1])[0]  # noqa: E731
-            rhos.append(spectral_radius(f, Z[i:i + 1]))
-        h_rho = (dt / k) * max(rhos)
+                total += n
+            defects.append(float("nan") if failed else r.flags.get("any_defect", 0) / n_int)
+        h_rho = max(float(dts[pick[i]]) / k * rhos[i] for i in range(len(rhos)))
         out["h"][k] = {"viol_rate": 1.0 if n_failed else viol / max(1, total), "failed": n_failed,
                        "stiff_ok": bool(np.isfinite(h_rho) and h_rho < RK4_STABLE), "h_rho": float(h_rho)}
-    out["defects_per_step"] = defects
+        out["defects_per_step"][k] = defects
     return out
 
 
 # ---- Task 4: C+L's substeps K, wall-clock per iteration ----------------------------------------------
 def cplusl_K(val_paths, material: str, n_coarse: int = 32, Ks=(1, 2, 4, 8)) -> dict:
-    """{K: the largest |eps_W(C+L) - eps_W(C)| over the pilot trajectories and cycles}, with C+L's
-    multipliers all fixed at 1 and C (BDF) on the same n_coarse cells (PREREG Section 10). Both errors
-    are fractions of the reference release, so the rule's 1 % is 0.01 (p3b.pilot.rules.choose_K). A
-    run of either that fails makes the value infinite, so that K is never chosen."""
+    """{K: k_discrepancy, the largest |W(C+L) - W(C)| / |W_ref| over the pilot trajectories and
+    cycles}, with C+L's multipliers all fixed at 1 and C (BDF) on the same n_coarse cells (PREREG
+    Section 10): "reproduces C's eps_W within 1 %" read as the two releases within 1 % of the reference
+    release (p3b.pilot.rules.choose_K). A run of either that fails makes the value infinite."""
     import tempfile
 
     from p3b.eval.evaluate import evaluate_files
@@ -279,11 +303,27 @@ def cplusl_K(val_paths, material: str, n_coarse: int = 32, Ks=(1, 2, 4, 8)) -> d
             if None in files or None in c_files:
                 out[int(K)] = float("inf")
                 continue
-            rows = evaluate_files({"C": c_files, "C+L": files}, ds, phys, n_cycles, seed=0)
-            eps = {(r["arm"], r["trajectory"]): np.asarray(r["eps_uncapped"]) for r in rows}
-            d = [np.abs(eps[("C+L", j)] - eps[("C", j)]).max() for j in range(len(points))]
-            out[int(K)] = float(max(d)) if np.all(np.isfinite(d)) else float("inf")
+            out[int(K)] = k_discrepancy(evaluate_files({"C": c_files, "C+L": files}, ds, phys, n_cycles, seed=0))
     return out
+
+
+def k_discrepancy(rows) -> float:
+    """The largest |W(C+L) - W(C)| / |W_ref| over trajectories and cycles: the released water of the
+    two compared directly, so opposite-signed errors cannot cancel (plan 5 review I1); infinite if a
+    row of either failed (its errors substitute reference values for non-finite snapshots)."""
+    by = {(r["arm"], r["trajectory"]): r for r in rows}
+    worst = 0.0
+    for (arm, j), r in by.items():
+        if arm != "C+L":
+            continue
+        c = by[("C", j)]
+        if r["failed_cycle"] is not None or c["failed_cycle"] is not None:
+            return math.inf
+        d = np.abs(np.asarray(r["W_pred"]) - np.asarray(c["W_pred"])) / np.abs(np.asarray(r["W_ref"]))
+        if not np.isfinite(d).all():
+            return math.inf
+        worst = max(worst, float(d.max()))
+    return worst
 
 
 def wall_per_iter(make_arms: dict, ds, iterations: int = 50, warmup: int = 5, h_steps: int = 1, lr: float = 1e-3,
@@ -347,10 +387,11 @@ def sds_values(u_rows: dict, s_rows: dict, stat: dict | None = None) -> dict:
     return {h: _log_ratios(s_rows, u_rows, h, stat) for h in HYP_STAT}
 
 
-def positive_control(full_rows: dict, quarter_rows: dict, hyp: str = "H2", alpha: float = 0.05,
+def positive_control(full_rows: dict, quarter_rows: dict, hyp: str = "H2", alpha: float = 0.05 / 3,
                      draws: int = 10_000, seed: int = 0, stat: dict | None = None) -> dict:
     """U at full iterations against U at a quarter of them through the full directional rule (PREREG
-    Section 9) on the H2 statistic at alpha 0.05. Only the word is written (blinding)."""
+    Section 9) on the H2 statistic at H2's Holm worst-case level 0.05/3, the level at which the rule's
+    power is judged (plan 5 review M1). Only the word is written (blinding)."""
     from p3b.pilot.power import directional_rule
     word = directional_rule(_log_ratios(full_rows, quarter_rows, hyp, stat), alpha, draws, seed)
     return {"word": word, "hypothesis": hyp, "alpha": alpha}
@@ -358,22 +399,26 @@ def positive_control(full_rows: dict, quarter_rows: dict, hyp: str = "H2", alpha
 
 def two_seed_rows(make_arm, ds, val, lr: float, iterations: int, h_steps: int, seeds=(0, 1), n_cycles=None,
                   floors=None, tau_S=None, n_windows: int = 8, n_steps: int = 20) -> dict:
-    """{seed: p3b.eval.evaluate rows on val} for a fresh arm per seed trained at the pilot's lr and
-    iterations; the rows never leave the pilot results directory (blinding)."""
-    from p3b.eval.evaluate import evaluate
-    from p3b.train.trainer import TrainConfig, train
+    """({seed: p3b.eval.evaluate rows on val}, {seed: {"iterations", "skipped", "skipped_grad"}}) for
+    a fresh arm per seed trained at the pilot's lr and iterations; the rows never leave the pilot
+    results directory (blinding); the training counts let the collector stop on an unfinished run
+    (review I5)."""
+    from p3b.eval import evaluate as ev
+    from p3b.train import trainer
     phys = _physics(val)
     n_cycles = n_cycles or val.X.shape[1]
     floors = floors or {"N": float("inf"), "E": float("inf")}
     tau_S = float("inf") if tau_S is None else tau_S
-    out = {}
+    out, info = {}, {}
     for s in seeds:
         torch.manual_seed(s)
         arm = make_arm()
-        train(arm, ds, TrainConfig(lr=lr, iterations=iterations, seed=s, h_steps=h_steps, n_windows=n_windows,
-                                   n_steps=n_steps))
-        out[int(s)] = evaluate(arm, val, phys, n_cycles, h_steps, floors, tau_S, s)
-    return out
+        hist = trainer.train(arm, ds, trainer.TrainConfig(lr=lr, iterations=iterations, seed=s, h_steps=h_steps,
+                                                          n_windows=n_windows, n_steps=n_steps))
+        info[int(s)] = {"iterations": int(iterations), "skipped": int(hist.get("skipped", 0)),
+                        "skipped_grad": int(hist.get("skipped_grad", 0))}
+        out[int(s)] = ev.evaluate(arm, val, phys, n_cycles, h_steps, floors, tau_S, s)
+    return out, info
 
 
 # ---- Task 6 building block: C+L's curve and learning-rate sweep -------------------------------------
@@ -382,12 +427,16 @@ def cplusl_curve(ds, val, material: str, lr: float, iterations: int, every: int,
     """C+L trained with one cosine schedule over `iterations`; its deterministic validation loss
     (p3b.train.cplusl.cplusl_val_loss) every `every` iterations: [(iteration, loss), ...]."""
     from p3b.solvers.c_plus_l import Multipliers
-    from p3b.train.cplusl import cplusl_val_loss, train_cplusl
+    from p3b.train import cplusl
     torch.manual_seed(seed)
     mult = Multipliers(n_out=3)
     curve = []
-    train_cplusl(mult, ds, material, n_coarse, lr, iterations, seed, n_windows=n_windows, n_steps=n_steps, K=K,
-                 every=every, callback=lambda it, m: curve.append((it, cplusl_val_loss(m, val, material, n_coarse, K))))
+
+    def record(it, m, hist):
+        loss = float("nan") if too_many_skipped(hist, it) else cplusl.cplusl_val_loss(m, val, material, n_coarse, K)
+        curve.append((it, loss))
+    cplusl.train_cplusl(mult, ds, material, n_coarse, lr, iterations, seed, n_windows=n_windows, n_steps=n_steps,
+                        K=K, every=every, callback=record)
     return curve
 
 

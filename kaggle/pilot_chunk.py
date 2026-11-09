@@ -29,9 +29,9 @@ ARMS = {pieces._tag(a): a for a in pieces.LR_ARMS}
 def run_piece(name: str, data: str, stage: dict, out: str, q: dict) -> str:
     kind, _, rest = name.partition("-")
     if kind == "data":
-        return pieces.piece_data(data, rest, out, q)
+        return pieces.piece_data(data, rest, out, q, stage)
     if kind == "cplk":
-        return pieces.piece_cplk(data, rest, out, q)
+        return pieces.piece_cplk(data, rest, out, q, stage)
     if kind == "ae":
         key, _, seed = rest.rpartition("-s")
         return pieces.piece_ae(data, key, int(seed), stage, out, q)
@@ -64,13 +64,9 @@ def main(argv=None):
         with open(a.stage) as f:
             stage = json.load(f)
     q = json.loads(a.quick) if a.quick else {}
-    data = a.data
-    if not os.path.isdir(data) and os.path.isdir("/kaggle/input"):
-        # the pilot data attached as the generation kernels' outputs instead of carried in the kit
-        from p3b.pilot.collect import stage_data
-        data = "/kaggle/working/pilot_data"
-        stage_data(["/kaggle/input"], data)
-    print(os.path.basename(run_piece(a.piece, data, stage, a.out, q)), flush=True)
+    if not os.path.isdir(a.data):
+        raise SystemExit(f"no pilot data at {a.data}: stage it with scripts/pilot_collect.py data and rebuild the kit")
+    print(os.path.basename(run_piece(a.piece, a.data, stage, a.out, q)), flush=True)
 
 
 if __name__ == "__main__":
