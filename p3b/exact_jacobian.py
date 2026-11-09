@@ -34,11 +34,14 @@ def colored_rows(f, y, n_cells: int, n_var: int, row_cell, n_rows: int, n_cols: 
     rows_all, cols_all, vals_all = [], [], []
     rows = torch.arange(n_rows)
     rc = torch.as_tensor(row_cell)
+    seeds = torch.zeros(3 * n_var, n, dtype=F64)
     for var in range(n_var):
         for k in range(3):
-            v = torch.zeros(n, dtype=F64)
-            v[var * n_cells + torch.arange(k, n_cells, 3)] = 1.0
-            _, Jv = torch.func.jvp(f, (y,), (v,))
+            seeds[3 * var + k, var * n_cells + torch.arange(k, n_cells, 3)] = 1.0
+    JV = torch.func.vmap(lambda s: torch.func.jvp(f, (y,), (s,))[1])(seeds)   # one batched pass
+    for var in range(n_var):
+        for k in range(3):
+            Jv = JV[3 * var + k]
             for off in (-1, 0, 1):
                 cell = rc + off
                 ok = (cell >= 0) & (cell < n_cells) & (cell % 3 == k)

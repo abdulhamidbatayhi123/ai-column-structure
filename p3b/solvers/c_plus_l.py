@@ -187,12 +187,14 @@ def colored_jacobian(f, y, n_cells: int, n_var: int):
     J = torch.zeros(n, n, dtype=y.dtype)
     rows = torch.arange(n)
     row_cell = rows % n_cells
+    seeds = torch.zeros(3 * n_var, n, dtype=y.dtype)
     for var in range(n_var):
         for k in range(3):
-            v = torch.zeros(n, dtype=y.dtype)
-            cols = var * n_cells + torch.arange(k, n_cells, 3)
-            v[cols] = 1.0
-            _, Jv = torch.func.jvp(f, (y,), (v,))
+            seeds[3 * var + k, var * n_cells + torch.arange(k, n_cells, 3)] = 1.0
+    JV = torch.func.vmap(lambda s: torch.func.jvp(f, (y,), (s,))[1])(seeds)   # one batched pass
+    for var in range(n_var):
+        for k in range(3):
+            Jv = JV[3 * var + k]
             for off in (-1, 0, 1):
                 cell = row_cell + off
                 ok = (cell >= 0) & (cell < n_cells) & (cell % 3 == k)
