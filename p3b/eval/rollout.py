@@ -50,8 +50,12 @@ def rollout(arm, ds, j: int, n_cycles: int, h_steps: int, track: bool = False) -
     t0 = time.process_time()
     for i in range(T):
         z_prev = z
-        with torch.enable_grad() if arm.kind in ("S", "S-M", "S-Pi", "S-L", "U+F") else torch.no_grad():
-            z, fl = arm.step(z, F[i:i + 1], R[i:i + 1], dt[i:i + 1, None], h_steps, track=track)
+        try:
+            with torch.enable_grad() if arm.kind in ("S", "S-M", "S-Pi", "S-L", "U+F", "U+proj", "U+F+proj") else torch.no_grad():
+                z, fl = arm.step(z, F[i:i + 1], R[i:i + 1], dt[i:i + 1, None], h_steps, track=track)
+        except torch.linalg.LinAlgError:              # a diverged state inside a projection: a failure
+            failed_at = i + 1
+            break
         z = z.detach()
         if fl is not None:
             for k, v in fl.items():

@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from p3b.eval.violations import normalisers, step_residuals
-from p3b.latent.arms_structured import structured_step
+from p3b.latent.arms_structured import projected_rk4_step, structured_step
 from p3b.latent.arms_unstructured import count_params, penalty_loss, penalty_weight
 from p3b.latent.autoencoder import cosine_lr
 from p3b.latent.data import windows
@@ -102,10 +102,20 @@ class Arm:
             if self.kind in PROJECTED:
                 z, fl = structured_step(self.dyn, z, feat, raw, h)
             else:
-                if self.kind == "U+F":
+                if self.kind.startswith("U+F"):
                     f = lambda x: self.dyn(x, feat, self.terms.transform(self.lf.evaluate(x, raw)))  # noqa: E731
                 else:
                     f = lambda x: self.dyn(x, feat)  # noqa: E731
+                if self.kind.endswith("+proj"):          # U+proj, U+F+proj: S's projection, no retraining
+                    z, fl = projected_rk4_step(f, z, raw, h, self.lf)
+                    fl = {k_: v for k_, v in fl.items()
+                          if k_ in ("Q_E", "Q_N", "Q_S", "rank_deficient")}
+                    for k_, v in fl.items():
+                        if k_.startswith("Q_"):
+                            info[k_] = info[k_] + v if k_ in info else v
+                        else:
+                            info["projection_" + k_] = info.get("projection_" + k_, v) | v
+                    continue
                 z_new, stages = rk4_step(f, z, h)
                 fl = {}
                 if track:
