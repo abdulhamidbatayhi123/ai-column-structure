@@ -58,3 +58,17 @@ def test_simulators_use_the_exact_jacobian_and_close_the_balances():
     assert res.ok and max(res.closure) < 1e-5
     from p3b import simulate_a
     assert simulate_a.EXACT_JACOBIAN is True
+
+
+def test_exact_and_finite_difference_jacobians_give_the_same_trajectory(tmp_path, monkeypatch):
+    """The Jacobian only steers Newton's iterations: on a point where finite differences do not
+    stall, both produce the same stored data within the solver tolerance (rtol 1e-6)."""
+    from p3b import simulate_a
+    from p3b.generate import generate_trajectory
+    out = {}
+    for exact in (True, False):
+        monkeypatch.setattr(simulate_a, "EXACT_JACOBIAN", exact)
+        p = tmp_path / f"{exact}.npz"
+        assert generate_trajectory("A", POINT_A, "MOF-303", N_z=64, N_c=16, path=p, n_snap=20).ok
+        out[exact] = np.load(p)["channels"].astype(float)
+    assert np.max(np.abs(out[True] - out[False])) < 1e-4 * np.max(np.abs(out[False]))
