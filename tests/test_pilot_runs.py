@@ -93,3 +93,22 @@ def test_lr_sweep_writes_one_loss_per_rate(pilot_dir):
 
     out = runs.lr_sweep(make, ds, val, rates=(3e-4, 1e-3), iterations=2, h_steps=1, seed=0, n_windows=1, n_steps=2)
     assert set(out) == {3e-4, 1e-3}
+
+
+def test_spectral_radius_by_power_iteration_on_a_linear_field():
+    import torch
+    A = torch.diag(torch.tensor([-1.0, -5.0, -0.5], dtype=torch.float64))
+    rho = runs.spectral_radius(lambda z: z @ A.T, torch.zeros(1, 3, dtype=torch.float64), iters=50)
+    assert abs(rho - 5.0) < 1e-6
+
+
+def test_h_check_reports_rates_stability_and_defects(pilot_dir):
+    from p3b.latent.arms_structured import SDynamics
+    from p3b.train.trainer import Arm, time_scale
+    ds, val, std, ae, lf = _setup(pilot_dir)
+    s = SDynamics(4, 4, lf, kappa=runs.kappa_from_data(lf, ae, std, ds), width=8, time_scale=time_scale(ds))
+    out = runs.h_check(Arm("S", s, ae, std, lf), val, tau_S=1e-9, steps=(1, 2))
+    assert set(out["h"]) == {1, 2}
+    for v in out["h"].values():
+        assert 0 <= v["viol_rate"] <= 1 and isinstance(v["stiff_ok"], bool) and v["h_rho"] >= 0
+    assert len(out["defects_per_step"]) == val.X.shape[0]

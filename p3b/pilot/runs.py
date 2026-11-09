@@ -164,3 +164,69 @@ def lr_sweep(make_arm, ds, val, rates=(3e-4, 1e-3, 3e-3), iterations: int = 2000
     """{lr: validation rollout loss over one cycle after `iterations`} for a fresh arm per rate."""
     return {lr: train_curve(make_arm(), ds, val, lr, iterations, iterations, h_steps, seed,
                             n_windows, n_steps)[-1][1] for lr in rates}
+
+
+# ---- Task 3: the step size h, S's defects ------------------------------------------------------------
+RK4_STABLE = 2.5     # h rho(J) below RK4's real-axis stability limit (2.785) with a margin
+
+
+def spectral_radius(f, z, iters: int = 30, seed: int = 0) -> float:
+    """The largest |eigenvalue| of the Jacobian of the vector field f at z (one state, shape (1, d)),
+    by power iteration on Jacobian-vector products. The products are central differences, because S's
+    field calls reverse-mode autograd internally (its latent gradients), which forward mode cannot wrap."""
+    g = torch.Generator().manual_seed(seed)
+    v = torch.randn(z.shape, dtype=z.dtype, generator=g)
+    v = v / v.norm()
+    rho = 0.0
+    eps = 1e-6 * max(1.0, float(z.abs().max()))
+    for _ in range(iters):
+        with torch.no_grad():
+            Jv = (f(z + eps * v) - f(z - eps * v)) / (2 * eps)
+        n = float(Jv.norm())
+        if not np.isfinite(n) or n == 0.0:
+            return n
+        rho, v = n, Jv / n
+    return rho
+
+
+def h_check(arm, val, tau_S: float, steps=(1, 2, 4), n_states: int = 8) -> dict:
+    """For each h (RK4 steps per snapshot interval): S's entropy-violation rate on the validation
+    rollouts (production per second below -tau_S, per step) and the near-dry stiffness check
+    (h rho(J) < 2.5 at the encoded validation states with the smallest concentration, where
+    -mu_v/T, and so the metriplectic term, is stiffest; formulation 5.4). Also the projection
+    defects per step of every validation trajectory at the coarsest h."""
+    from p3b.eval.rollout import rollout
+    std, ae = arm.std, arm.ae
+    X = val.X.reshape(-1, val.X.shape[-1])
+    R = val.raw_inputs.reshape(X.shape[0], -1)
+    F = std.encode_features(val.features.reshape(X.shape[0], -1))
+    t = val.t.reshape(-1)
+    dt = float(torch.median(t[1:] - t[:-1]))
+    n_ch = 3 if val.system == "A" else 2
+    dryness = X[:, 0:val.n_cells * n_ch:n_ch].min(dim=1).values          # smallest log c (A) or T_f (B)
+    pick = torch.argsort(dryness)[:n_states]
+    with torch.no_grad():
+        Z = ae.encode(std.encode(X[pick]))
+    out, defects = {"h": {}}, []
+    for k in steps:
+        viol = total = 0
+        for j in range(val.X.shape[0]):
+            r = rollout(arm, val, j, val.X.shape[1], k, track=True)
+            if "S" in r.residuals:
+                n = len(r.residuals["S"])
+                tt = val.t[j].reshape(-1)
+                d_t = torch.cat([tt[1:] - tt[:-1], tt[-1:] - tt[-2:-1]])[:n]
+                viol += int(((r.residuals["S"] / d_t) < -tau_S).sum())
+                total += n * k
+            if k == min(steps):
+                bad = sum(r.flags.get(key, 0) for key in ("rank_deficient", "kappa_binds", "projection_rank_deficient"))
+                defects.append(bad / max(1, val.X.shape[1] * val.X.shape[2] * k))
+        rhos = []
+        for i in range(Z.shape[0]):
+            f = lambda z: arm.dyn(z, F[pick[i]:pick[i] + 1], R[pick[i]:pick[i] + 1])[0]  # noqa: E731
+            rhos.append(spectral_radius(f, Z[i:i + 1]))
+        h_rho = (dt / k) * max(rhos)
+        out["h"][k] = {"viol_rate": viol / max(1, total), "stiff_ok": bool(np.isfinite(h_rho) and h_rho < RK4_STABLE),
+                       "h_rho": float(h_rho)}
+    out["defects_per_step"] = defects
+    return out
