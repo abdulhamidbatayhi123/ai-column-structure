@@ -1,0 +1,11 @@
+{
+ "kit_slug": "abdulhamidbatayhi/p3b-reference-kit",
+ "nz": 2048,
+ "_note": "PREREG Section 2 pilot sets. N_z for system A is provisional until the Task 10 data-cost decision (results/timing_reference.json); system B runs at 1024 cells.",
+ "jobs": [
+  {"system": "A_primary", "set": "pilot_train", "of": 2},
+  {"system": "A_primary", "set": "pilot_val", "of": 4},
+  {"system": "A_replication", "set": "pilot", "of": 2},
+  {"system": "B", "set": "pilot", "of": 1, "nz": 1024}
+ ]
+}

@@ -39,16 +39,18 @@ REG = os.path.join(HERE, "registry.txt")
 OWNER = "abdulhamidbatayhi"
 MAX_RUNNING = 5
 
-RUN_PY = r'''import glob, os, shutil, subprocess, sys
-kit = "/kaggle/working/kit"
-if not os.path.exists(kit):
-    src = [os.path.dirname(os.path.dirname(p)) for p in glob.glob("/kaggle/input/**/kaggle/generate_chunk.py", recursive=True)][0]
-    shutil.copytree(src, kit)
+RUN_PY = r'''import glob, os, subprocess, sys
+# the kit is used read-only where Kaggle mounts it; nothing of it is copied into the outputs
+hits = glob.glob("/kaggle/input/{kit_name}/**/kaggle/generate_chunk.py", recursive=True)
+kit = os.path.dirname(os.path.dirname(hits[0]))
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+os.environ["P3B_PAPER1_DIR"] = os.path.join(kit, "paper1")
 out = "/kaggle/working/out"
+os.makedirs(out, exist_ok=True)
 args = {args!r}
-procs = [subprocess.Popen([sys.executable, os.path.join(kit, "kaggle", "generate_chunk.py"), *a, "--out", out])
+procs = [subprocess.Popen([sys.executable, os.path.join(kit, "kaggle", "generate_chunk.py"), *a, "--out", out], cwd=out)
          for a in args]
 sys.exit(max(p.wait() for p in procs))
 '''
@@ -139,10 +141,10 @@ def write_kernels(spec: dict) -> list[dict]:
             # is addressed as a chunk of the whole set (generate_chunk's --chunk/--of) by index ranges
             sub = min(job.get("cores", 4), len(members))
             args = [["--system", job["system"], "--set", job["set"], "--indices",
-                     ",".join(str(i) for i in part), "--report", f"{chunk}_{s}", "--nz", str(spec["nz"])]
+                     ",".join(str(i) for i in part), "--report", f"{chunk}_{s}", "--nz", str(job.get("nz", spec["nz"]))]
                     for s, part in enumerate(chunk_indices_list(members, sub))]
             with open(os.path.join(d, "run.py"), "w") as f:
-                f.write(RUN_PY.format(args=args))
+                f.write(RUN_PY.format(args=args, kit_name=spec["kit_slug"].split("/")[-1]))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
                 json.dump(_metadata(name, spec["kit_slug"]), f, indent=1)
             kernels.append({"name": name, "dir": d, "system": job["system"], "set": job["set"], "chunk": chunk,

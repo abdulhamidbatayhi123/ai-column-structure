@@ -244,3 +244,21 @@ def test_training_resumes_from_a_checkpoint(study, tmp_path):
     resumed, h = run(ck)
     assert h["resumed_from"] == 2
     assert all(torch.allclose(a, b) for a, b in zip(full.state_dict().values(), resumed.state_dict().values()))
+
+
+
+def test_chunk_kernels_also_run_read_only(tmp_path):
+    import run_queue
+    kit = tmp_path / "input" / "p3b-reference-kit"
+    (kit / "kaggle").mkdir(parents=True)
+    (kit / "kaggle" / "generate_chunk.py").write_text(
+        "import sys, os\n"
+        "out = sys.argv[sys.argv.index('--out') + 1]\n"
+        "open(os.path.join(out, 'c.json'), 'w').write('{}')\n")
+    script = run_queue.RUN_PY.format(args=[["--system", "B"]], kit_name="p3b-reference-kit")
+    base = str(tmp_path).replace("\\", "/")
+    script = script.replace("/kaggle/input", base + "/input").replace("/kaggle/working", base + "/working")
+    (tmp_path / "run.py").write_text(script)
+    subprocess.run([sys.executable, str(tmp_path / "run.py")], check=True)
+    written = [p for p in (tmp_path / "working").rglob("*") if p.is_file()]
+    assert written == [tmp_path / "working" / "out" / "c.json"]
