@@ -136,3 +136,9 @@ approval on 2026-11-05. Review codes:
     minimum-norm steps do not change.
   - C+L's implicit-Euler substeps K are set in the pilot, so that the multipliers do not absorb
     time-discretisation error.
+- **From the plan 3 code review (2026-11-09).**
+  - The reference time scale and the zero/small initialisation of the state-update networks are
+    stated in Section 4. Without them, untrained vector fields over 850 s snapshot intervals
+    overflowed; they are the same for every arm.
+  - The skip rule for diverged windows is stated, with its counts reported and a 5 % deviation
+    threshold. Skipping trains the stiffest arm on easier windows, so the count must be visible.
