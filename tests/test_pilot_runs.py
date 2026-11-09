@@ -1,0 +1,52 @@
+"""Plan 5: the pilot runner, which writes the inputs of scripts/pilot_rules.py from the pilot data."""
+import json
+
+import numpy as np
+import pytest
+
+from p3b.generate import generate_trajectory
+from p3b.pilot import runs
+
+POINTS = [dict(RH_ads=0.40, T_ads=303.15, T_des=353.15, v=0.10, alpha=0.8, beta=0.6, index=i, n_cycles=3)
+          for i in range(2)]
+
+
+@pytest.fixture(scope="module")
+def pilot_dir(tmp_path_factory):
+    d = tmp_path_factory.mktemp("pilot")
+    for split in ("train", "validation"):
+        (d / split).mkdir()
+        for pt in POINTS:
+            pt = dict(pt, RH_ads=pt["RH_ads"] + 0.05 * pt["index"])
+            assert generate_trajectory("A", pt, "MOF-303", N_z=32, N_c=8, path=d / split / f"t{pt['index']}.npz",
+                                       n_snap=40).ok
+    return d
+
+
+def test_reference_noise_gives_floors_production_and_a_pilot_wide_tau_ref(pilot_dir):
+    out = runs.reference_noise(sorted((pilot_dir / "validation").glob("*.npz")))
+    assert set(out) == {"floors", "ref_production", "tau_ref"}
+    assert {"N", "E"} <= set(out["floors"]) and all(v > 0 for v in out["floors"].values())
+    assert len(out["ref_production"]) > 0 and np.isfinite(out["ref_production"]).all()
+    assert out["tau_ref"] > 0
+
+
+def test_css_per_trajectory_with_a_sentinel_when_not_reached(pilot_dir):
+    c = runs.css_cycles(sorted((pilot_dir / "validation").glob("*.npz")))
+    assert len(c) == 2 and all(isinstance(x, int) for x in c)
+    assert all(2 <= x <= 4 for x in c)                       # 3 cycles stored: reached by 3, else 4
+
+
+def test_decoder_gate_grid(pilot_dir):
+    g = runs.decoder_gate_grid(sorted((pilot_dir / "train").glob("*.npz")),
+                               sorted((pilot_dir / "validation").glob("*.npz")),
+                               d_grid=(4, 8), epochs=1, width=8, seed=0)
+    assert set(g) == {4, 8} and all(isinstance(v, bool) for v in g.values())
+
+
+def test_write_inputs_creates_the_files_pilot_rules_reads(pilot_dir, tmp_path):
+    files = runs.write_data_inputs({"A_MOF-303": pilot_dir}, tmp_path, d_grid=(4,), epochs=1, width=8)
+    for name in ("css.json", "decoder_gate.json", "reference_noise.json"):
+        assert (tmp_path / name).exists()
+    css = json.loads((tmp_path / "css.json").read_text())
+    assert set(css) == {"A_MOF-303"} and files
