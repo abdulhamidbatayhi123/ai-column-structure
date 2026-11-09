@@ -99,6 +99,7 @@ def test_kit_carries_every_p3b_module_and_the_training_entry_point(tmp_path):
     have = {p.relative_to(kit).as_posix() for p in (kit / "p3b").rglob("*.py")}
     assert want <= have, sorted(want - have)
     assert (kit / "kaggle" / "train_chunk.py").exists()
+    assert (kit / "scripts" / "time_arms.py").exists()
 
 
 def test_kit_carries_the_pilot_runner_its_stage_and_autoencoders(tmp_path, monkeypatch):
