@@ -1,0 +1,42 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-11-09-p3b-training-evaluation.md
+Spec: PREREG_P3B_draft.md (plan1 e466875) Sections 2, 4-8; formulation 5.4
+Pre-flight: Tasks 1-2 feed 8; Task 3 feeds 4; Tasks 6-7 independent; Task 7 shares the decision list with verify/check_decision_list.py (ruling: checker imports ROWS once the branches merge).
+Task 6: complete (tests: pytest -q tests/test_stats_tests.py → 10 passed; RED at import first)
+Task 7: complete (tests: pytest -q tests/test_stats_words.py → 16 passed; RED at import first)
+Task 7: Ruling: REFUTED (REVERSED) counts as REFUTED in the headline and in the consistency table — PREREG treats REVERSED as a qualifier on REFUTED — cost if wrong: none.
+Task 1: Ruling: W and Q by the trapezoid over the half snapshots; A closes with the next snapshot (outlet at z = L in both halves), B takes the last discharge interval by the left rectangle because its outlet channel switches ends at the reversal; the reference W in epsilon uses the same quadrature (agrees with exact ports to 2e-3 at 200 snapshots) — cost if wrong: a quadrature error of O(1e-3) that cancels in epsilon.
+Task 1: complete (tests: pytest -q tests/test_eval_metrics.py → 5 passed; one float32 test-precision fix)
+Task 2: Ruling: the reference floor uses the trapezoid of model-style ports over each snapshot interval (stored data have no RK4 stages); FNO and C+L residuals use the same trapezoid on their own snapshot ports — cost if wrong: a floor slightly above the RK4-quadrature floor, which loosens the threshold for those arms only by the quadrature difference.
+Task 2: complete (tests: pytest -q tests/test_eval_violations.py → 4 passed)
+Task 3: Ruling: learned vector fields carry a reference time (median snapshot interval of the training set): U/U+F output / tau; S and S-L use G / tau and A / sqrt(tau); integration and the balances stay in seconds — untrained fields with ~850 s snapshot intervals overflowed (data loss 1e28) — cost if wrong: none for the PREREG (a fixed preprocessing constant, the same for every arm).
+Task 3: Ruling: every state-update network starts at a zero increment (last layer zero: U, U+F, S's and S-L's G, the FNO heads); S's A(z) starts small (last layer x 1e-2), not zero, because A A^T has zero gradient at A = 0 — the same initialisation principle for every arm — cost if wrong: slower early training.
+Task 3: Ruling: a window whose rollout diverges (non-finite loss or a linear-algebra failure) is skipped and counted in history["skipped"], never applied — cost if wrong: none; skipped counts are reported.
+Task 3: Finding (pilot risk, not a code defect): S's entropy correction must move z along P grad S by at least delta0 / |P grad S|, with delta0 = Phi_S - alpha P_E - beta P_N fixed by the equalities, whatever G does. With a decoder whose entropy gradient is consistent with its energy and water gradients, delta0 ~ 0 near equilibrium; with the toy test autoencoder delta0 ~ 15 against |P grad S| ~ 1.6, so S is stiff. The pilot's h rule and H3a measure this on the real decoders; the risk goes to HANDOFF.
+Task 3: fixed stage_quadrature with a per-sample step (it broadcast to a batch x batch matrix) — test_stage_quadrature_with_a_per_sample_step RED->GREEN.
+Task 3: complete (tests: pytest -q tests/test_trainer.py → 10 passed)
+Task 4: complete (tests: pytest -q tests/test_eval_rollout.py → 3 passed; RED at import first). Rollout from the encoded first stored snapshot; the last interval is integrated (X_end); NaN after a failure.
+Task 4: Ruling: violation tracking is opt-in (Arm.step(track=True)): each interval's port integrals summed over its RK4 steps on the arm's own stages; projected arms reuse structured_step's quadratures (Q_E, Q_N, new Q_S) — cost if wrong: none; training does not pay for it.
+Task 5: complete (tests: pytest -q tests/test_eval_cost.py → 5 passed). CPU time via process_time (all threads), 4 threads, solver arms as parallel processes with summed CPU.
+Task 8: complete (tests: pytest -q tests/test_eval_evaluate.py → 3 passed). epsilon uses the same quadrature for model and reference; A's last cycle by the left rectangle (no closing state for the reference); failed snapshots replaced by the reference before e is computed and then capped at 0.5 by apply_failure.
+Task 1 (amended): release() closes A's last cycle by the left rectangle when no closing state is given (was: dropped) — so every cycle has an epsilon; test updated (cycle 1 rel 2e-3, last cycle rel 1e-2 against exact ports).
+Final review: opus reviewer, verdict "With fixes" (1 Critical, 9 Important, 8 Minor groups). The fix pass runs on branch plan4-pilot-power-kaggle (it builds on plan 3; the final merge carries both), ledgered here.
+Final: fixed C1 rollout crashed on a diverging projected arm — rollout catches LinAlgError and RuntimeError and checks z; test_rollout_records_runtime_errors_and_nonfinite_latents, test_rollout_records_a_projection_failure_instead_of_raising RED->GREEN (plan4 7c1ecf1, 5928cd4)
+Final: fixed I1 non-finite gradients applied — skipped and counted (skipped_grad); test_nonfinite_gradients_are_skipped RED->GREEN
+Final: fixed I3 time scale not persisted — registered buffer in U, U+F, S, S-L; tests *_time_scale_round_trips RED->GREEN
+Final: fixed I4 second-order graphs in rollouts — steps run without gradient graphs (lf enables autograd internally); test_rollout_runs_without_gradient_graphs RED->GREEN
+Final: fixed I5 silent zero violations — None when not computed, ValueError for latent arms without lf, FNO by the trapezoid; test_violations_none_when_not_tracked_and_fno_counted RED->GREEN
+Final: fixed I6 U+proj/U+F+proj adapters (plan4 7c1ecf1) and unknown kinds raise; C+L training adapter p3b/train/cplusl.py with evaluate_files for stored solver arms — test_unknown_arm_kind_raises, tests/test_cplusl_train.py RED->GREEN
+Final: fixed I7 thin rows — per-field e, W_pred/W_ref (same quadrature), W_ref_exact, uncapped e and eps; test_rows_keep_fields_releases_and_uncapped_values RED->GREEN
+Final: fixed I8 small-n signed-rank under ties — exact conditional null at every n by subset-sum over doubled Pratt ranks (1/256 at n = 8); test_signed_rank_exact_with_ties_at_small_n RED->GREEN
+Final: fixed I9 headline template — validation, compose_headline ([H], '+ no ...', REVERSED, demotion, qualifiers), H3b, H6, variance decomposition; tests RED->GREEN
+Final: Ruling (reviewer disagreed): reference floor quadrature cost mis-stated — the trapezoid floor loosens the shared threshold for every arm; an exact-port floor (N_exact, E_exact) is now reported beside it, so the quadrature share is known before the freeze (test_reference_floor_reports_the_exact_port_floor).
+Final: Ruling (reviewer disagreed): the skip rule and the time-scale / initialisation choices go into PREREG Section 4 before the freeze (plan1 branch), with the skip counts reported — cost if wrong: none once stated.
+Final: Ruling (corrected diagnosis, from the reviewer): S's stiffness criterion is not delta0 ~ 0 but whether the encoded data satisfy S's inequality, g . z_enc >= delta0; stiffness arises from (a) a decoder whose encoded data violate it, or (b) |P grad S| -> 0, where kappa caps the speed at delta0 / (2 sqrt kappa). Pilot diagnostic: the share of training snapshots with g . z_enc < delta0 (finite differences on encoded data) and the distribution of h delta0 / |g|.
+Final: Ruling: Newton tolerance for C+L 1e-10 block-relative (1e-12 sat below float64 round-off at some states: 2.5e-10 stagnation) — cost if wrong: none; implicit Euler's own error is orders larger.
+Final: minor (deferred): A's last cycle closed by the left rectangle (1e-2 at 40 snapshots); close with X_end and the stored next snapshot, or roll out one extra cycle.
+Final: minor (deferred): TOST with zero SD or n < 2; return both intervals (alpha_h and 90 %).
+Final: minor (deferred): a helper for the (1 - 2 alpha_h) percentile interval and the "(b) holds" check.
+Final: minor (deferred): coarse_solver_statement margin semantics instead of raising.
+Final: minor (deferred): U-long uses S's wall-clock (perf_counter), not CPU time.
+Final: minor (deferred): cost at batch 1 with 4 threads (OMP_WAIT_POLICY=PASSIVE, warm-up).
+Final: minor (deferred): P penalty normalisers per trajectory-cycle; penalty_weight with zero penalty; projection scale= in training/rollout; parameter-count +-5 % test; violations per interval vs per step stated.
