@@ -30,20 +30,25 @@ def crossed_values(log_ratio, sd_traj, sd_seed, n_traj, n_seed, rng, seed_shared
     return log_ratio + a + b + e
 
 
+def directional_rule(values, alpha_h: float, draws: int = 10_000, seed: int = 0) -> str:
+    """The pre-registered directional rule (PREREG 6) on values (n_traj, n_seed) of the log error
+    ratio: (a) the one-sided signed-rank test of the seed-averaged values at alpha_h, (b) the
+    (1 - 2 alpha_h) pigeonhole-bootstrap interval of HL below 0, then the first word that applies."""
+    v = np.asarray(values, dtype=float)
+    x = v.mean(axis=1)
+    p, _ = signed_rank(x, alternative="less")
+    boot = pigeonhole_bootstrap(v, hodges_lehmann, draws=draws, seed=seed)
+    lo, hi = np.percentile(boot, [100 * alpha_h, 100 * (1 - alpha_h)])
+    return directional_word(p <= alpha_h, hi < 0.0, math.exp(hodges_lehmann(x)), (math.exp(lo), math.exp(hi)))
+
+
 def simulate(log_ratio, sd_traj, sd_seed, n_traj: int = 48, n_seed: int = 5, reps: int = 1000,
              draws: int = 10_000, seed: int = 0, alpha_h: float = 0.05 / 3, seed_shared: float = 1.0) -> dict:
     rng = np.random.default_rng(seed)
     counts = dict.fromkeys(WORDS, 0)
     for r in range(reps):
         v = crossed_values(log_ratio, sd_traj, sd_seed, n_traj, n_seed, rng, seed_shared)
-        x = v.mean(axis=1)
-        p, _ = signed_rank(x, alternative="less")
-        boot = pigeonhole_bootstrap(v, hodges_lehmann, draws=draws, seed=int(rng.integers(2**31)))
-        lo, hi = np.percentile(boot, [100 * alpha_h, 100 * (1 - alpha_h)])
-        a_holds = p <= alpha_h
-        b_holds = hi < 0.0
-        word = directional_word(a_holds, b_holds, math.exp(hodges_lehmann(x)), (math.exp(lo), math.exp(hi)))
-        counts[word] += 1
+        counts[directional_rule(v, alpha_h, draws, int(rng.integers(2**31)))] += 1
     out = {w: c / reps for w, c in counts.items()}
     out["power"] = out["SUPPORTED"] + out["SMALL"]          # (a) and (b) both hold
     return out

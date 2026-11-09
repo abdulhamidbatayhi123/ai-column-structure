@@ -14,6 +14,7 @@ training-based inputs are added by Tasks 2 to 5.
 from __future__ import annotations
 
 import json
+import math
 import os
 
 import numpy as np
@@ -230,3 +231,156 @@ def h_check(arm, val, tau_S: float, steps=(1, 2, 4), n_states: int = 8) -> dict:
                        "h_rho": float(h_rho)}
     out["defects_per_step"] = defects
     return out
+
+
+# ---- Task 4: C+L's substeps K, wall-clock per iteration ----------------------------------------------
+def cplusl_K(val_paths, material: str, n_coarse: int = 32, Ks=(1, 2, 4, 8)) -> dict:
+    """{K: the largest |eps_W(C+L) - eps_W(C)| over the pilot trajectories and cycles}, with C+L's
+    multipliers all fixed at 1 and C (BDF) on the same n_coarse cells (PREREG Section 10). Both errors
+    are fractions of the reference release, so the rule's 1 % is 0.01 (p3b.pilot.rules.choose_K). A
+    run of either that fails makes the value infinite, so that K is never chosen."""
+    import tempfile
+
+    from p3b.eval.evaluate import evaluate_files
+    from p3b.gates import load_meta
+    from p3b.latent.data import load_set
+    from p3b.solvers.c_plus_l import Multipliers
+    from p3b.solvers.coarse import run_c
+    from p3b.train import cplusl
+    ds = load_set(val_paths)
+    phys = _physics(ds)
+    nc, ns, n_cycles = ds.n_cells, ds.X.shape[2], ds.X.shape[1]
+    points = [load_meta(p)["point"] for p in val_paths]
+    unit = Multipliers(n_out=3, constant=1.0)
+    out = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        c_files = []
+        for j, pt in enumerate(points):
+            p = os.path.join(tmp, f"C_{j}.npz")
+            c_files.append(p if run_c(ds.system, pt, material, N_c=n_coarse, path=p, n_snap=ns, n_target=nc).ok
+                           else None)
+        for K in Ks:
+            files = []
+            for j, pt in enumerate(points):
+                p = os.path.join(tmp, f"CL_{K}_{j}.npz")
+                try:
+                    cplusl.rollout_cplusl_to_file(unit, pt, material, n_coarse, nc, ns, int(K), p)
+                    files.append(p)
+                except RuntimeError:                             # Newton failure
+                    files.append(None)
+            if None in files or None in c_files:
+                out[int(K)] = float("inf")
+                continue
+            rows = evaluate_files({"C": c_files, "C+L": files}, ds, phys, n_cycles, seed=0)
+            eps = {(r["arm"], r["trajectory"]): np.asarray(r["eps_uncapped"]) for r in rows}
+            d = [np.abs(eps[("C+L", j)] - eps[("C", j)]).max() for j in range(len(points))]
+            out[int(K)] = float(max(d)) if np.all(np.isfinite(d)) else float("inf")
+    return out
+
+
+def wall_per_iter(make_arms: dict, ds, iterations: int = 50, warmup: int = 5, h_steps: int = 1, lr: float = 1e-3,
+                  seed: int = 0, n_windows: int = 8, n_steps: int = 20) -> dict:
+    """{arm: training seconds per iteration} for a fresh arm per maker, timed after `warmup`
+    iterations, on the machine and threads the study trains on (Kaggle CPU, 4 threads). U and S set
+    U-long's iteration count (p3b.pilot.rules.iterations_ulong)."""
+    import time
+
+    from p3b.train.trainer import TrainConfig, train
+    out = {}
+    for name, make in make_arms.items():
+        arm = make()
+        if warmup:
+            train(arm, ds, TrainConfig(lr=lr, iterations=warmup, seed=seed, h_steps=h_steps,
+                                       n_windows=n_windows, n_steps=n_steps))
+        t0 = time.perf_counter()
+        train(arm, ds, TrainConfig(lr=lr, iterations=iterations, seed=seed, h_steps=h_steps,
+                                   n_windows=n_windows, n_steps=n_steps))
+        out[name] = (time.perf_counter() - t0) / iterations
+    return out
+
+
+# ---- Task 5: the pilot SDs, the positive control -----------------------------------------------------
+# The statistic of each hypothesis whose SD the power simulation and the H4 margin need (PREREG
+# Sections 6 and 9), on pilot_val (16 trajectories, 60 cycles). In the pilot, H2 and H4 share their
+# models: pilot_train holds 32 trajectories, so full pilot data is size 32 (the SD at 32 is the larger,
+# so H4's margin is conservative). H5 has no pilot OOD set; its SD is taken at cycle 20 of pilot_val.
+HYP_STAT = {"H1": ("eps", 50), "H5": ("eps", 20), "H2": ("e", 6), "H4": ("e", 6)}
+
+
+def hypothesis_error(row: dict, hyp: str) -> float:
+    """eps_W at cycle c (H1, H5) or the mean e over cycles 1..c (H2, H4), from a capped evaluation row."""
+    key, c = HYP_STAT[hyp]
+    vals = row[key]
+    if len(vals) < c:
+        raise ValueError(f"{hyp} needs {c} cycles, the row has {len(vals)}")
+    return float(vals[c - 1]) if key == "eps" else float(np.mean(vals[:c]))
+
+
+def _log_ratios(arm_rows: dict, base_rows: dict, hyp: str) -> list:
+    if set(arm_rows) != set(base_rows):
+        raise ValueError(f"seeds differ: {sorted(arm_rows)} against {sorted(base_rows)}")
+    seeds = sorted(base_rows)
+    by = {s: ({r["trajectory"]: r for r in arm_rows[s]}, {r["trajectory"]: r for r in base_rows[s]}) for s in seeds}
+    trajs = sorted(by[seeds[0]][1])
+    v = np.array([[math.log(hypothesis_error(by[s][0][t], hyp) / hypothesis_error(by[s][1][t], hyp)) for s in seeds]
+                  for t in trajs])
+    if not np.isfinite(v).all():
+        raise ValueError(f"{hyp}: a non-finite log error ratio")
+    return v.tolist()
+
+
+def sds_values(u_rows: dict, s_rows: dict) -> dict:
+    """{hypothesis: [[log(err_S / err_U) per seed] per trajectory]} from {seed: evaluation rows} of U
+    and S (seed k of S paired with seed k of U), the input of p3b.pilot.rules.upper80_sd."""
+    return {h: _log_ratios(s_rows, u_rows, h) for h in HYP_STAT}
+
+
+def positive_control(full_rows: dict, quarter_rows: dict, hyp: str = "H2", alpha: float = 0.05,
+                     draws: int = 10_000, seed: int = 0) -> dict:
+    """U at full iterations against U at a quarter of them through the full directional rule (PREREG
+    Section 9) on the H2 statistic at alpha 0.05. Only the word is written (blinding)."""
+    from p3b.pilot.power import directional_rule
+    word = directional_rule(_log_ratios(full_rows, quarter_rows, hyp), alpha, draws, seed)
+    return {"word": word, "hypothesis": hyp, "alpha": alpha}
+
+
+def two_seed_rows(make_arm, ds, val, lr: float, iterations: int, h_steps: int, seeds=(0, 1), n_cycles=None,
+                  floors=None, tau_S=None, n_windows: int = 8, n_steps: int = 20) -> dict:
+    """{seed: p3b.eval.evaluate rows on val} for a fresh arm per seed trained at the pilot's lr and
+    iterations; the rows never leave the pilot results directory (blinding)."""
+    from p3b.eval.evaluate import evaluate
+    from p3b.train.trainer import TrainConfig, train
+    phys = _physics(val)
+    n_cycles = n_cycles or val.X.shape[1]
+    floors = floors or {"N": float("inf"), "E": float("inf")}
+    tau_S = float("inf") if tau_S is None else tau_S
+    out = {}
+    for s in seeds:
+        torch.manual_seed(s)
+        arm = make_arm()
+        train(arm, ds, TrainConfig(lr=lr, iterations=iterations, seed=s, h_steps=h_steps, n_windows=n_windows,
+                                   n_steps=n_steps))
+        out[int(s)] = evaluate(arm, val, phys, n_cycles, h_steps, floors, tau_S, s)
+    return out
+
+
+# ---- Task 6 building block: C+L's curve and learning-rate sweep -------------------------------------
+def cplusl_curve(ds, val, material: str, lr: float, iterations: int, every: int, K: int, seed: int,
+                 n_coarse: int = 32, n_windows: int = 8, n_steps: int = 20) -> list:
+    """C+L trained with one cosine schedule over `iterations`; its deterministic validation loss
+    (p3b.train.cplusl.cplusl_val_loss) every `every` iterations: [(iteration, loss), ...]."""
+    from p3b.solvers.c_plus_l import Multipliers
+    from p3b.train.cplusl import cplusl_val_loss, train_cplusl
+    torch.manual_seed(seed)
+    mult = Multipliers(n_out=3)
+    curve = []
+    train_cplusl(mult, ds, material, n_coarse, lr, iterations, seed, n_windows=n_windows, n_steps=n_steps, K=K,
+                 every=every, callback=lambda it, m: curve.append((it, cplusl_val_loss(m, val, material, n_coarse, K))))
+    return curve
+
+
+def cplusl_lr_sweep(ds, val, material: str, K: int, rates=(3e-4, 1e-3, 3e-3), iterations: int = 2000, seed: int = 0,
+                    n_coarse: int = 32, n_windows: int = 8, n_steps: int = 20) -> dict:
+    """{lr: C+L's validation loss after `iterations`} for fresh multipliers per rate."""
+    return {lr: cplusl_curve(ds, val, material, lr, iterations, iterations, K, seed, n_coarse, n_windows,
+                             n_steps)[-1][1] for lr in rates}

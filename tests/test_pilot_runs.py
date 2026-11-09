@@ -112,3 +112,81 @@ def test_h_check_reports_rates_stability_and_defects(pilot_dir):
     for v in out["h"].values():
         assert 0 <= v["viol_rate"] <= 1 and isinstance(v["stiff_ok"], bool) and v["h_rho"] >= 0
     assert len(out["defects_per_step"]) == val.X.shape[0]
+
+
+# ---- Task 4: C+L's substeps K, wall-clock per iteration ----------------------------------------------
+@pytest.fixture(scope="module")
+def pilot16(tmp_path_factory):
+    """One trajectory stored on 16 cells: C+L's Newton does not converge on 4 or 8 cells at these
+    large snapshot intervals (a 508 s step at 4 cells), and the study runs it on 32."""
+    d = tmp_path_factory.mktemp("pilot16")
+    pt = dict(POINTS[0], n_cycles=2)
+    assert generate_trajectory("A", pt, "MOF-303", N_z=64, N_c=16, path=d / "t0.npz", n_snap=40).ok
+    return d
+
+
+def test_cplusl_K_gives_one_finite_difference_per_K(pilot16):
+    out = runs.cplusl_K(sorted(pilot16.glob("*.npz")), "MOF-303", n_coarse=16, Ks=(1, 2))
+    assert set(out) == {1, 2}
+    assert all(np.isfinite(v) and v >= 0 for v in out.values())
+
+
+def test_cplusl_K_counts_a_failed_run_as_infinite(pilot_dir, monkeypatch):
+    from p3b.train import cplusl
+
+    def fail(*a, **k):
+        raise RuntimeError("Newton failed")
+    monkeypatch.setattr(cplusl, "rollout_cplusl_to_file", fail)
+    out = runs.cplusl_K(sorted((pilot_dir / "validation").glob("*.npz")), "MOF-303", n_coarse=4, Ks=(1,))
+    assert out == {1: float("inf")}
+
+
+def test_cplusl_K_feeds_choose_K():
+    from p3b.pilot.rules import choose_K
+    assert choose_K({1: 0.02, 2: 0.004, 4: 0.001, 8: 0.0}) == 2
+
+
+def test_wall_per_iter_measures_each_arm(pilot_dir):
+    from p3b.latent.arms_structured import SDynamics
+    from p3b.latent.arms_unstructured import UDynamics
+    from p3b.train.trainer import Arm, time_scale
+    ds, val, std, ae, lf = _setup(pilot_dir)
+    makers = {"U": lambda: Arm("U", UDynamics(4, 4, 8, time_scale=time_scale(ds)), ae, std, lf),
+              "S": lambda: Arm("S", SDynamics(4, 4, lf, kappa=runs.kappa_from_data(lf, ae, std, ds), width=8,
+                                              time_scale=time_scale(ds)), ae, std, lf)}
+    out = runs.wall_per_iter(makers, ds, iterations=2, warmup=1, h_steps=1, n_windows=1, n_steps=2)
+    assert set(out) == {"U", "S"} and all(v > 0 and np.isfinite(v) for v in out.values())
+
+
+def test_two_seed_rows_trains_a_fresh_arm_per_seed_and_evaluates_validation(pilot_dir):
+    from p3b.latent.arms_unstructured import UDynamics
+    from p3b.train.trainer import Arm, time_scale
+    ds, val, std, ae, lf = _setup(pilot_dir)
+    out = runs.two_seed_rows(lambda: Arm("U", UDynamics(4, 4, 8, time_scale=time_scale(ds)), ae, std, lf), ds, val,
+                             lr=1e-3, iterations=2, h_steps=1, seeds=(0, 1), n_windows=1, n_steps=2)
+    assert set(out) == {0, 1}
+    for s, rows in out.items():
+        assert len(rows) == val.X.shape[0] and all(r["seed"] == s for r in rows)
+        assert all(len(r["e"]) == val.X.shape[1] for r in rows)
+
+
+def test_cplusl_validation_loss_is_deterministic_and_finite(pilot16):
+    from p3b.latent.data import load_set
+    from p3b.solvers.c_plus_l import Multipliers
+    from p3b.train.cplusl import cplusl_val_loss
+    ds = load_set(sorted(pilot16.glob("*.npz")))
+    mult = Multipliers(n_out=3, constant=1.0)
+    a = cplusl_val_loss(mult, ds, "MOF-303", n_coarse=16, K=1)
+    b = cplusl_val_loss(mult, ds, "MOF-303", n_coarse=16, K=1)
+    assert a == b and np.isfinite(a) and a > 0
+
+
+def test_cplusl_curve_and_lr_sweep(pilot16):
+    from p3b.latent.data import load_set
+    ds = load_set(sorted(pilot16.glob("*.npz")))
+    curve = runs.cplusl_curve(ds, ds, "MOF-303", lr=1e-3, iterations=4, every=2, K=1, seed=0, n_coarse=16,
+                              n_windows=1, n_steps=2)
+    assert [it for it, _ in curve] == [2, 4] and all(np.isfinite(v) for _, v in curve)
+    sweep = runs.cplusl_lr_sweep(ds, ds, "MOF-303", K=1, rates=(1e-3,), iterations=2, n_coarse=16, n_windows=1,
+                                 n_steps=2)
+    assert set(sweep) == {1e-3}

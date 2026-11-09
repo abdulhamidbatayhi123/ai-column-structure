@@ -65,3 +65,11 @@ def test_unit_multipliers_rollout_matches_c_and_files_evaluate(paths, tmp_path):
     # implicit Euler with 8 substeps against BDF at rtol 1e-6: close, not equal
     assert abs(by["C+L"]["W_pred"][0] - by["C"]["W_pred"][0]) < 0.05 * abs(by["C"]["W_pred"][0])
     assert by["C"]["violations_method"] == "trapezoid on own snapshots"
+
+
+def test_train_cplusl_calls_back_at_each_checkpoint(paths):
+    ds = load_set(paths)
+    seen = []
+    train_cplusl(Multipliers(n_out=3), ds, "MOF-303", n_coarse=4, lr=1e-3, iterations=4, seed=0, n_windows=1,
+                 n_steps=2, every=2, callback=lambda it, mult: seen.append(it))
+    assert seen == [2, 4]

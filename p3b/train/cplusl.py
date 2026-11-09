@@ -70,8 +70,31 @@ def cplusl_loss(mult, ds, material, n_coarse, n_windows, n_steps, K, rng):
         return _loss(_Data(ds, material, n_coarse, mult), n_windows, n_steps, K, rng)
 
 
+@torch.no_grad()
+def cplusl_val_loss(mult, val, material: str, n_coarse: int, K: int) -> float:
+    """C+L's deterministic validation loss (the counterpart of the latent arms' one-cycle rollout
+    loss): from each validation trajectory's first stored coarse state, one cycle of snapshot
+    intervals by implicit Euler, standardised MSE in its own variables; NaN if a Newton solve fails."""
+    data = _Data(val, material, n_coarse, mult)
+    ns = val.X.shape[2]
+    losses = []
+    for j in range(len(data.Y)):
+        Y = data.Y[j].reshape(-1, data.Y[j].shape[-1])
+        y, tot = Y[0], 0.0
+        try:
+            for i in range(ns - 1):
+                y = implicit_euler_step(data.rhs[j], y, data.raw[j][i, :3], float(data.t[j][i + 1] - data.t[j][i]),
+                                        substeps=K)
+                tot += float((((y - Y[i + 1]) / data.sd) ** 2).mean())
+        except RuntimeError:                             # Newton failure: not finished
+            return float("nan")
+        losses.append(tot / (ns - 1))
+    return float(np.mean(losses))
+
+
 def train_cplusl(mult, ds, material: str, n_coarse: int, lr: float, iterations: int, seed: int,
-                 n_windows: int = 8, n_steps: int = 20, K: int = 1, lr_min: float = 1e-5) -> dict:
+                 n_windows: int = 8, n_steps: int = 20, K: int = 1, lr_min: float = 1e-5, every: int = 0,
+                 callback=None) -> dict:
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     data = _Data(ds, material, n_coarse, mult)
@@ -88,16 +111,25 @@ def train_cplusl(mult, ds, material: str, n_coarse: int, lr: float, iterations: 
         if loss is None or not math.isfinite(float(loss)):
             hist["skipped"] += 1
             hist["loss"].append(float("nan"))
+            _checkpoint(it, every, callback, mult)
             continue
         opt.zero_grad()
         loss.backward()
         if not all(bool(torch.isfinite(p.grad).all()) for p in params if p.grad is not None):
             hist["skipped_grad"] += 1
             hist["loss"].append(float(loss.detach()))
+            _checkpoint(it, every, callback, mult)
             continue
         opt.step()
         hist["loss"].append(float(loss.detach()))
+        _checkpoint(it, every, callback, mult)
     return hist
+
+
+def _checkpoint(it: int, every: int, callback, mult) -> None:
+    """callback(iterations done, mult) after every `every` iterations (the pilot's curves)."""
+    if callback is not None and every and (it + 1) % every == 0:
+        callback(it + 1, mult)
 
 
 @torch.no_grad()
