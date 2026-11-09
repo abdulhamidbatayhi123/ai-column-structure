@@ -34,7 +34,7 @@ of each training box (Task 10, `results/timing_reference.json`):
 | reference, system B, 512 to 2048 cells | 0.3 to 1.5 CPU-s per cycle | `results/timing_reference.json` |
 | reference, system A (MOF-303, Al-fumarate), finite-difference Jacobian, 2048 cells | 24 to 30 CPU-s per cycle in 6 of 7 records (one first cycle 54 s) | same |
 | the same, MOF-303 at the box centre | stalled: 1024 cells cycle 1 took 3,753 CPU-s (642,420 evaluations), 2048 cells gave no result in 11 h | same, and `verify/stall_diagnostic.py` |
-| reference, system A, exact Jacobian (the fix), 2048 cells | to be filled from kernel p3b-timing-a2; laptop: the stalled cycle 61 CPU-s with 2,333 evaluations | `verify/stall_exact_jacobian.py` |
+| **reference, system A, exact Jacobian (the fix), 2048 cells** | **18 to 26 CPU-s per cycle, mean 22.7, in all 8 records (both materials, centre and corner, 2 cycles); the formerly stalled point 25 and 18 s; 1,600 to 2,450 evaluations per cycle** | `results/timing_reference.json` (kernel p3b-timing-a2, kit d222a54) |
 | grid convergence, outlet change relative to its swing | about 1e-5 from 512 to 1024 cells, 3e-6 to 1e-5 from 1024 to 2048 (A); 3e-5 (B); Paper 1's gate is 2 % | `results/timing_reference.json` |
 | the Paper 1 limit at 2048 cells | c 1.8e-9, q 8.9e-9, T 1.8e-7 K, all within their bounds | `verify/results_v1_2048.json` |
 | structured-arm block of 2560 dynamics evaluations | 4.6 s (unstructured 0.42 s), laptop CPU, 4 threads | 2026-10-12 benchmark |
@@ -48,8 +48,13 @@ trajectory within the solver tolerance (`tests/test_exact_jacobian.py`). MUSCL-C
 differences on its five-point pattern.
 
 **Data-cost decision** (pre-registration, Section 2): the contingency applies only if the
-reference costs more than twice the budgeted 30 CPU-s per system A cycle. The decision is taken
-on the exact-Jacobian Kaggle timing (p3b-timing-a2) and written here.
+reference costs more than twice the budgeted 30 CPU-s per system A cycle. Measured with the exact
+Jacobian on Kaggle, the largest system A cycle at 2048 cells took 26.1 CPU-s and the mean was
+22.7 s, under the budget itself. **The contingency is not applied: N_z stays 2048 for system A and
+1024 for system B, as pre-registered**, and the budget of Section 2 stands at 30 CPU-s per system A
+cycle (`results/timing_reference.json`, key `data_cost_decision`). The reference is converged by a
+wide margin at that grid (outlet changes of 2 to 10 × 10⁻⁶ from 1024 to 2048 cells against Paper
+1's 2 % gate).
 
 ## 2. Budget (hours; training per run at 8,000 iterations of 640 dynamics evaluations, CPU-equivalent)
 

@@ -299,7 +299,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -323,7 +324,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -347,7 +349,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -371,7 +374,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -395,7 +399,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -419,7 +424,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -443,7 +449,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -467,7 +474,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -491,7 +499,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -515,7 +524,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -539,7 +549,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -563,7 +574,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -587,7 +599,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -611,7 +624,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -635,7 +649,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -659,7 +674,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -683,7 +699,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -707,7 +724,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -731,7 +749,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -755,7 +774,8 @@
     "n_cycles": 2
    },
    "point_name": "corner",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -779,7 +799,8 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
   },
   {
    "system": "A",
@@ -803,7 +824,608 @@
     "n_cycles": 2
    },
    "point_name": "centre",
-   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132"
+   "commit": "kit:bb8b3caf8670e7fce3cef284359f822944de5132",
+   "jacobian": "finite differences"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 512,
+   "cycle": 1,
+   "cpu_s": 23.032164776000002,
+   "nfev": 2164,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 512,
+   "cycle": 2,
+   "cpu_s": 12.634411828000001,
+   "nfev": 1893,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 1024,
+   "cycle": 1,
+   "cpu_s": 16.591980772,
+   "nfev": 2268,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 1024,
+   "cycle": 2,
+   "cpu_s": 15.467175631000003,
+   "nfev": 1823,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 2048,
+   "cycle": 1,
+   "cpu_s": 22.430036031,
+   "nfev": 2262,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 2048,
+   "cycle": 2,
+   "cpu_s": 19.78077108100001,
+   "nfev": 1856,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 512,
+   "cycle": 1,
+   "cpu_s": 25.066012261999997,
+   "nfev": 2339,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 512,
+   "cycle": 2,
+   "cpu_s": 13.304491117999998,
+   "nfev": 2018,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 1024,
+   "cycle": 1,
+   "cpu_s": 19.067036815,
+   "nfev": 2429,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 1024,
+   "cycle": 2,
+   "cpu_s": 17.336055155999993,
+   "nfev": 2000,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 2048,
+   "cycle": 1,
+   "cpu_s": 26.11039185,
+   "nfev": 2444,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_z": 2048,
+   "cycle": 2,
+   "cpu_s": 22.722996190000003,
+   "nfev": 2055,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 512,
+   "cycle": 1,
+   "cpu_s": 25.152038364,
+   "nfev": 2189,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 512,
+   "cycle": 2,
+   "cpu_s": 18.071175009000005,
+   "nfev": 1667,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 1024,
+   "cycle": 1,
+   "cpu_s": 18.254386953,
+   "nfev": 2268,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 1024,
+   "cycle": 2,
+   "cpu_s": 20.497383227000007,
+   "nfev": 1632,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 2048,
+   "cycle": 1,
+   "cpu_s": 24.980919711,
+   "nfev": 2325,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 2048,
+   "cycle": 2,
+   "cpu_s": 18.44620524700001,
+   "nfev": 1646,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.4,
+    "T_ads": 300.5,
+    "T_des": 348.0,
+    "v": 0.16499999999999998,
+    "alpha": 0.85,
+    "beta": 0.75,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "centre",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 512,
+   "cycle": 1,
+   "cpu_s": 24.715794596000002,
+   "nfev": 2247,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 512,
+   "cycle": 2,
+   "cpu_s": 17.366429117000003,
+   "nfev": 1613,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 1024,
+   "cycle": 1,
+   "cpu_s": 17.59290473,
+   "nfev": 2305,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 1024,
+   "cycle": 2,
+   "cpu_s": 19.68695511,
+   "nfev": 1671,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 2048,
+   "cycle": 1,
+   "cpu_s": 23.735814241,
+   "nfev": 2341,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_z": 2048,
+   "cycle": 2,
+   "cpu_s": 23.74018008200001,
+   "nfev": 1666,
+   "ok": true,
+   "message": "ok",
+   "free_ram_gb_start": 30.21800994873047,
+   "threads": 1,
+   "point": {
+    "RH_ads": 0.6,
+    "T_ads": 308.0,
+    "T_des": 363.0,
+    "v": 0.3,
+    "alpha": 1.2,
+    "beta": 1.0,
+    "index": 0,
+    "n_cycles": 2
+   },
+   "point_name": "corner",
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "jacobian": "exact"
   }
  ],
  "grid_convergence": [
@@ -912,11 +1534,116 @@
    "outlet_c": 2.031478165988053e-06,
    "outlet_T_rel_swing": 4.377439115610852e-06,
    "value": 4.377439115610852e-06
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_coarse": 512,
+   "N_fine": 1024,
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "point_name": "centre",
+   "outlet_c": 2.9681114872558233e-06,
+   "outlet_T_rel_swing": 1.337233311989986e-05,
+   "value": 1.337233311989986e-05,
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_coarse": 1024,
+   "N_fine": 2048,
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "point_name": "centre",
+   "outlet_c": 7.460067591468347e-07,
+   "outlet_T_rel_swing": 3.328490273237967e-06,
+   "value": 3.328490273237967e-06,
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_coarse": 512,
+   "N_fine": 1024,
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "point_name": "corner",
+   "outlet_c": 8.310501808723101e-06,
+   "outlet_T_rel_swing": 1.742162605437447e-05,
+   "value": 1.742162605437447e-05,
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "Al-fumarate",
+   "N_coarse": 1024,
+   "N_fine": 2048,
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "point_name": "corner",
+   "outlet_c": 2.0352103193278435e-06,
+   "outlet_T_rel_swing": 4.36547890154482e-06,
+   "value": 4.36547890154482e-06,
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_coarse": 512,
+   "N_fine": 1024,
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "point_name": "centre",
+   "outlet_c": 5.890590794016465e-06,
+   "outlet_T_rel_swing": 9.075949776031731e-06,
+   "value": 9.075949776031731e-06,
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_coarse": 1024,
+   "N_fine": 2048,
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "point_name": "centre",
+   "outlet_c": 1.437102141950326e-06,
+   "outlet_T_rel_swing": 2.30921301508252e-06,
+   "value": 2.30921301508252e-06,
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_coarse": 512,
+   "N_fine": 1024,
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "point_name": "corner",
+   "outlet_c": 8.435284686528273e-06,
+   "outlet_T_rel_swing": 1.1458678586018729e-05,
+   "value": 1.1458678586018729e-05,
+   "jacobian": "exact"
+  },
+  {
+   "system": "A",
+   "material": "MOF-303",
+   "N_coarse": 1024,
+   "N_fine": 2048,
+   "commit": "kit:d222a540d25474403a699d5a8a3213a58fc2e37c",
+   "point_name": "corner",
+   "outlet_c": 2.9393924244875676e-06,
+   "outlet_T_rel_swing": 9.685499048405496e-06,
+   "value": 9.685499048405496e-06,
+   "jacobian": "exact"
   }
  ],
  "notes": [
   "p3b-timing-a: stopped at Kaggle's 12 h limit; its log ends at 3791 s of kernel time; MOF-303 centre at 2048 cells never finished (solver stall), and its 1024-cell cycle 1 took 3,753 CPU-s with 642,420 evaluations against 9 s and 2,338 at 512 cells"
  ],
+ "data_cost_decision": {
+  "budget_cpu_s_per_cycle": 30.0,
+  "threshold": 60.0,
+  "system_A_2048_exact_max": 26.11039185,
+  "system_A_2048_exact_mean": 22.743414304125004,
+  "applied": false,
+  "N_z_A": 2048,
+  "N_z_B": 1024
+ },
  "v1_2048": {
   "N": 2048,
   "horizon_t_st": 1.0,

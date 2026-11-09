@@ -51,6 +51,23 @@ def main():
     out["notes"].append(f"p3b-timing-a: stopped at Kaggle's 12 h limit; its log ends at {last:.0f} s of kernel time; "
                         "MOF-303 centre at 2048 cells never finished (solver stall), and its 1024-cell cycle 1 took "
                         "3,753 CPU-s with 642,420 evaluations against 9 s and 2,338 at 512 cells")
+    # system A with the exact Jacobian (the fix): the authoritative system A timing
+    exact = []
+    for f in sorted(glob.glob(os.path.join(T, "p3b-timing-a2", "**", "out", "timing_A_*.json"), recursive=True)):
+        d = json.load(open(f))
+        for r in d["records"]:
+            r["jacobian"] = "exact"
+        exact += d["records"]
+        out["grid_convergence"] += [dict(g, jacobian="exact") for g in d["grid_convergence"]]
+    for r in recs:
+        r["jacobian"] = "finite differences"
+    out["records"] += exact
+    a2048 = [r["cpu_s"] for r in exact if r["N_z"] == 2048]
+    if a2048:
+        out["data_cost_decision"] = {
+            "budget_cpu_s_per_cycle": 30.0, "threshold": 60.0, "system_A_2048_exact_max": max(a2048),
+            "system_A_2048_exact_mean": sum(a2048) / len(a2048),
+            "applied": max(a2048) > 60.0, "N_z_A": 2048 if max(a2048) <= 60.0 else 1024, "N_z_B": 1024}
     v1 = glob.glob(os.path.join(T, "p3b-timing-b-v1", "**", "out", "results_v1_2048.json"), recursive=True)[0]
     out["v1_2048"] = json.load(open(v1))
     path = os.path.join(ROOT, "results", "timing_reference.json")
