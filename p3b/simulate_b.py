@@ -68,6 +68,17 @@ class _Augmented:
         N = st.N
         self.n2, self.P = 2 * N, 3 * N
         self.sparsity = augmented_sparsity(N, getattr(st, "BAND", 1))
+        self._trhs = None
+
+    def solver_jac(self):
+        """The exact Jacobian for the hybrid-scheme store, finite differences on the pattern for MUSCL."""
+        from p3b.simulate_a import EXACT_JACOBIAN
+        if not EXACT_JACOBIAN or getattr(self.st, "BAND", 1) > 1:
+            return {"jac_sparsity": self.sparsity}
+        from p3b.exact_jacobian import augmented_jacobian_b
+        from p3b.solvers.c_plus_l import TorchStoreRHS
+        self._trhs = self._trhs or TorchStoreRHS(self.st)
+        return {"jac": lambda t, y, inputs: augmented_jacobian_b(self.st, y, inputs, self._trhs)}
 
     def rhs(self, t, y, inputs):
         st = self.st
@@ -120,7 +131,7 @@ def simulate_trajectory_b(point: dict, N_z: int, n_snap: int = 200,
                 if not (np.isfinite(dur) and dur > 0):
                     raise ValueError(f"non-positive or non-finite {phase} duration {dur}")
                 sol = solve_ivp(aug.rhs, (0.0, dur), y, method="BDF", args=(inputs,),
-                                t_eval=np.linspace(0.0, dur, half + 1), jac_sparsity=aug.sparsity,
+                                t_eval=np.linspace(0.0, dur, half + 1), **aug.solver_jac(),
                                 rtol=RTOL, atol=ATOL)
                 if not sol.success or sol.y.shape[1] != half + 1 or not np.all(np.isfinite(sol.y)):
                     raise RuntimeError(f"cycle {k} {phase}: {sol.message}")

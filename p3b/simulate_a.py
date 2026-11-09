@@ -32,6 +32,7 @@ C_W = 33.6           # J mol^-1 K^-1, molar heat capacity of water in both phase
 RTOL, ATOL = 1e-6, 1e-10
 PREWET = 1e-4
 COMPENSATE = True    # the reference uses the hybrid scheme (p3b.column.Column)
+EXACT_JACOBIAN = True   # BDF with the exact Jacobian (p3b.exact_jacobian); finite differences stalled
 N_PORTS = 7
 PORT_NAMES = ("water_in", "water_out", "energy_in", "energy_out", "wall_heat", "entropy_in", "entropy_out")
 
@@ -105,6 +106,17 @@ class _Augmented:
         self.n3 = 3 * col.N
         self.P = 4 * col.N
         self.sparsity = augmented_sparsity(col.N, getattr(col, "BAND", 1))
+        self._trhs = None
+
+    def solver_jac(self):
+        """BDF's Jacobian argument: the exact Jacobian for the hybrid-scheme column (Task 10: the
+        finite-difference estimate stalled on MOF-303), finite differences on the pattern for MUSCL."""
+        if not EXACT_JACOBIAN or getattr(self.col, "BAND", 1) > 1:
+            return {"jac_sparsity": self.sparsity}
+        from p3b.exact_jacobian import augmented_jacobian_a
+        from p3b.solvers.c_plus_l import TorchColumnRHS
+        self._trhs = self._trhs or TorchColumnRHS(self.col)
+        return {"jac": lambda t, y, inputs: augmented_jacobian_a(self.col, y, inputs, self._trhs)}
 
     def rhs(self, t, y, inputs):
         col = self.col
@@ -165,7 +177,7 @@ def simulate_trajectory_a(point: dict, material: str, N_z: int, n_snap: int = 20
                     raise ValueError(f"non-positive or non-finite {phase} duration {dur}")
                 t_eval = np.linspace(0.0, dur, half + 1)
                 sol = solve_ivp(aug.rhs, (0.0, dur), y, method="BDF", args=(inputs,), t_eval=t_eval,
-                                jac_sparsity=aug.sparsity, rtol=RTOL, atol=ATOL)
+                                **aug.solver_jac(), rtol=RTOL, atol=ATOL)
                 if not sol.success or sol.y.shape[1] != half + 1 or not np.all(np.isfinite(sol.y)):
                     raise RuntimeError(f"cycle {k} {phase}: {sol.message}")
                 closure.append(half_cycle_closure(aug, y, sol.y[:, -1]))
