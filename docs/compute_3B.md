@@ -8,9 +8,13 @@ Earlier versions are in git history (ledger P3B-13).
 
 - **Kaggle, primary** (free; the author's account, already used by Paper 2 through private
   datasets, kernels and a resumable queue):
-  - CPU sessions (4 cores, much more RAM than the laptop) for reference data and arm C;
-  - GPU sessions (weekly quota) for the arms that differentiate through the decoder (S, S-L,
-    S−M, S−Π, U+F).
+  - CPU sessions (4 cores, much more RAM than the laptop) for reference data, arm C and, as
+    implemented (plan 4, 2026-11-09), every training run: each kernel runs one cell on 4 threads
+    with resumable checkpoints against the 12-hour session limit;
+  - GPU sessions are not used. The earlier plan put the decoder-gradient arms (S, S-L, S−M, S−Π,
+    U+F) on GPU; the code runs in float64 throughout (the projection's 10⁻⁸ rank tolerance is
+    below float32 resolution), where consumer GPUs gain little, so the pilot measures their CPU
+    cost and the ceiling of Section 3 governs.
 
   At most 5 concurrent CPU sessions.
 - **The laptop, secondary:** i7-1255U, 15.7 GB RAM, of which other sessions often leave under
@@ -22,19 +26,30 @@ compact in-RAM array: a full train pool of one system at float32 is about 0.6 GB
 
 ## 1. Measured, and what is still unknown
 
+Measured on Kaggle CPU, one thread per trajectory, two cycles at the centre and the fastest corner
+of each training box (Task 10, `results/timing_reference.json`):
+
 | quantity | value | source |
 |---|---|---|
-| reference cycle, Paper 1's isotherm (n = 3 to 6), 2048 cells | 12 to 30 CPU-s (extrapolated from 128 to 512 cells) | `verify/timing_scaling.json` |
-| **reference, MOF-303 isotherm (n ≈ 9), adsorption step** | **3.6 CPU-s at 128 cells, 17.5 s at 256; 512 did not finish within the time limit** | `verify/timing_materials.json` (PARTIAL) |
+| reference, system B, 512 to 2048 cells | 0.3 to 1.5 CPU-s per cycle | `results/timing_reference.json` |
+| reference, system A (MOF-303, Al-fumarate), finite-difference Jacobian, 2048 cells | 24 to 30 CPU-s per cycle in 6 of 7 records (one first cycle 54 s) | same |
+| the same, MOF-303 at the box centre | stalled: 1024 cells cycle 1 took 3,753 CPU-s (642,420 evaluations), 2048 cells gave no result in 11 h | same, and `verify/stall_diagnostic.py` |
+| reference, system A, exact Jacobian (the fix), 2048 cells | to be filled from kernel p3b-timing-a2; laptop: the stalled cycle 61 CPU-s with 2,333 evaluations | `verify/stall_exact_jacobian.py` |
+| grid convergence, outlet change relative to its swing | about 1e-5 from 512 to 1024 cells, 3e-6 to 1e-5 from 1024 to 2048 (A); 3e-5 (B); Paper 1's gate is 2 % | `results/timing_reference.json` |
+| the Paper 1 limit at 2048 cells | c 1.8e-9, q 8.9e-9, T 1.8e-7 K, all within their bounds | `verify/results_v1_2048.json` |
 | structured-arm block of 2560 dynamics evaluations | 4.6 s (unstructured 0.42 s), laptop CPU, 4 threads | 2026-10-12 benchmark |
-| verification code against Paper 1's solver | 1.7 against 1.3 CPU-s for the same step | `verify/timing_compare_paper1.py` |
 
-**The main risk is the steep-isotherm reference cost.** It grew about fivefold per doubling
-of N between 128 and 256 cells, and no 512-cell value exists yet. The pilot measures 512,
-1024 and 2048 cells on Kaggle CPU and decides by the data-cost contingency
-(pre-registration, Section 2). The table below assumes 30 CPU-s per System A cycle at the
-grid the pilot chooses. If the pilot measures more than 2× that, the contingency applies
-before the freeze.
+**The stall and its fix.** scipy's BDF estimates the Jacobian by finite differences. On the steep
+MOF-303 isotherm that estimate failed as the front crossed the isotherm step, so the solver
+crawled. Integral states and undershoots were ruled out. The reference simulators now pass the exact Jacobian:
+it is computed from the torch right-hand sides (checked against numpy to 1e-12) by one vmapped
+forward-mode pass over nine colour seeds, and stored sparse. Both Jacobians give the same stored
+trajectory within the solver tolerance (`tests/test_exact_jacobian.py`). MUSCL-C keeps finite
+differences on its five-point pattern.
+
+**Data-cost decision** (pre-registration, Section 2): the contingency applies only if the
+reference costs more than twice the budgeted 30 CPU-s per system A cycle. The decision is taken
+on the exact-Jacobian Kaggle timing (p3b-timing-a2) and written here.
 
 ## 2. Budget (hours; training per run at 8,000 iterations of 640 dynamics evaluations, CPU-equivalent)
 
