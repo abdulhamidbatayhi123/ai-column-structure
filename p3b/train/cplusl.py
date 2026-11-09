@@ -77,7 +77,7 @@ def train_cplusl(mult, ds, material: str, n_coarse: int, lr: float, iterations: 
     data = _Data(ds, material, n_coarse, mult)
     params = [p for p in mult.parameters() if p.requires_grad]
     opt = torch.optim.Adam(params, lr=lr)
-    hist = {"loss": [], "skipped": 0}
+    hist = {"loss": [], "skipped": 0, "skipped_grad": 0}
     for it in range(iterations):
         for g in opt.param_groups:
             g["lr"] = cosine_lr(it, max(iterations - 1, 1), lr, lr_min)
@@ -92,7 +92,7 @@ def train_cplusl(mult, ds, material: str, n_coarse: int, lr: float, iterations: 
         opt.zero_grad()
         loss.backward()
         if not all(bool(torch.isfinite(p.grad).all()) for p in params if p.grad is not None):
-            hist["skipped"] += 1
+            hist["skipped_grad"] += 1
             hist["loss"].append(float(loss.detach()))
             continue
         opt.step()

@@ -47,6 +47,24 @@ def choose_iterations(curves: dict):
     return None
 
 
+def pilot_key(system: str, material) -> str:
+    """The one key of per-system, per-material pilot values: "A_MOF-303", "A_Al-fumarate", "B"."""
+    return system if material is None else f"{system}_{material}"
+
+
+def choose_h_steps(viol_rates: dict, stiff_ok: dict):
+    """h as RK4 steps per snapshot interval: {1, 2, 4} is {T/200, T/400, T/800} with 200 snapshots per
+    cycle; the largest h (fewest steps) with S's entropy-violation rate below 1e-4 of steps and the
+    near-dry stiffness check passed; None if none passes."""
+    ok = [k for k in viol_rates if viol_rates[k] < H_RATE and stiff_ok.get(k, False)]
+    return min(ok) if ok else None
+
+
+def iterations_ulong(iterations: int, wall_per_iter: dict) -> int:
+    """U-long: U trained for the iterations that fit S's measured wall-clock (PREREG Section 3)."""
+    return int(round(iterations * wall_per_iter["S"] / wall_per_iter["U"]))
+
+
 def choose_h(viol_rates: dict, stiff_ok: dict):
     """The largest h in {T/200, T/400, T/800} with S's entropy-violation rate below 1e-4 of steps and
     the near-dry stiffness check passed; None if none passes."""
@@ -54,13 +72,21 @@ def choose_h(viol_rates: dict, stiff_ok: dict):
     return max(ok) if ok else None
 
 
-def thresholds(floors: dict, neg_production, g2, defects_per_step, tau_ref: float) -> dict:
-    """Per system and material: violation thresholds (10 x the reference floors), tau_S (10 x the
-    99.9th percentile of the magnitude of S's negative production on the pilot), kappa (1e-3 x the
-    median |P grad S|^2), the projection-defect bound (10 x the 99.9th percentile of defect steps
-    per step, capped at 1e-3 of steps) and tau_ref (from the reference gate, passed through)."""
+def thresholds(floors: dict, ref_production, g2, defects_per_step, tau_ref: float) -> dict:
+    """Per system and material: violation thresholds (10 x the reference floors), tau_S, kappa (1e-3 x
+    the median |P grad S|^2), the projection-defect bound (10 x the 99.9th percentile of defect steps
+    per step, capped at 1e-3 of steps) and tau_ref (from the reference gate, passed through).
+
+    tau_S is a noise floor independent of the arm under test: 10 x the 99.9th percentile of the
+    negative part of the production rate computed with the model-style functionals on the pilot's
+    stored reference data, whose production is non-negative by proof (any negative value is the
+    quadrature and storage noise every arm also sees). Calibrating on S itself would make S's
+    entropy check tautological and circular with h (plan 4 review)."""
     out = {f"violation_{k}": 10.0 * v for k, v in floors.items()}
-    neg = np.abs(np.asarray(neg_production, dtype=float))
+    prod = np.asarray(ref_production, dtype=float)
+    if prod.size == 0:
+        raise ValueError("tau_S needs the reference production rates; none given")
+    neg = -prod[prod < 0]
     out["tau_S"] = 10.0 * float(np.percentile(neg, 99.9)) if neg.size else 0.0
     out["kappa"] = 1e-3 * float(np.median(np.asarray(g2, dtype=float)))
     out["defect_bound"] = min(10.0 * float(np.percentile(np.asarray(defects_per_step, float), 99.9)), DEFECT_CAP)
@@ -85,6 +111,8 @@ def upper80_sd(values) -> tuple:
     trajectories, df n_traj (n_seed - 1))."""
     v = np.asarray(values, dtype=float)
     n_t, n_s = v.shape
+    if n_s < 2:
+        raise ValueError("the seed SD needs at least two seeds per trajectory")
     s_traj = float(v.mean(axis=1).std(ddof=1))
     s_seed = float(np.sqrt(v.var(axis=1, ddof=1).mean())) if n_s > 1 else 0.0
     return _upper80(s_traj, n_t - 1), (_upper80(s_seed, n_t * (n_s - 1)) if n_s > 1 else 0.0)

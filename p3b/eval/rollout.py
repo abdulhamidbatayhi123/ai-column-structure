@@ -26,6 +26,7 @@ class RolloutResult:
     cpu_s: float
     flags: dict = field(default_factory=dict)
     residuals: dict = field(default_factory=dict)  # per interval: N, E (balances) and S (entropy)
+    error: str | None = None                       # why the rollout stopped, if it did
 
 
 @torch.no_grad()
@@ -46,14 +47,15 @@ def rollout(arm, ds, j: int, n_cycles: int, h_steps: int, track: bool = False) -
     out[0] = decode(z)[0]
     flags: dict = {}
     residuals: dict = {}
-    failed_at = None
+    failed_at, error = None, None
     t0 = time.process_time()
     for i in range(T):
         z_prev = z
         try:                                          # no gradient graphs in evaluation (autograd for the
             z, fl = arm.step(z, F[i:i + 1], R[i:i + 1], dt[i:i + 1, None], h_steps, track=track)
-        except (torch.linalg.LinAlgError, RuntimeError):   # latent gradients is enabled inside lf)
-            failed_at = i + 1                         # a diverged state inside a step: a failure
+        except torch.linalg.LinAlgError as exc:       # latent gradients is enabled inside lf)
+            failed_at = i + 1                         # a diverged state inside a projection: a failure;
+            error = f"{type(exc).__name__}: {exc}"[:200]   # any other error is a bug and propagates
             break
         z = z.detach()
         if not bool(torch.isfinite(z).all()):
@@ -81,4 +83,4 @@ def rollout(arm, ds, j: int, n_cycles: int, h_steps: int, track: bool = False) -
         finite[-1] = False
     failed_cycle = None if bool(finite.all()) else int(torch.nonzero(~finite)[0]) + 1
     return RolloutResult(X, out[T], finite, failed_cycle, cpu, flags,
-                         {k: torch.tensor(v, dtype=torch.float64) for k, v in residuals.items()})
+                         {k: torch.tensor(v, dtype=torch.float64) for k, v in residuals.items()}, error)

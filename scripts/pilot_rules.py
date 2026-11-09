@@ -7,8 +7,9 @@ values and nothing else: no error value of any arm is ever printed or written (b
 Inputs (JSON, written by the pilot runs):
   lr_runs.json            {arm: {lr: validation rollout loss over one cycle after 2,000 iterations}}
   curves.json             {arm: [[iteration, pooled validation loss], ...]}
-  h_check.json            {system_material: {h: {"viol_rate", "stiff_ok"}}}
-  threshold_inputs.json   {system_material: {"floors", "neg_production", "g2", "defects_per_step", "tau_ref"}}
+  h_check.json            {key: {steps per snapshot interval (1, 2, 4): {"viol_rate", "stiff_ok"}}}
+  threshold_inputs.json   {key: {"floors", "ref_production", "g2", "defects_per_step", "tau_ref"}}
+  wall_per_iter.json      {arm: training seconds per iteration} (U-long's iteration count)
   cplusl_K.json           {system_material: {K: epsilon_W of C+L with unit multipliers against C}}
   sds.json                {hypothesis: [[log ratio per seed] per trajectory]}
   css.json                {system_material: [CSS cycle per pilot trajectory]}
@@ -30,7 +31,7 @@ from p3b.latent.autoencoder import choose_d  # noqa: E402
 from p3b.pilot import rules  # noqa: E402
 
 FILES = ("lr_runs.json", "curves.json", "h_check.json", "threshold_inputs.json", "cplusl_K.json",
-         "sds.json", "css.json", "decoder_gate.json", "positive_control.json")
+         "sds.json", "css.json", "decoder_gate.json", "positive_control.json", "wall_per_iter.json")
 
 
 def _sha(path) -> str:
@@ -47,11 +48,12 @@ def main(results_dir: str, out_path: str) -> dict:
         hashes[name] = _sha(p)
     lr = rules.choose_lr({arm: {float(k): v for k, v in by.items()} for arm, by in data["lr_runs.json"].items()})
     iters = rules.choose_iterations({arm: [tuple(x) for x in c] for arm, c in data["curves.json"].items()})
-    h = {key: rules.choose_h({float(k): v["viol_rate"] for k, v in hs.items()},
-                             {float(k): v["stiff_ok"] for k, v in hs.items()})
-         for key, hs in data["h_check.json"].items()}
-    th = {key: rules.thresholds(t["floors"], t["neg_production"], t["g2"], t["defects_per_step"], t["tau_ref"])
+    h_steps = {key: rules.choose_h_steps({int(k): v["viol_rate"] for k, v in hs.items()},
+                                         {int(k): v["stiff_ok"] for k, v in hs.items()})
+               for key, hs in data["h_check.json"].items()}
+    th = {key: rules.thresholds(t["floors"], t["ref_production"], t["g2"], t["defects_per_step"], t["tau_ref"])
           for key, t in data["threshold_inputs.json"].items()}
+    ulong = rules.iterations_ulong(iters, data["wall_per_iter.json"]) if iters is not None else None
     K = {key: rules.choose_K({int(k): v for k, v in e.items()}) for key, e in data["cplusl_K.json"].items()}
     sds = {}
     for hyp, vals in data["sds.json"].items():
@@ -59,13 +61,15 @@ def main(results_dir: str, out_path: str) -> dict:
         sds[hyp] = {"sd_traj_upper80": s_t, "sd_seed_upper80": s_s}
     css = {key: int(max(c)) for key, c in data["css.json"].items()}
     d = {key: choose_d({int(k): bool(v) for k, v in g.items()}) for key, g in data["decoder_gate.json"].items()}
-    out = {"lr": lr, "iterations": iters, "h": h, "thresholds": th, "K": K, "sds": sds, "css": css, "d": d,
+    out = {"lr": lr, "iterations": iters, "iterations_ulong": ulong, "h_steps": h_steps, "thresholds": th,
+           "K": K, "sds": sds, "css": css, "d": d,
            "positive_control": data["positive_control.json"]["word"],
            "script_sha256": _sha(__file__), "inputs_sha256": hashes}
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(out, f, indent=1, sort_keys=True)
-    print(json.dumps({k: out[k] for k in ("lr", "iterations", "h", "K", "css", "d", "positive_control")},
+    print(json.dumps({k: out[k] for k in ("lr", "iterations", "iterations_ulong", "h_steps", "K", "css", "d",
+                                          "positive_control")},
                      sort_keys=True))
     return out
 

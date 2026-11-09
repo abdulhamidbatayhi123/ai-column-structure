@@ -70,7 +70,7 @@ def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: fl
         rows.append({"trajectory": j, "seed": int(seed), "e": [float(x) for x in e_c],
                      "eps": [float(x) for x in eps_c], "failed_cycle": failed, "violations": viol,
                      "violations_method": method, "flags": {k: int(v) for k, v in r.flags.items()},
-                     "cpu_s": float(r.cpu_s), "e_fields": e_fields,
+                     "cpu_s": float(r.cpu_s), "e_fields": e_fields, "failure_reason": r.error,
                      "e_uncapped": [float(x) for x in e], "eps_uncapped": [float(x) for x in eps_raw],
                      "W_pred": [float(x) for x in W_p], "W_ref": [float(x) for x in W_r],
                      "W_ref_exact": [float(x) for x in ds.W_ref[j, :n_cycles]]})
@@ -103,7 +103,10 @@ def evaluate_files(files_by_arm: dict, ds, phys, n_cycles: int, seed: int, floor
     rows = []
     for arm_name, paths in files_by_arm.items():
         for j, p in enumerate(paths):
-            pred_all = load_set([p]).X[0, :n_cycles]
+            if p is None:                                 # the solver failed: a failure at cycle 1
+                pred_all = torch.full_like(ds.X[j, :n_cycles], float("nan"))
+            else:
+                pred_all = load_set([p]).X[0, :n_cycles]
             ref = ds.X[j, :n_cycles]
             finite = torch.isfinite(pred_all).reshape(n_cycles, -1).all(-1)
             pred = torch.where(torch.isfinite(pred_all), pred_all, ref)

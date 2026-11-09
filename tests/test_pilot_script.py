@@ -6,8 +6,8 @@ import os
 import numpy as np
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-KEYS = {"lr", "iterations", "h", "thresholds", "K", "sds", "css", "d", "positive_control",
-        "script_sha256", "inputs_sha256"}
+KEYS = {"lr", "iterations", "iterations_ulong", "h_steps", "thresholds", "K", "sds", "css", "d",
+        "positive_control", "script_sha256", "inputs_sha256"}
 
 
 def _load():
@@ -29,10 +29,11 @@ def _inputs(d):
     _write(d, "lr_runs.json", lr)
     _write(d, "curves.json", {"U": [[1000, 0.9111], [2000, 0.8111], [3000, 0.8011]],
                               "S": [[1000, 0.7222], [2000, 0.7122], [3000, 0.7102]]})
-    _write(d, "h_check.json", {"A_MOF-303": {"10.0": {"viol_rate": 5e-5, "stiff_ok": True},
-                                             "5.0": {"viol_rate": 1e-5, "stiff_ok": True}}})
+    _write(d, "h_check.json", {"A_MOF-303": {"1": {"viol_rate": 5e-5, "stiff_ok": True},
+                                             "2": {"viol_rate": 1e-5, "stiff_ok": True}}})
+    _write(d, "wall_per_iter.json", {"S": 2.0, "U": 0.5})
     _write(d, "threshold_inputs.json", {"A_MOF-303": {"floors": {"N": 1e-7, "E": 2e-7},
-                                                      "neg_production": rng.exponential(1e-4, 100).tolist(),
+                                                      "ref_production": (-rng.exponential(1e-4, 100)).tolist(),
                                                       "g2": rng.lognormal(0, 1, 100).tolist(),
                                                       "defects_per_step": (rng.poisson(1, 50) / 1e4).tolist(),
                                                       "tau_ref": 1e-3}})
@@ -52,7 +53,8 @@ def test_output_has_exactly_the_section_10_keys(tmp_path, capsys):
     v = json.loads(out.read_text())
     assert set(v) == KEYS
     assert v["lr"] == {"U": 0.001, "S": 0.0003} and v["iterations"] == 3000
-    assert v["h"] == {"A_MOF-303": 10.0} and v["K"] == {"A_MOF-303": 2} and v["d"] == {"A_MOF-303": 24}
+    assert v["h_steps"] == {"A_MOF-303": 1} and v["K"] == {"A_MOF-303": 2} and v["d"] == {"A_MOF-303": 24}
+    assert v["iterations_ulong"] == 4 * v["iterations"]
     assert v["css"] == {"A_MOF-303": 7, "B": 4}
 
 

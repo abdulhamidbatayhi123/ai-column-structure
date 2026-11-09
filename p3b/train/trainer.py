@@ -14,6 +14,7 @@ training latents (TermsStandardiser). The autoencoder is frozen throughout.
 """
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 
@@ -47,6 +48,9 @@ class TrainConfig:
     n_windows: int = 8
     n_steps: int = 20
     lr_min: float = 1e-5
+    checkpoint: str | None = None      # resumable state (Kaggle sessions end at 12 h)
+    every: int = 200                   # iterations between checkpoints
+    stop_after: int | None = None      # end this session after so many iterations (tests, budgets)
 
 
 class TermsStandardiser:
@@ -154,7 +158,34 @@ def train(arm: Arm, ds, cfg: TrainConfig) -> dict:
     hist = {"loss": [], "lr": [], "params": count_params(arm.dyn), "skipped": 0, "skipped_grad": 0,
             "flags": {k: 0 for k in FLAG_KEYS + ("projection_converged",)} if arm.kind in PROJECTED else {}}
     t0 = time.process_time()
-    for it in range(cfg.iterations):
+    it0 = 0
+    if cfg.checkpoint and os.path.exists(cfg.checkpoint):
+        ck = torch.load(cfg.checkpoint, weights_only=False)
+        arm.dyn.load_state_dict(ck["model"])
+        opt.load_state_dict(ck["opt"])
+        rng.bit_generator.state = ck["rng"]
+        torch.set_rng_state(ck["torch_rng"])
+        hist.update(ck["hist"])
+        it0 = ck["it"]
+        hist["resumed_from"] = it0
+
+    def save(it):
+        if cfg.checkpoint:
+            tmp = cfg.checkpoint + ".partial"
+            torch.save({"model": arm.dyn.state_dict(), "opt": opt.state_dict(), "rng": rng.bit_generator.state,
+                        "torch_rng": torch.get_rng_state(), "it": it,
+                        "hist": {k: v for k, v in hist.items() if k != "resumed_from"}}, tmp)
+            os.replace(tmp, cfg.checkpoint)
+
+    done_here = 0
+    for it in range(it0, cfg.iterations):
+        if cfg.stop_after is not None and done_here >= cfg.stop_after:
+            save(it)
+            hist["stopped_at"] = it
+            break
+        done_here += 1
+        if cfg.checkpoint and it > it0 and it % cfg.every == 0:
+            save(it)
         lr = cosine_lr(it, max(cfg.iterations - 1, 1), cfg.lr, cfg.lr_min)
         for g in opt.param_groups:
             g["lr"] = lr

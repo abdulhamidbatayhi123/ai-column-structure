@@ -28,4 +28,5 @@ def test_power_near_one_at_a_large_effect():
 def test_fractions_sum_to_one_and_are_reproducible():
     a = simulate(math.log(0.85), sd_traj=0.3, sd_seed=0.1, reps=40, draws=200, seed=3, alpha_h=0.05)
     b = simulate(math.log(0.85), sd_traj=0.3, sd_seed=0.1, reps=40, draws=200, seed=3, alpha_h=0.05)
-    assert a == b and sum(a.values()) == pytest.approx(1.0)
+    assert a == b and sum(v for k, v in a.items() if k != "power") == pytest.approx(1.0)
+    assert a["power"] == pytest.approx(a["SUPPORTED"] + a["SMALL"])

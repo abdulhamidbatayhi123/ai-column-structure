@@ -5,7 +5,7 @@ import re
 import pytest
 
 from p3b.train.cells import (REDUCTION_ORDER, Cell, apply_reductions, cells, job_name, plan_reductions,
-                             run_cell)
+                             train_cell)
 
 POINT_A = dict(RH_ads=0.40, T_ads=303.15, T_des=353.15, v=0.10, alpha=0.8, beta=0.6, index=0, n_cycles=2)
 
@@ -77,7 +77,7 @@ def test_rollout_records_a_projection_failure_instead_of_raising(tmp_path):
 def test_one_tiny_cell_runs_end_to_end(tmp_path):
     from p3b.generate import generate_trajectory
     data = tmp_path / "data"
-    for split, pts in (("train", [POINT_A, dict(POINT_A, RH_ads=0.3, index=1)]), ("test", [dict(POINT_A, index=2)])):
+    for split, pts in (("train", [POINT_A, dict(POINT_A, RH_ads=0.3, index=1)]), ("validation", [dict(POINT_A, index=2)])):
         (data / split).mkdir(parents=True)
         for pt in pts:
             assert generate_trajectory("A", pt, "MOF-303", N_z=32, N_c=8, path=data / split / f"{pt['index']}.npz",
@@ -85,8 +85,9 @@ def test_one_tiny_cell_runs_end_to_end(tmp_path):
     pilot = {"lr": {"U": 1e-3}, "iterations": 2, "h_steps": 1, "d": 6, "kappa": 1e-3,
              "floors": {"N": 1e-6, "E": 1e-6}, "tau_S": 1e-6}
     cell = Cell("U", "A", "MOF-303", "full", 0, ("U+proj",))
-    out = run_cell(cell, str(data), str(tmp_path / "out"), pilot, quick=dict(ae_epochs=2, ae_width=16, width=16,
-                                                                            n_windows=2, n_steps=3, n_cycles=1))
+    out = train_cell(cell, str(data), str(tmp_path / "out"), pilot, quick=dict(ae_epochs=2, ae_width=16, width=16,
+                                                                              n_windows=2, n_steps=3, n_cycles=1,
+                                                                              pool_size=2))
     res = json.loads(out.read_text())
     assert res["meta"]["arm"] == "U" and res["meta"]["params"] > 0
     assert {r["arm"] for r in res["rows"]} == {"U", "U+proj"} and len(res["rows"]) == 2

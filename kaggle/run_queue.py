@@ -74,19 +74,24 @@ def kernel_name(job: dict, chunk: int) -> str:
     return f"p3b-ref-{job['system']}-{job['set']}-{chunk}-of-{job['of']}".lower().replace("_", "-")
 
 
-RUN_CMDS_PY = r'''import glob, os, shutil, subprocess, sys
-kit = "/kaggle/working/kit"
-if not os.path.exists(kit):
-    src = [os.path.dirname(os.path.dirname(p)) for p in glob.glob("/kaggle/input/**/kaggle/generate_chunk.py", recursive=True)][0]
-    shutil.copytree(src, kit)
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
+RUN_CMDS_PY = r'''import glob, os, subprocess, sys
+# the kit is used read-only where Kaggle mounts it; nothing of it is copied into the outputs
+hits = glob.glob("/kaggle/input/{kit_name}/**/kaggle/generate_chunk.py", recursive=True)
+kit = os.path.dirname(os.path.dirname(hits[0]))
+os.environ["OMP_NUM_THREADS"] = "{threads}"
+os.environ["OPENBLAS_NUM_THREADS"] = "{threads}"
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 os.environ["P3B_PAPER1_DIR"] = os.path.join(kit, "paper1")
 out = "/kaggle/working/out"
 os.makedirs(out, exist_ok=True)
+
+
+def m(x):
+    return out if x == "OUT" else (out + x[3:] if x.startswith("OUT/") else x)
+
+
 cmds = {cmds!r}
-procs = [subprocess.Popen([sys.executable, os.path.join(kit, c[0]), *[x.replace("OUT/", out + "/") for x in c[1:]]],
-                          cwd=kit) for c in cmds]
+procs = [subprocess.Popen([sys.executable, os.path.join(kit, c[0]), *[m(x) for x in c[1:]]], cwd=out) for c in cmds]
 sys.exit(max(p.wait() for p in procs))
 '''
 
@@ -114,7 +119,8 @@ def write_kernels(spec: dict) -> list[dict]:
             d = os.path.join(BUILD, job["name"])
             os.makedirs(d, exist_ok=True)
             with open(os.path.join(d, "run.py"), "w") as f:
-                f.write(RUN_CMDS_PY.format(cmds=job["commands"]))
+                f.write(RUN_CMDS_PY.format(cmds=job["commands"], kit_name=spec["kit_slug"].split("/")[-1],
+                                           threads=job.get("threads", 1)))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
                 json.dump(_metadata(job["name"], spec["kit_slug"], job.get("depends_on", ())), f, indent=1)
             kernels.append({"name": job["name"], "dir": d, "system": job.get("system", "timing"),

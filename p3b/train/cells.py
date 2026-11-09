@@ -1,10 +1,12 @@
-"""The study's cells, their Kaggle job names, the compute ceiling, and one cell's run
-(PREREG Section 0 design table and Section 11; docs/compute_3B.md Section 3; Plan 4, Task 4).
+"""The study's cells, their Kaggle job names, the compute ceiling, and one cell's training and
+evaluation (PREREG Section 0 design table, Sections 3, 4, 6 and 11; docs/compute_3B.md Section 3;
+Plan 4, Task 4, revised after the plan 4 review).
 
 A cell is (arm, system, material, training size, seed). U+proj and U+F+proj have no cells of their
-own: they reuse U's and U+F's trained weights, so they are evaluated in the same run
-(`evaluate_also`). All learned arms of one (system, material, size, seed) share one frozen
-autoencoder: the first cell trains it and saves it, and every later cell loads it.
+own: they reuse U's and U+F's trained weights and are evaluated with them (`evaluate_also`). All
+learned latent arms of one (system, material, size, seed) share one frozen autoencoder, trained by
+its own job. Training saves the weights and evaluates only the validation sets; test sets open per
+system and material after H3a passed (evaluate_cell).
 """
 from __future__ import annotations
 
@@ -70,9 +72,13 @@ def cells() -> list:
 _ARM = {"U": "u", "U+F": "uf", "U-long": "ulong", "P": "p", "S": "s", "S-L": "sl", "S-M": "sm", "S-Pi": "spi",
         "FNO": "fno", "C": "c", "C+L": "cl", "MUSCL-C": "muscl"}
 _MAT = {"MOF-303": "-m303", "Al-fumarate": "-alf", None: ""}
+_SENS = {"noise": "noise", "d+": "dplus"}
 
 
 def job_name(c: Cell) -> str:
+    if "|" in c.arm:                                  # a sensitivity cell, e.g. "U|noise"
+        base, kind = c.arm.split("|")
+        return f"p3b-{_ARM[base]}{_SENS[kind]}-{c.system.lower()}{_MAT[c.material]}-{c.size}-s{c.seed}"
     return f"p3b-{_ARM[c.arm]}-{c.system.lower()}{_MAT[c.material]}-{c.size}-s{c.seed}"
 
 
@@ -82,17 +88,6 @@ def ae_job_name(c: Cell) -> str:
 
 
 SOLVER_ARMS = ("C", "MUSCL-C", "C+L")
-
-
-def _train_files(data_dir: str, size) -> tuple:
-    """The training files: the whole pool for "full", else its first `size` trajectories by design
-    index (nested subsets, p3b.design.train_subset)."""
-    from p3b.gates import load_meta
-    files = glob.glob(os.path.join(data_dir, "train", "*.npz"))
-    files = sorted(files, key=lambda p: int(load_meta(p)["point"]["index"]))
-    if size != "full":
-        files = files[:int(size)]
-    return files, [int(load_meta(p)["point"]["index"]) for p in files]
 
 
 def _removed_by(step: str, c: Cell) -> bool:
@@ -109,24 +104,50 @@ def _removed_by(step: str, c: Cell) -> bool:
     return False                                     # the sensitivities have no cells here
 
 
+
+
+# ---- sensitivities and the ceiling's fixed costs ----------------------------------------------------
+def sensitivity_cells() -> list:
+    """The descriptive sensitivities (PREREG Section 6) as cells for the ceiling model: degraded
+    data (1 % multiplicative noise on the stored fields, size 32; U, U+F, S; 3 seeds) and the next
+    passing latent dimension (U, U+F, S; full data; 3 seeds)."""
+    out = []
+    for arm in ("U", "U+F", "S"):
+        out += [Cell(f"{arm}|noise", *PRIMARY, 32, s) for s in range(3)]
+        out += [Cell(f"{arm}|d+", *PRIMARY, "full", s) for s in range(3)]
+    return out
+
+
+def _removed_by_sens(step: str, c: Cell) -> bool:
+    return (step == "degraded-data sensitivity" and c.arm.endswith("|noise")) or \
+        (step == "latent-dimension sensitivity" and c.arm.endswith("|d+"))
+
+
 def apply_reductions(cs: list, steps: list) -> list:
-    return [c for c in cs if not any(_removed_by(s, c) for s in steps)]
+    return [c for c in cs if not any(_removed_by(s, c) or _removed_by_sens(s, c) for s in steps)]
 
 
-def plan_reductions(spent_h: float, remaining: list, cost_h: dict, ceiling_h: float = 700.0) -> list:
-    """The reduction steps, in order, needed so that spent + the projected cost of the remaining
-    cells fits under the ceiling; all seven if even that does not fit (the never-reduced core then
-    runs and the excess is reported)."""
+def plan_reductions(spent_h: float, remaining: list, cost_h: dict, ceiling_h: float = 700.0,
+                    fixed_h: float = 0.0) -> list:
+    """The reduction steps, in order, needed so that spent + fixed costs (autoencoder and H6 jobs)
+    + the projected cost of the remaining cells fits under the ceiling; all seven if even that does
+    not fit (the never-reduced core then runs and the excess is reported)."""
     steps = []
     for step in [None] + REDUCTION_ORDER:
         if step is not None:
             steps.append(step)
-        if spent_h + sum(cost_h[c] for c in apply_reductions(remaining, steps)) <= ceiling_h:
+        if spent_h + fixed_h + sum(cost_h[c] for c in apply_reductions(remaining, steps)) <= ceiling_h:
             return steps
     return steps
 
 
-# ---- one cell's run ------------------------------------------------------------------------
+# ---- one cell ------------------------------------------------------------------------------------------
+DESIGN_NAME = {("A", "MOF-303"): "A_primary", ("A", "Al-fumarate"): "A_replication", ("B", None): "B"}
+LEARNED_WITH_AE = ("U", "U+F", "U-long", "P", "S", "S-L", "S-M", "S-Pi")
+VALIDATION_SETS = ("validation", "long_validation")
+GATED_SETS = ("test", "long_test", "ood")
+
+
 def _physics(system, material, ds):
     from p3b.latent.physics import ColumnPhysics, StorePhysics
     if system == "A":
@@ -136,48 +157,100 @@ def _physics(system, material, ds):
     return StorePhysics(make_store(ds.n_cells), T_AMB)
 
 
-def run_cell(cell: Cell, data_dir: str, out_dir: str, pilot: dict, quick: dict | None = None):
-    """Train the cell's model (loading or training the shared autoencoder), evaluate it and its
-    evaluate_also arms on the test set, and write out_dir/<job name>.json. `quick` shrinks sizes for
-    tests only; the study passes None."""
-    from p3b.eval.evaluate import evaluate, write_results
+def _sha(path) -> str:
+    import hashlib
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def _set_files(data_dir, name):
+    from p3b.gates import load_meta
+    files = glob.glob(os.path.join(data_dir, name, "*.npz"))
+    return sorted(files, key=lambda p: int(load_meta(p)["point"]["index"]))
+
+
+def _train_files(data_dir: str, size, pool_size: int | None = None) -> tuple:
+    """The training files: the whole pool for "full", else its first `size` trajectories by design
+    index (nested subsets, p3b.design.train_subset); both checked against the pool."""
+    from p3b.gates import load_meta
+    files = _set_files(data_dir, "train")
+    idx = [int(load_meta(p)["point"]["index"]) for p in files]
+    if pool_size is not None and len(files) != pool_size:
+        raise ValueError(f"the train pool has {len(files)} trajectories, the design {pool_size}")
+    if idx != list(range(len(idx))):
+        raise ValueError(f"the train pool is not the design's first trajectories: {idx[:8]}...")
+    if size != "full":
+        files, idx = files[:int(size)], idx[:int(size)]
+    return files, idx
+
+
+def _pool_size(cell, q):
+    if "pool_size" in q:
+        return q["pool_size"]
+    from p3b.design import SET_SIZES
+    return SET_SIZES[(DESIGN_NAME[(cell.system, cell.material)], "train")][0]
+
+
+def matched_widths(d: int, k: int, system: str, n_cells: int, n_ch: int, n_out: int, width_s: int = 128) -> dict:
+    """Widths of U, U+F, P and FNO whose trainable dynamics parameters match S's within +-5 %
+    (PREREG Section 4); S, S-L, S-M, S-Pi keep the reference width."""
+    from p3b.latent.arms_structured import SDynamics
+    from p3b.latent.arms_unstructured import UDynamics, UFDynamics, count_params, match_width
+    from p3b.latent.fno import FNO1d
+    with torch.device("meta"):
+        target = count_params(SDynamics(d, k, None, kappa=1.0, width=width_s))
+    w_u = match_width(lambda w: UDynamics(d, k, w), target)
+    return {"S": width_s, "S-L": width_s, "S-M": width_s, "S-Pi": width_s, "U": w_u, "U-long": w_u, "P": w_u,
+            "U+F": match_width(lambda w: UFDynamics(d, k, w, system), target),
+            "FNO": match_width(lambda w: FNO1d(n_cells, n_ch, n_out, k, width=w), target), "_S_params": target}
+
+
+def _load_ae(cell, ae, out_dir, pilot, q, std, ds):
+    """The cell's shared autoencoder: from its own autoencoder job (kernel inputs) or out_dir. A
+    missing one is an error; only quick test runs may train it here."""
+    from p3b.latent.autoencoder import train_autoencoder
+    ae_file = f"ae_{cell.system}_{cell.material}_{cell.size}_s{cell.seed}.pt"
+    root = pilot.get("ae_input_root", "/kaggle/input")
+    found = [p for p in [os.path.join(out_dir, ae_file)]
+             + glob.glob(os.path.join(root, "*", "**", ae_file), recursive=True) if os.path.exists(p)]
+    if found:
+        ae.load_state_dict(torch.load(found[0]))
+        return {"file": ae_file, "source": found[0], "sha256": _sha(found[0])}
+    if not q or q.get("require_ae"):
+        raise FileNotFoundError(f"shared autoencoder {ae_file} not found (its autoencoder job must run first)")
+    train_autoencoder(ae, std.encode(ds.X), epochs=q.get("ae_epochs", 60), seed=cell.seed)
+    path = os.path.join(out_dir, ae_file)
+    torch.save(ae.state_dict(), path)
+    return {"file": ae_file, "source": "trained here (quick)", "sha256": _sha(path)}
+
+
+def _build(cell, pilot, q, ds, out_dir):
+    """(Arm, evaluate-also arms, meta parts) for a learned cell, with the autoencoder loaded."""
     from p3b.latent.arms_structured import SDynamics, SLDynamics
     from p3b.latent.arms_unstructured import UDynamics, UFDynamics
-    from p3b.latent.autoencoder import MLPAutoencoder, train_autoencoder
-    from p3b.latent.data import Standardiser, load_set
+    from p3b.latent.autoencoder import MLPAutoencoder
+    from p3b.latent.data import Standardiser
     from p3b.latent.fno import FNO1d
     from p3b.latent.functionals import LatentFunctionals
-    from p3b.train.trainer import Arm, TermsStandardiser, TrainConfig, time_scale, train
-
-    q = quick or {}
-    os.makedirs(out_dir, exist_ok=True)
-    test = load_set(sorted(glob.glob(os.path.join(data_dir, "test", "*.npz"))))
-    if cell.arm in SOLVER_ARMS:
-        return _run_solver_cell(cell, data_dir, out_dir, pilot, q, test)
-    train_files, train_idx = _train_files(data_dir, cell.size)
-    ds = load_set(train_files)
+    from p3b.train.trainer import Arm, TermsStandardiser, time_scale
     A = cell.system == "A"
     n_ch, n_out = (3, 2) if A else (2, 1)
     nc, n_state, k = ds.n_cells, ds.X.shape[-1], ds.features.shape[-1]
     std = Standardiser.fit(ds.X, nc, n_ch, n_out, features=ds.features)
     d = int(pilot["d"])
-    torch.manual_seed(cell.seed)
-    ae = MLPAutoencoder(n_state, d, width=q.get("ae_width", 256))
-    ae_file = f"ae_{cell.system}_{cell.material}_{cell.size}_s{cell.seed}.pt"
-    ae_path = os.path.join(out_dir, ae_file)
-    found = [p for p in [ae_path] + glob.glob(os.path.join(pilot.get("ae_input_root", "/kaggle/input"), "*", "**", ae_file),
-                                              recursive=True) if os.path.exists(p)]
-    if found:                                        # trained by this cell's autoencoder job
-        ae.load_state_dict(torch.load(found[0]))
-    else:
-        train_autoencoder(ae, std.encode(ds.X), epochs=q.get("ae_epochs", 60), seed=cell.seed)
-        torch.save(ae.state_dict(), ae_path)
-    phys = _physics(cell.system, cell.material, ds)
-    lf = LatentFunctionals(ae.decode, std, phys, cell.system, nc)
-    ts = time_scale(ds)
-    width = q.get("width", pilot.get("width", {}).get(cell.arm, 128))
+    widths = ({a: q["width"] for a in ("U", "U-long", "P", "U+F", "FNO", "S", "S-L", "S-M", "S-Pi")}
+              if "width" in q else matched_widths(d, k, cell.system, nc, n_ch, n_out))
+    width = widths[cell.arm]
     kind = "U" if cell.arm == "U-long" else cell.arm
-    terms = None
+    phys = _physics(cell.system, cell.material, ds)
+    ae_meta, ae, lf, terms = None, None, None, None
+    torch.manual_seed(cell.seed)
+    if kind != "FNO":
+        ae = MLPAutoencoder(n_state, d, width=q.get("ae_width", 256))
+        ae_meta = _load_ae(cell, ae, out_dir, pilot, q, std, ds)
+        lf = LatentFunctionals(ae.decode, std, phys, cell.system, nc)
+    ts = time_scale(ds)
+    torch.manual_seed(cell.seed)
     if kind in ("U", "P"):
         dyn = UDynamics(d, k, width, time_scale=ts)
     elif kind == "U+F":
@@ -192,32 +265,111 @@ def run_cell(cell: Cell, data_dir: str, out_dir: str, pilot: dict, quick: dict |
         dyn = FNO1d(nc, n_ch, n_out, k, width=width)
     else:
         raise ValueError(f"unknown arm {cell.arm!r}")
-    arm = Arm(kind, dyn, None if kind == "FNO" else ae, std, None if kind == "FNO" else lf, terms=terms)
-    iters = pilot["iterations"] if cell.arm != "U-long" else pilot.get("iterations_ulong", pilot["iterations"])
-    hist = train(arm, ds, TrainConfig(lr=pilot["lr"][cell.arm if cell.arm in pilot["lr"] else kind],
-                                      iterations=iters, seed=cell.seed, h_steps=pilot["h_steps"],
-                                      n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20)))
-    n_cycles = q.get("n_cycles", test.X.shape[1])
-    rows = []
-    for name in (cell.arm,) + tuple(cell.evaluate_also):
-        ev_kind = {"U+proj": "U+proj", "U+F+proj": "U+F+proj"}.get(name, kind)
-        ev = Arm(ev_kind, dyn, arm.ae, std, arm.lf, terms=terms)
-        for r in evaluate(ev, test, phys, n_cycles, pilot["h_steps"], pilot["floors"], pilot["tau_S"], cell.seed):
-            rows.append(dict(r, arm=name))
-    meta = {"arm": cell.arm, "system": cell.system, "material": cell.material, "size": cell.size,
-            "seed": cell.seed, "params": hist["params"], "pilot": pilot, "train_loss_last": hist["loss"][-1],
-            "train_indices": train_idx, "time_scale": ts,
-            "train_skipped": hist["skipped"], "train_cpu_s": hist["wall_s"], "flags": hist["flags"]}
+    arm = Arm(kind, dyn, ae, std, lf, terms=terms)
+    meta = {"autoencoder": ae_meta, "time_scale": ts, "width": width,
+            "widths_matched_to_S_params": widths.get("_S_params")}
+    return arm, phys, terms, meta
+
+
+def _weights_file(cell):
+    return job_name(cell) + "_weights.pt"
+
+
+def train_cell(cell: Cell, data_dir: str, out_dir: str, pilot: dict, quick: dict | None = None):
+    """Train the cell, save its weights (and sha256), and evaluate it on the validation sets only
+    (validation, long validation: H3a is checked there before any test set is opened). Writes
+    out_dir/<job name>.json and returns its path."""
+    from pathlib import Path
+
+    from p3b.eval.evaluate import write_results
+    from p3b.latent.data import load_set
+    from p3b.train.trainer import TrainConfig, train
+    q = quick or {}
+    os.makedirs(out_dir, exist_ok=True)
+    if cell.arm in SOLVER_ARMS:
+        return _solver_cell(cell, data_dir, out_dir, pilot, q, VALIDATION_SETS, train=True)
+    train_files, train_idx = _train_files(data_dir, cell.size, _pool_size(cell, q))
+    ds = load_set(train_files)
+    arm, phys, terms, meta = _build(cell, pilot, q, ds, out_dir)
+    if cell.arm == "U-long":
+        if "iterations_ulong" not in pilot:
+            raise KeyError("iterations_ulong (S's measured wall-clock) is required for U-long")
+        iters = pilot["iterations_ulong"]
+    else:
+        iters = pilot["iterations"]
+    hist = train(arm, ds, TrainConfig(lr=pilot["lr"][cell.arm], iterations=iters, seed=cell.seed,
+                                      h_steps=pilot["h_steps"], n_windows=q.get("n_windows", 8),
+                                      n_steps=q.get("n_steps", 20),
+                                      checkpoint=os.path.join(out_dir, job_name(cell) + "_ckpt.pt")))
+    wpath = os.path.join(out_dir, _weights_file(cell))
+    torch.save(arm.dyn.state_dict(), wpath)
+    rows = _evaluate_sets(cell, arm, phys, terms, data_dir, pilot, q, VALIDATION_SETS)
+    meta.update({"arm": cell.arm, "system": cell.system, "material": cell.material, "size": cell.size,
+                 "seed": cell.seed, "params": hist["params"], "pilot": pilot, "iterations": iters,
+                 "train_loss_last": hist["loss"][-1] if hist["loss"] else None,
+                 "train_skipped": hist["skipped"], "train_skipped_grad": hist["skipped_grad"],
+                 "train_cpu_s": hist["wall_s"], "flags": hist["flags"], "train_indices": train_idx,
+                 "weights": {"file": _weights_file(cell), "sha256": _sha(wpath)}})
     path = os.path.join(out_dir, job_name(cell) + ".json")
     write_results(path, rows, meta)
-    from pathlib import Path
     return Path(path)
 
 
-def _run_solver_cell(cell, data_dir, out_dir, pilot, q, test):
-    """C on 16, 32, 64, 128 cells and MUSCL-C on 32, 64 (deterministic), or C+L (trained on the
-    cell's training set, K substeps), each test trajectory stored at the target cells and scored by
-    evaluate_files."""
+def _evaluate_sets(cell, arm, phys, terms, data_dir, pilot, q, sets):
+    from p3b.eval.evaluate import evaluate
+    from p3b.gates import load_meta
+    from p3b.latent.data import load_set
+    from p3b.train.trainer import Arm
+    rows = []
+    for set_name in sets:
+        files = _set_files(data_dir, set_name)
+        if not files:
+            continue
+        ds = load_set(files)
+        n_cycles = q.get("n_cycles", ds.X.shape[1])
+        for name in (cell.arm,) + tuple(cell.evaluate_also):
+            ev_kind = {"U+proj": "U+proj", "U+F+proj": "U+F+proj"}.get(name, arm.kind)
+            ev = Arm(ev_kind, arm.dyn, arm.ae, arm.std, arm.lf, terms=terms)
+            for r in evaluate(ev, ds, phys, n_cycles, pilot["h_steps"], pilot["floors"], pilot["tau_S"], cell.seed):
+                r.update(arm=name, set=set_name, design_index=int(load_meta(files[r["trajectory"]])["point"]["index"]))
+                rows.append(r)
+    return rows
+
+
+def evaluate_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot: dict, gate: dict,
+                  quick: dict | None = None):
+    """Evaluate a trained cell (its saved weights) on one named set. Test sets (test, long test,
+    OOD) open only after H3a passed for the cell's system and material (`gate`, from the H3a
+    check on the validation sets); otherwise PermissionError. Writes out_dir/<job name>_<set>.json."""
+    from pathlib import Path
+
+    from p3b.eval.evaluate import write_results
+    from p3b.latent.data import load_set
+    from p3b.pilot.rules import pilot_key
+    q = quick or {}
+    key = pilot_key(cell.system, cell.material)
+    if set_name in GATED_SETS and gate.get(key) != "pass":
+        raise PermissionError(f"H3a has not passed for {key}: the {set_name} set stays closed")
+    if cell.arm in SOLVER_ARMS:
+        return _solver_cell(cell, data_dir, out_dir, pilot, q, (set_name,), train=False)
+    train_files, _ = _train_files(data_dir, cell.size, _pool_size(cell, q))
+    ds = load_set(train_files)
+    arm, phys, terms, meta = _build(cell, pilot, q, ds, out_dir)
+    wpath = os.path.join(out_dir, _weights_file(cell))
+    arm.dyn.load_state_dict(torch.load(wpath))
+    rows = _evaluate_sets(cell, arm, phys, terms, data_dir, pilot, q, (set_name,))
+    meta.update({"arm": cell.arm, "system": cell.system, "material": cell.material, "size": cell.size,
+                 "seed": cell.seed, "set": set_name, "pilot": pilot,
+                 "weights": {"file": _weights_file(cell), "sha256": _sha(wpath)}})
+    path = os.path.join(out_dir, f"{job_name(cell)}_{set_name}.json")
+    write_results(path, rows, meta)
+    return Path(path)
+
+
+def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool):
+    """C (16-128 cells) and MUSCL-C (32, 64): deterministic runs on each set's trajectories. C+L:
+    trained once (multipliers saved first), then rolled out like C. A failed run is a failure at
+    cycle 1 (capped), never a lost cell."""
     from pathlib import Path
 
     from p3b.eval.evaluate import evaluate_files, write_results
@@ -225,47 +377,65 @@ def _run_solver_cell(cell, data_dir, out_dir, pilot, q, test):
     from p3b.latent.data import load_set
     from p3b.solvers.c_plus_l import Multipliers
     from p3b.solvers.coarse import run_c
-
-    nc, ns = test.n_cells, test.X.shape[2]
-    phys = _physics(cell.system, cell.material, test)
-    tmp = os.path.join(out_dir, job_name(cell) + "_files")
-    os.makedirs(tmp, exist_ok=True)
-    test_files = sorted(glob.glob(os.path.join(data_dir, "test", "*.npz")))
-    points = [load_meta(p)["point"] for p in test_files]
-    files, meta_extra = {}, {}
-    if cell.arm in ("C", "MUSCL-C"):
-        grids = q.get("grids", [16, 32, 64, 128] if cell.arm == "C" else [32, 64])
-        for g in grids:
-            paths = []
-            for j, pt in enumerate(points):
-                p = os.path.join(tmp, f"{cell.arm}_{g}_{j}.npz")
-                res = run_c(cell.system, pt, cell.material, N_c=g, path=p, n_snap=ns, n_target=nc,
-                            muscl=cell.arm == "MUSCL-C")
-                if not res.ok:
-                    raise RuntimeError(f"{cell.arm} at {g} cells failed on test trajectory {j}: {res.message}")
-                paths.append(p)
-            files[f"{cell.arm}@{g}"] = paths
-    else:
-        from p3b.train.cplusl import rollout_cplusl_to_file, train_cplusl
-        train_files, train_idx = _train_files(data_dir, cell.size)
+    meta_extra = {}
+    mult = None
+    if cell.arm == "C+L":
+        from p3b.train.cplusl import train_cplusl
+        mfile = os.path.join(out_dir, _weights_file(cell))
         torch.manual_seed(cell.seed)
         mult = Multipliers(n_out=3)
-        n_coarse = q.get("n_coarse", 32)
-        hist = train_cplusl(mult, load_set(train_files), cell.material, n_coarse=n_coarse,
-                            lr=pilot["lr"]["C+L"], iterations=pilot["iterations"], seed=cell.seed,
-                            n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20), K=pilot["K"])
-        paths = []
-        for j, pt in enumerate(points):
-            p = os.path.join(tmp, f"CL_{j}.npz")
-            rollout_cplusl_to_file(mult, pt, cell.material, n_coarse, nc, ns, pilot["K"], p)
-            paths.append(p)
-        files["C+L"] = paths
-        meta_extra = {"train_indices": train_idx, "train_skipped": hist["skipped"],
-                      "train_loss_last": hist["loss"][-1] if hist["loss"] else None}
-    n_cycles = q.get("n_cycles", test.X.shape[1])
-    rows = evaluate_files(files, test, phys, n_cycles, cell.seed, pilot.get("floors"), pilot.get("tau_S"))
+        if train:
+            train_files, train_idx = _train_files(data_dir, cell.size, _pool_size(cell, q))
+            hist = train_cplusl(mult, load_set(train_files), cell.material, n_coarse=q.get("n_coarse", 32),
+                                lr=pilot["lr"]["C+L"], iterations=pilot["iterations"], seed=cell.seed,
+                                n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20), K=pilot["K"])
+            torch.save(mult.state_dict(), mfile)                 # saved before any rollout can fail
+            meta_extra = {"train_indices": train_idx, "train_skipped": hist["skipped"],
+                          "train_skipped_grad": hist["skipped_grad"],
+                          "params": sum(p.numel() for p in mult.parameters()),
+                          "weights": {"file": os.path.basename(mfile), "sha256": _sha(mfile)}}
+        else:
+            mult.load_state_dict(torch.load(mfile))
+            meta_extra = {"weights": {"file": os.path.basename(mfile), "sha256": _sha(mfile)}}
+    rows = []
+    tmp = os.path.join(out_dir, job_name(cell) + "_files")
+    os.makedirs(tmp, exist_ok=True)
+    for set_name in sets:
+        files = _set_files(data_dir, set_name)
+        if not files:
+            continue
+        ds = load_set(files)
+        phys = _physics(cell.system, cell.material, ds)
+        nc, ns = ds.n_cells, ds.X.shape[2]
+        points = [load_meta(p)["point"] for p in files]
+        by_arm = {}
+        if cell.arm in ("C", "MUSCL-C"):
+            for g in q.get("grids", [16, 32, 64, 128] if cell.arm == "C" else [32, 64]):
+                paths = []
+                for j, pt in enumerate(points):
+                    p = os.path.join(tmp, f"{set_name}_{cell.arm}_{g}_{j}.npz")
+                    res = run_c(cell.system, pt, cell.material, N_c=g, path=p, n_snap=ns, n_target=nc,
+                                muscl=cell.arm == "MUSCL-C")
+                    paths.append(p if res.ok else None)
+                by_arm[f"{cell.arm}@{g}"] = paths
+        else:
+            from p3b.train.cplusl import rollout_cplusl_to_file
+            paths = []
+            for j, pt in enumerate(points):
+                p = os.path.join(tmp, f"{set_name}_CL_{j}.npz")
+                try:
+                    rollout_cplusl_to_file(mult, pt, cell.material, q.get("n_coarse", 32), nc, ns, pilot["K"], p)
+                    paths.append(p)
+                except RuntimeError:                         # Newton failure: a failure at cycle 1
+                    paths.append(None)
+            by_arm["C+L"] = paths
+        n_cycles = q.get("n_cycles", ds.X.shape[1])
+        for r in evaluate_files(by_arm, ds, phys, n_cycles, cell.seed, pilot.get("floors"), pilot.get("tau_S")):
+            r.update(set=set_name, design_index=int(points[r["trajectory"]]["index"]))
+            rows.append(r)
     meta = {"arm": cell.arm, "system": cell.system, "material": cell.material, "size": cell.size,
-            "seed": cell.seed, "pilot": pilot, **meta_extra}
-    path = os.path.join(out_dir, job_name(cell) + ".json")
+            "seed": cell.seed, "pilot": pilot, "sets": list(sets), **meta_extra}
+    suffix = "" if train else "_" + "_".join(sets)
+    path = os.path.join(out_dir, job_name(cell) + suffix + ".json")
     write_results(path, rows, meta)
     return Path(path)

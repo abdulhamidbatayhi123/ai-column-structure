@@ -4,7 +4,9 @@ Synthetic crossed data: the log error ratio of trajectory t and seed s is
     v[t, s] = log(ratio) + a_t + b_s + e_ts,
 with a_t ~ N(0, sd_traj^2) and the seed component split into a part shared across trajectories
 (b_s, the same trained models on every trajectory) and a trajectory-specific part (e_ts):
-var(b) = seed_shared * sd_seed^2, var(e) = (1 - seed_shared) * sd_seed^2. Each replicate runs the
+var(b) = seed_shared * sd_seed^2, var(e) = (1 - seed_shared) * sd_seed^2; the default 1.0 is the
+conservative choice for the binding interval condition (b), and the script also prints 0 and 0.5.
+"power" is P[(a) and (b)] at the declared minimum effect. Each replicate runs the
 pre-registered rule exactly: the seed-averaged values, the one-sided signed-rank test at alpha_h,
 the (1 - 2 alpha_h) pigeonhole bootstrap interval of HL, and the directional words. The fraction of
 each word is returned. The inputs are the pilot's upper-80 % SDs (pilot rules).
@@ -29,7 +31,7 @@ def crossed_values(log_ratio, sd_traj, sd_seed, n_traj, n_seed, rng, seed_shared
 
 
 def simulate(log_ratio, sd_traj, sd_seed, n_traj: int = 48, n_seed: int = 5, reps: int = 1000,
-             draws: int = 10_000, seed: int = 0, alpha_h: float = 0.05 / 3, seed_shared: float = 0.5) -> dict:
+             draws: int = 10_000, seed: int = 0, alpha_h: float = 0.05 / 3, seed_shared: float = 1.0) -> dict:
     rng = np.random.default_rng(seed)
     counts = dict.fromkeys(WORDS, 0)
     for r in range(reps):
@@ -42,4 +44,18 @@ def simulate(log_ratio, sd_traj, sd_seed, n_traj: int = 48, n_seed: int = 5, rep
         b_holds = hi < 0.0
         word = directional_word(a_holds, b_holds, math.exp(hodges_lehmann(x)), (math.exp(lo), math.exp(hi)))
         counts[word] += 1
-    return {w: c / reps for w, c in counts.items()}
+    out = {w: c / reps for w, c in counts.items()}
+    out["power"] = out["SUPPORTED"] + out["SMALL"]          # (a) and (b) both hold
+    return out
+
+
+def simulate_tost(log_ratio, sd_traj, sd_seed, m: float, n_traj: int = 48, n_seed: int = 5, reps: int = 1000,
+                  seed: int = 0, alpha_h: float = 0.05 / 3, seed_shared: float = 1.0) -> float:
+    """H4: the probability that the TOST at alpha_h declares EQUIVALENT within +-log m."""
+    from p3b.stats.tests import tost
+    rng = np.random.default_rng(seed)
+    hits = 0
+    for _ in range(reps):
+        v = crossed_values(log_ratio, sd_traj, sd_seed, n_traj, n_seed, rng, seed_shared)
+        hits += tost(v.mean(axis=1), margin=math.log(m), alpha=alpha_h)["equivalent"]
+    return hits / reps
