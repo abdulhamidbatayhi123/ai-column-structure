@@ -142,3 +142,12 @@ approval on 2026-11-05. Review codes:
     overflowed; they are the same for every arm.
   - The skip rule for diverged windows is stated, with its counts reported and a 5 % deviation
     threshold. Skipping trains the stiffest arm on easier windows, so the count must be visible.
+- **Reference solver: BDF with the exact Jacobian (Task 10, 2026-11-09).** On Kaggle, MOF-303 at
+  the centre of the training box stalled under scipy's finite-difference Jacobian: 642,420
+  evaluations for one cycle at 1024 cells, and no result at 2048 cells in 11 h. The other points
+  took 24 to 30 CPU-s per cycle at 2048 cells. Two causes were tested and ruled out: the integral
+  states (the physical system alone stalls the same way) and undershoots (none before the stall).
+  The exact Jacobian, from the torch right-hand sides by one vmapped forward-mode pass, removes
+  the stall: the stalled cycle took 2,333 evaluations. Both Jacobians give the same stored
+  trajectory within the solver tolerance, so the reference itself is unchanged. The solver's
+  tolerances (rtol 10⁻⁶, atol 10⁻¹⁰) are as pre-registered.
