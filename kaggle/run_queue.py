@@ -91,10 +91,17 @@ sys.exit(max(p.wait() for p in procs))
 '''
 
 
-def _metadata(name: str, kit_slug: str) -> dict:
+def _metadata(name: str, kit_slug: str, depends_on=()) -> dict:
+    """Kernel metadata; the outputs of the kernels in `depends_on` are attached as inputs."""
     return {"id": f"{OWNER}/{name}", "title": name, "code_file": "run.py", "language": "python",
             "kernel_type": "script", "is_private": True, "enable_gpu": False, "enable_internet": False,
-            "dataset_sources": [kit_slug], "competition_sources": [], "kernel_sources": []}
+            "dataset_sources": [kit_slug], "competition_sources": [],
+            "kernel_sources": [f"{OWNER}/{d}" for d in depends_on]}
+
+
+def ready(k: dict, done: set) -> bool:
+    """A kernel is pushed only when every kernel it depends on has its outputs downloaded."""
+    return all(d in done for d in k.get("depends_on", ()))
 
 
 def write_kernels(spec: dict) -> list[dict]:
@@ -109,9 +116,10 @@ def write_kernels(spec: dict) -> list[dict]:
             with open(os.path.join(d, "run.py"), "w") as f:
                 f.write(RUN_CMDS_PY.format(cmds=job["commands"]))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
-                json.dump(_metadata(job["name"], spec["kit_slug"]), f, indent=1)
-            kernels.append({"name": job["name"], "dir": d, "system": "timing", "set": job["name"],
-                            "expect": job["expect"]})
+                json.dump(_metadata(job["name"], spec["kit_slug"], job.get("depends_on", ())), f, indent=1)
+            kernels.append({"name": job["name"], "dir": d, "system": job.get("system", "timing"),
+                            "set": job.get("set", job["name"]), "expect": job["expect"],
+                            "depends_on": list(job.get("depends_on", ()))})
             continue
         with open(os.path.join(ROOT, "data", "design", f"{job['system']}_{job['set']}.json")) as f:
             n_traj = len(json.load(f)["points"])
@@ -183,7 +191,7 @@ def main(jobs_file: str) -> None:
                     log(f"{k['name']} output downloaded")
             elif s in ("ERROR", "CANCEL_ACKNOWLEDGED"):
                 log(f"{k['name']} status {s}: needs attention")
-            elif s == "ABSENT" and k["name"] not in pushed and busy < MAX_RUNNING:
+            elif s == "ABSENT" and k["name"] not in pushed and busy < MAX_RUNNING and ready(k, done):
                 out = run("kernels", "push", "-p", k["dir"])
                 if "successfully pushed" in out.lower():
                     pushed.add(k["name"])
