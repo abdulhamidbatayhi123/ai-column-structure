@@ -46,7 +46,10 @@ def test_pilot_output_feeds_cell_pilot(tmp_path):
 def test_u_long_iterations_follow_s_wall_clock_and_are_required():
     from p3b.pilot.rules import iterations_ulong
     assert iterations_ulong(8000, wall_per_iter={"S": 2.0, "U": 0.5}) == 32000
-    import train_chunk
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("train_chunk", os.path.join(ROOT, "kaggle", "train_chunk.py"))
+    train_chunk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(train_chunk)
     from p3b.train.cells import Cell
     pilot = _pilot_values()
     pilot.pop("iterations_ulong")

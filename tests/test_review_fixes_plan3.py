@@ -62,8 +62,8 @@ def test_rollout_records_runtime_errors_and_nonfinite_latents(ds):
         def forward(self, z, feat):
             raise RuntimeError("solver blew up")
 
-    r = rollout(Arm("U", Raiser(), Identity(), std, None), ds, 0, 1, 1)
-    assert r.failed_cycle == 1
+    with pytest.raises(RuntimeError, match="blew up"):        # plan 4 review: only divergence ends a
+        rollout(Arm("U", Raiser(), Identity(), std, None), ds, 0, 1, 1)   # rollout; other errors surface
 
     class NanZ(nn.Module):
         def forward(self, z, feat):
