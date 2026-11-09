@@ -5,3 +5,12 @@ __pycache__/
 
 # Third-party PDFs obtained through library access: read locally, never published.
 private/
+
+# Plan-execution scratch (ledger, briefs)
+.superpowers/
+
+# reference data and Kaggle build output (archived with the paper, not in git)
+data/reference/
+kaggle/build/
+kaggle/*.log
+kaggle/registry.txt

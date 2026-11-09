@@ -21,7 +21,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from consistent_column import Column  # noqa: E402
+from consistent_column import Column, from_paper1  # noqa: E402
 
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "ai-mof-cof-dynamics")))
 from gen_parametric_dataset import build_physics, rh_to_conc  # noqa: E402  (read-only)
@@ -52,7 +52,7 @@ N1 = 200
 t_end = 1.0 * t_st
 _, tp, yp = generate_breakthrough_data(phys, N_z=N1, t_final=t_end, c_in=c_in,
                                        n_snapshots=41, rtol=1e-9, atol=1e-13, verbose=False)
-col0 = Column(phys, N1, c_w=0.0)
+col0 = Column(phys, N1, c_w=0.0, iso=from_paper1(phys))
 y0 = col0.initial_state(phys.T_w)
 tm, ym = col0.integrate(y0, (0.0, t_end), (c_in, phys.T_in, phys.T_w), 41, rtol=1e-9, atol=1e-13)
 n, a, u = col0.split(ym)
@@ -70,7 +70,7 @@ out["V1_paper1_limit"] = {
 # ---------------------------------------------------------------- V2 cycle, c_w > 0
 t0 = time.time()
 N2 = 120
-col = Column(phys, N2, c_w=C_W)
+col = Column(phys, N2, c_w=C_W, iso=from_paper1(phys))
 t_A, t_D = 0.8 * t_st, 0.6 * t_st
 phases = [("ads", t_A, (c_in, COND["T_in"], COND["T_in"])),
           ("des", t_D, (c_in, T_DES, T_DES))] * 2
@@ -176,8 +176,8 @@ out["V3_concavity"] = {
 # ---------------------------------------------------------------- V4 coarse-graining
 t0 = time.time()
 NF, NC = 400, 40
-fine = Column(phys, NF, c_w=C_W)
-coarse = Column(phys, NC, c_w=C_W)
+fine = Column(phys, NF, c_w=C_W, iso=from_paper1(phys))
+coarse = Column(phys, NC, c_w=C_W, iso=from_paper1(phys))
 blk = NF // NC
 y = fine.initial_state(COND["T_in"])
 res = {"sigma_c_min_over_scale_coarse_outlet": np.inf, "sigma_c_min_over_scale_fine_outlet": np.inf,

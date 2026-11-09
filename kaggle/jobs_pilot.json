@@ -1,0 +1,28 @@
+{
+ "kit_slug": "abdulhamidbatayhi/p3b-reference-kit",
+ "nz": 2048,
+ "_note": "PREREG Section 2 pilot sets. N_z = 2048 for system A and 1024 for system B: the Task 10 data-cost contingency was not applied (results/timing_reference.json, data_cost_decision).",
+ "jobs": [
+  {
+   "system": "A_primary",
+   "set": "pilot_train",
+   "of": 2
+  },
+  {
+   "system": "A_primary",
+   "set": "pilot_val",
+   "of": 4
+  },
+  {
+   "system": "A_replication",
+   "set": "pilot",
+   "of": 2
+  },
+  {
+   "system": "B",
+   "set": "pilot",
+   "of": 1,
+   "nz": 1024
+  }
+ ]
+}

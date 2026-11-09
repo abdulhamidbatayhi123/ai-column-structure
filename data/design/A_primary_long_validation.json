@@ -1,0 +1,81 @@
+{
+ "system": "A_primary",
+ "set": "long_validation",
+ "seed": 310105,
+ "box": {
+  "RH_ads": [
+   0.2,
+   0.6
+  ],
+  "T_ads": [
+   293.0,
+   308.0
+  ],
+  "T_des": [
+   333.0,
+   363.0
+  ],
+  "v": [
+   0.03,
+   0.3
+  ],
+  "alpha": [
+   0.5,
+   1.2
+  ],
+  "beta": [
+   0.5,
+   1.0
+  ]
+ },
+ "commit": "104b64d4f7a8bf45747f4c3cedee489639c36609",
+ "sampler": "scipy.stats.qmc.Sobol(scramble=True).random_base2, first count points",
+ "versions": {
+  "python": "3.12.10",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1"
+ },
+ "versions_note": "library versions with which these points were reproduced exactly from the seed (tests/test_cs_t6_fixes.py); the points were generated at `commit` in the same environment",
+ "points": [
+  {
+   "RH_ads": 0.361159049347043,
+   "T_ads": 297.8793694889173,
+   "T_des": 348.9473483171314,
+   "v": 0.10866435857489705,
+   "alpha": 0.7451524388976395,
+   "beta": 0.7006756006740034,
+   "index": 0,
+   "n_cycles": 60
+  },
+  {
+   "RH_ads": 0.407639379799366,
+   "T_ads": 301.4939242620021,
+   "T_des": 344.95753547362983,
+   "v": 0.258736083554104,
+   "alpha": 1.1719526558183133,
+   "beta": 0.8832139172591269,
+   "index": 1,
+   "n_cycles": 60
+  },
+  {
+   "RH_ads": 0.5775192640721798,
+   "T_ads": 295.82963920384645,
+   "T_des": 362.31128011085093,
+   "v": 0.03306461499072611,
+   "alpha": 0.8904972514137626,
+   "beta": 0.8161338018253446,
+   "index": 2,
+   "n_cycles": 60
+  },
+  {
+   "RH_ads": 0.22868154607713223,
+   "T_ads": 307.2955437162891,
+   "T_des": 335.3452788311988,
+   "v": 0.1824767735414207,
+   "alpha": 0.5952602066099644,
+   "beta": 0.5065165963023901,
+   "index": 3,
+   "n_cycles": 60
+  }
+ ]
+}

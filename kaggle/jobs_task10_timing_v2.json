@@ -1,0 +1,14 @@
+{
+ "kit_slug": "abdulhamidbatayhi/p3b-reference-kit",
+ "nz": 0,
+ "jobs": [
+  {"name": "p3b-timing-a2",
+   "threads": 1,
+   "commands": [
+    ["scripts/time_reference.py", "--system", "A", "--material", "MOF-303", "--nz", "512,1024,2048", "--cycles", "2", "--point", "centre", "--out", "OUT/timing_A_MOF-303_centre.json"],
+    ["scripts/time_reference.py", "--system", "A", "--material", "MOF-303", "--nz", "512,1024,2048", "--cycles", "2", "--point", "corner", "--out", "OUT/timing_A_MOF-303_corner.json"],
+    ["scripts/time_reference.py", "--system", "A", "--material", "Al-fumarate", "--nz", "512,1024,2048", "--cycles", "2", "--point", "centre", "--out", "OUT/timing_A_Al-fumarate_centre.json"],
+    ["scripts/time_reference.py", "--system", "A", "--material", "Al-fumarate", "--nz", "512,1024,2048", "--cycles", "2", "--point", "corner", "--out", "OUT/timing_A_Al-fumarate_corner.json"]],
+   "expect": ["timing_A_MOF-303_centre.json", "timing_A_MOF-303_corner.json", "timing_A_Al-fumarate_centre.json", "timing_A_Al-fumarate_corner.json"]}
+ ]
+}

@@ -27,7 +27,9 @@ words in these senses only.
 | REVERSED | the qualifier on REFUTED when the interval lies entirely above 1 (S significantly worse) | only beside REFUTED |
 | CONSISTENT / PARTLY CONSISTENT / INCONSISTENT / NOT INFORMATIVE | the comparison of a primary verdict with the second isotherm or with system B (pre-registration, Section 7) | only as defined there; never "replicated" when both verdicts are INCONCLUSIVE |
 | the constraint / the constraint in training / fixed physical potentials | attribution labels (pre-registration, Section 6) | only when S beats U+F, U+F+proj or S-L respectively |
-| useful against the coarse solver | the Pareto statement of the pre-registration, Section 6 | only when it holds |
+| the physical information, not the constraint | attribution label (pre-registration, Section 6) | only when U+F beats U and S against U+F is EQUIVALENT by TOST; otherwise "the information suffices; the constraint's added value is unresolved" |
+| useful against the coarse solver / a coarse consistent solver makes the learned model unnecessary / unresolved against the coarse solver | the three-way coarse-solver statement of the pre-registration, Section 6 | the first only when S is shown superior to every C grid and C+L; the second only when one is shown non-inferior to S |
+| admissibility | what S's guarantees buy when H1 and H2 are REFUTED (rows 8a, 10a) | only when H3a = pass |
 | system A, system B | the adsorption column, and the two-temperature thermocline store | always; "two systems", never "two materials", for A and B |
 | second isotherm | the Al-fumarate-like replication on system A | never "a second system" |
 | dilute-solute gas model | vapour as an ideal solute in an incompressible carrier (formulation, Section 3.1) | always named when a heat of adsorption is compared with 3A's ideal-gas values |

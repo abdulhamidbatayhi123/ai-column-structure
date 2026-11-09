@@ -56,3 +56,98 @@ approval on 2026-11-05. Review codes:
   balances.
 - **Two systems instead of more seeds.** The between-system difference is what a broad
   reader asks about. Seed variance is already reported.
+- **System B's ambient bath fixed at 293.15 K** (implementation, plan 1 Task 5). The draft left
+  the wall-loss ambient open. A store sits in a room whose temperature does not follow the
+  operating point, so it is a constant, not T_cold. It equals the module's reference
+  temperature, which the earlier closure test already used.
+- **Cyclic steady state at 10⁻³ relative change of the per-cycle release** (implementation,
+  plan 1 Task 7). The draft used the CSS cycle for the long-validation decoder check and for
+  H6 without a number. 10⁻³ is ten times looser than the integrated closure of the stored
+  data (below 10⁻⁵), so solver noise cannot fake or block it, and tighter than any error the
+  arms are compared at.
+- **Reference entropy gate on the coarse data** (plan 1 Task 7). Per snapshot interval, the
+  change of the entropy of the block averages minus the port entropy flux (outlet by the
+  trapezoid rule, at the outlet of that interval's own flow direction) must be positive. The
+  first test trajectories give margins of about 5 × 10⁻³ (system A) and 1 × 10⁻³ (system B) of
+  the interval's entropy turnover.
+- **Flow-dependent axial heat dispersion, and the hybrid scheme in both references**
+  (2026-11-08, from cs T3, verified here; plan 1 Task 7b). With Paper 1's constant k_z = 0.10
+  the plain-upwind reference carried about 9 % excess conduction at v 0.30 m/s (A, 2048 cells),
+  and system B's reference (1024 cells, constant k_f 1.5) carried up to 4 times more numerical
+  than physical conduction, so it was not a converged reference. Packed-bed practice makes the
+  axial conductivity grow with flow (Yagi, Kunii and Wakao 1960), as D_L already does
+  (`0.5 d_p u`). With `k_z = 0.10 + 0.5 ρ_g C_pg v d_p` and `k_f = 1.5 + 0.5 ρ_f c_f |v| d_p`
+  (rock 5 cm), the upwind truncation term is at most 1.3 % (A) and 1.9 % (B) of the physical
+  conduction at the reference grids, and the hybrid scheme removes it exactly. For arm C the
+  clip now bites only at 16 cells (it bit on 32 % of the A velocity box at 128 cells and
+  everywhere in B before). Numbers: `verify/clip_shares.json`. δ = 0.5 and the 5 cm rock are
+  provisional until verified in the full texts (queued). This changes the reference physics,
+  so it is the author's to confirm at the freeze.
+- **τ_ref measured on the gate's own statistic; exact entropy ports** (2026-11-08, final code
+  review C2). The previous definition took the round-off of the algebraic entropy identity
+  (about 10⁻¹⁵), but the gate compares differences of stored states, which carry the solver's
+  error. The outlet entropy was also integrated by the trapezoid rule, which gave −0.017 on an
+  exact solve at the fast corner of the box. Entropy in and out are now cumulative ODE states,
+  and τ_ref is set from the same statistic evaluated with the fine entropy (whose production is
+  non-negative by proof). On that counter-example, at 256 cells, the gate passes at 16 and 256
+  coarse cells with a minimum rate of 0.238 W K⁻¹ m⁻² against τ_ref = 1.2 × 10⁻³. The rate
+  identities hold to 3 × 10⁻¹⁵ (`verify/results_entropy_gate_counterexample.json`), below the
+  pre-registered 10⁻¹², and are now computed at every
+  stored snapshot.
+- **Revisions from the cs-org1 review round 2 (T5, 2026-11-08), each checked here before it
+  was adopted.**
+  - F1, feasibility: the data-cost contingency now halves N_z repeatedly while Paper 1's
+    grid-convergence criterion passes, names what each later step weakens, adds the
+    replication long test as a last cut, and declares the study infeasible rather than run
+    it underpowered. The pilot timing is CPU time on an idle Kaggle session. Task 10 of plan 1
+    measures the hybrid-scheme reference at 512 to 2048 cells; T5's extrapolation (2,050
+    CPU-s per cycle at 2048) came from the plain-upwind reference on a loaded laptop.
+  - F2, burden of proof against the coarse solver: "useful against the coarse solver" now
+    needs S shown superior to every C grid and C+L; "unnecessary" needs a C grid shown
+    non-inferior; otherwise "unresolved". C is scored after a conservative minmod
+    reconstruction onto the 128 cells, with injection and own-grid scores as sensitivity. Cost
+    is CPU time on one Kaggle session type, with C run as parallel processes.
+  - F3, S-L: its port term is now S's own projection, so S against S-L differs in the
+    bracket's potentials alone.
+  - F4, attribution to information: printed only with S against U+F EQUIVALENT by TOST.
+  - F5, bootstrap: seeds are crossed with trajectories, so the bootstrap resamples both
+    independently (Owen 2007, Ann. Appl. Stat. 1, 386-411, read on Crossref 2026-11-08). α_h
+    is defined for hypotheses step-down did not reach; the H4 directional words are outside
+    the Holm family.
+  - F6, admissibility: rows 8 and 10 split on H3a, and `verify/check_decision_list.py` now
+    enumerates the gate and H3a and checks the PREREG table labels (256 combinations).
+  - F7, H6: a fixed benchmark set, a 1 % regret floor in the ratio, ties counted, and the
+    expected INCONCLUSIVE at n = 8 stated in advance.
+  - F8, C+L: one integrator for training and evaluation (implicit Euler at the snapshot
+    interval), its numerical diffusion and the non-negative multipliers' limit stated, and
+    flux learning named as future work. With the flow-dependent k_z and k_f of Task 7b the
+    clip bites only at 16 cells, so at C+L's 32 cells the multipliers act on unclipped
+    coefficients (T5's 91 % clipped share predates Task 7b). System B's arm C uses the hybrid
+    scheme too (plan 1, `make_store(..., compensate=True)`).
+- **From the plan 2 code review (2026-11-08).**
+  - The field error is Paper 1's metric on the physical fields. The stored log channels would
+    let 0.02 of the log c range pass about 18 % pointwise error in c. The decoder gate takes
+    each field separately, as Paper 1's own `metrics.py` forbids pooling fields of very
+    different variance.
+  - The 10⁻⁸ rank tolerance applies to B with unit-norm columns (and the balance Jacobian with
+    unit-norm rows). Unscaled, the ratio of B's singular values was 10⁻⁷ to 3 × 10⁻⁶ on the
+    real column physics, because |∇Ê|/|∇N̂| ≈ |ΔH|, so steps would have been flagged
+    rank-deficient for their units. Scaled, the ratio is about 7 × 10⁻³. The projector and the
+    minimum-norm steps do not change.
+  - C+L's implicit-Euler substeps K are set in the pilot, so that the multipliers do not absorb
+    time-discretisation error.
+- **From the plan 3 code review (2026-11-09).**
+  - The reference time scale and the zero/small initialisation of the state-update networks are
+    stated in Section 4. Without them, untrained vector fields over 850 s snapshot intervals
+    overflowed; they are the same for every arm.
+  - The skip rule for diverged windows is stated, with its counts reported and a 5 % deviation
+    threshold. Skipping trains the stiffest arm on easier windows, so the count must be visible.
+- **Reference solver: BDF with the exact Jacobian (Task 10, 2026-11-09).** On Kaggle, MOF-303 at
+  the centre of the training box stalled under scipy's finite-difference Jacobian: 642,420
+  evaluations for one cycle at 1024 cells, and no result at 2048 cells in 11 h. The other points
+  took 24 to 30 CPU-s per cycle at 2048 cells. Two causes were tested and ruled out: the integral
+  states (the physical system alone stalls the same way) and undershoots (none before the stall).
+  The exact Jacobian, from the torch right-hand sides by one vmapped forward-mode pass, removes
+  the stall: the stalled cycle took 2,333 evaluations. Both Jacobians give the same stored
+  trajectory within the solver tolerance, so the reference itself is unchanged. The solver's
+  tolerances (rtol 10⁻⁶, atol 10⁻¹⁰) are as pre-registered.

@@ -1,0 +1,73 @@
+{
+ "system": "B",
+ "set": "long_validation",
+ "seed": 330104,
+ "box": {
+  "T_hot": [
+   343.0,
+   363.0
+  ],
+  "T_cold": [
+   293.0,
+   303.0
+  ],
+  "v": [
+   0.0005,
+   0.003
+  ],
+  "alpha": [
+   0.4,
+   0.9
+  ],
+  "beta": [
+   0.6,
+   1.0
+  ]
+ },
+ "commit": "104b64d4f7a8bf45747f4c3cedee489639c36609",
+ "sampler": "scipy.stats.qmc.Sobol(scramble=True).random_base2, first count points",
+ "versions": {
+  "python": "3.12.10",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1"
+ },
+ "versions_note": "library versions with which these points were reproduced exactly from the seed (tests/test_cs_t6_fixes.py); the points were generated at `commit` in the same environment",
+ "points": [
+  {
+   "T_hot": 357.69777999445796,
+   "T_cold": 298.5374056380242,
+   "v": 0.0025166747854091227,
+   "alpha": 0.4045546926558018,
+   "beta": 0.760771707072854,
+   "index": 0,
+   "n_cycles": 60
+  },
+  {
+   "T_hot": 343.4544014297426,
+   "T_cold": 296.9717092178762,
+   "v": 0.0005773332500830293,
+   "alpha": 0.6697355099953711,
+   "beta": 0.8629533842206001,
+   "index": 1,
+   "n_cycles": 60
+  },
+  {
+   "T_hot": 351.1291974335909,
+   "T_cold": 301.0045443866402,
+   "v": 0.0022057090857997537,
+   "alpha": 0.5597219593822956,
+   "beta": 0.9598666440695525,
+   "index": 2,
+   "n_cycles": 60
+  },
+  {
+   "T_hot": 359.4052079617977,
+   "T_cold": 294.42694134265184,
+   "v": 0.0015132202715612947,
+   "alpha": 0.8248745539225638,
+   "beta": 0.6640507571399211,
+   "index": 3,
+   "n_cycles": 60
+  }
+ ]
+}
