@@ -1,0 +1,30 @@
+{
+ "N": 2048,
+ "horizon_t_st": 1.0,
+ "material": {
+  "q_max": 24.5,
+  "delta_H": -52000.0,
+  "step_rh": 0.12,
+  "isotherm_n": 3.0,
+  "henry_fraction": 0.17,
+  "d_p": 0.00325,
+  "rho_p": 1050.0,
+  "eps_t": 0.39
+ },
+ "condition": {
+  "T_in": 303.15,
+  "rh_feed": 0.4,
+  "v": 0.1
+ },
+ "commit": "kit:ccb5b67ead013e91fe8eeccc74877fe167072a93",
+ "max_rel_diff_c": 1.8163416285131945e-09,
+ "max_rel_diff_q": 8.921683419249367e-09,
+ "max_abs_diff_T_K": 1.7641707472648704e-07,
+ "T_rise_K": 16.706799457023408,
+ "cpu_s": 467.1,
+ "bounds": {
+  "c": 2e-09,
+  "q": 1e-08,
+  "T_K": 2e-07
+ }
+}
