@@ -64,7 +64,8 @@ def rank_deficient(Js, rank_tol: float = RANK_TOL):
 def balance_project(z, cons, target, iters: int = 20, rank_tol: float = RANK_TOL, tol: float = 1e-12,
                     scale=None, differentiable: bool | None = None):
     """Gauss-Newton with the row-scaled pseudo-inverse, until |cons(z) - target| <= tol * scale for
-    every constraint of every sample, or after `iters` updates.
+    every constraint of every sample, or after `iters` updates. Each sample stops updating once it
+    meets the tolerance, so its result does not depend on the other samples of the batch.
 
     `scale` (batch, m) is the physical scale of each constraint (the violation-metric
     normalisation, PREREG 5); default |target|. The iterations run without a graph. If
@@ -85,13 +86,15 @@ def balance_project(z, cons, target, iters: int = 20, rank_tol: float = RANK_TOL
     at_zs = None                                   # (c, J) already evaluated at the final zs
     for _ in range(iters):
         c, J = _jacobian(cons, zs)
-        if bool(((c - td).abs() <= tol * sc).all()):
+        todo = ~((c - td).abs() <= tol * sc).all(-1)          # per sample: a converged one is left alone
+        if not bool(todo.any()):
             at_zs = (c, J)
             break
         Js, norms = row_scaled(J)
-        deficient |= rank_deficient(Js, rank_tol)
+        deficient |= rank_deficient(Js, rank_tol) & todo
         r = (c - td) / torch.where(norms[..., 0] > 0, norms[..., 0], torch.ones_like(norms[..., 0]))
-        zs = zs - (torch.linalg.pinv(Js, rtol=rank_tol) @ r.unsqueeze(-1)).squeeze(-1)
+        step = (torch.linalg.pinv(Js, rtol=rank_tol) @ r.unsqueeze(-1)).squeeze(-1)
+        zs = torch.where(todo.unsqueeze(-1), zs - step, zs)
     c, J = at_zs if at_zs is not None else _jacobian(cons, zs)
     rel = ((c - td).abs() / sc)
     info = {"residual": rel.amax(-1), "converged": (rel <= tol).all(-1), "rank_deficient": deficient}

@@ -90,3 +90,93 @@ def rollout(arm, ds, j: int, n_cycles: int, h_steps: int, track: bool = False) -
     failed_cycle = None if bool(finite.all()) else int(torch.nonzero(~finite)[0]) + 1
     return RolloutResult(X, out[T], finite, failed_cycle, cpu, flags,
                          {k: torch.tensor(v, dtype=torch.float64) for k, v in residuals.items()}, error)
+
+
+@torch.no_grad()
+def rollout_batch(arm, ds, js, n_cycles: int, h_steps: int, track: bool = False) -> list:
+    """`rollout` for several trajectories advanced in one tensor (Kaggle: S's step for 48 trajectories
+    costs 2.5 x one). Each result equals `rollout(arm, ds, j, ...)` up to rounding: a trajectory whose
+    state turns non-finite leaves the batch and the others go on; if a step raises LinAlgError (a
+    diverged state inside a projection), that interval is redone one trajectory at a time, so only the
+    trajectory that raises fails. cpu_s is the batch's CPU time divided by the number of trajectories."""
+    js = list(js)
+    B = len(js)
+    std = arm.std
+    ns, n = ds.X.shape[2], ds.X.shape[-1]
+    T = n_cycles * ns
+    X0 = ds.X[js, 0, 0]
+    F = torch.stack([std.encode_features(ds.features[j, :n_cycles].reshape(T, -1)) for j in js])
+    R = ds.raw_inputs[js, :n_cycles].reshape(B, T, -1)
+    t = ds.t[js, :n_cycles].reshape(B, T)
+    dt = torch.empty(B, T, dtype=t.dtype)
+    dt[:, :-1] = t[:, 1:] - t[:, :-1]
+    dt[:, -1] = t[:, -1] - t[:, -2]
+    decode = (lambda z: std.decode(z)) if arm.kind == "FNO" else (lambda z: std.decode(arm.ae.decode(z)))
+    z = std.encode(X0) if arm.kind == "FNO" else arm.ae.encode(std.encode(X0))
+    out = torch.full((B, T + 1, n), float("nan"), dtype=X0.dtype)
+    out[:, 0] = decode(z)
+    flags = [{} for _ in js]
+    residuals = [{} for _ in js]
+    failed_at, error = [None] * B, [None] * B
+    active = list(range(B))
+    t0 = time.process_time()
+
+    def advance(bs, i):
+        idx = torch.tensor(bs)
+        zn, fl = arm.step(z[idx], F[idx, i], R[idx, i], dt[idx, i, None], h_steps, track=track)
+        return [(bs, z[idx], zn.detach(), fl)]
+
+    for i in range(T):
+        if not active:
+            break
+        try:
+            groups = advance(active, i)
+        except torch.linalg.LinAlgError:
+            groups = []
+            for b in active:
+                try:
+                    groups += advance([b], i)
+                except torch.linalg.LinAlgError as exc:
+                    failed_at[b] = i + 1
+                    error[b] = f"{type(exc).__name__}: {exc}"[:200]
+        for bs, z_prev, zn, fl in groups:
+            v0 = v1 = None
+            if track and fl is not None and "Q_E" in fl:
+                raw_i = R[torch.tensor(bs), i]
+                v0 = arm.lf.evaluate(z_prev, raw_i, grads=False)
+                v1 = arm.lf.evaluate(zn, raw_i, grads=False)
+            x_all = decode(zn)
+            for r, b in enumerate(bs):
+                if not bool(torch.isfinite(zn[r]).all()):
+                    failed_at[b] = i + 1
+                    continue
+                if fl is not None:
+                    for k, v in fl.items():
+                        if v.dtype == torch.bool:
+                            flags[b][k] = flags[b].get(k, 0) + int(v[r])
+                    hit = [fl[k][r] for k in DEFECT_FLAGS if k in fl]
+                    if hit:
+                        flags[b]["any_defect"] = flags[b].get("any_defect", 0) + int(torch.stack(hit).any())
+                    if v0 is not None:
+                        for q in ("N", "E", "S"):
+                            if "Q_" + q in fl:
+                                residuals[b].setdefault(q, []).append(
+                                    float(v1[q][r] - v0[q][r] - fl["Q_" + q][r].detach()))
+                z[b] = zn[r]
+                if not bool(torch.isfinite(x_all[r]).all()):
+                    failed_at[b] = i + 1
+                    continue
+                out[b, i + 1] = x_all[r]
+        active = [b for b in active if failed_at[b] is None]
+    cpu = (time.process_time() - t0) / max(B, 1)
+    results = []
+    for b in range(B):
+        X = out[b, :T].reshape(n_cycles, ns, n)
+        finite = torch.isfinite(X).reshape(n_cycles, -1).all(-1)
+        if failed_at[b] is not None and failed_at[b] == T:
+            finite[-1] = False
+        fc = None if bool(finite.all()) else int(torch.nonzero(~finite)[0]) + 1
+        results.append(RolloutResult(X, out[b, T], finite, fc, cpu, flags[b],
+                                     {k: torch.tensor(v, dtype=torch.float64) for k, v in residuals[b].items()},
+                                     error[b]))
+    return results
