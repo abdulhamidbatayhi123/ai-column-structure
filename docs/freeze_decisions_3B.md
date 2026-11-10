@@ -20,6 +20,13 @@ constant h_v = 2 × 10⁴ W m⁻³ K⁻¹ and rock d_p = 5 cm "to be verified ag
 T7 asks that both primary sources (Yagi, Kunii and Wakao 1960; Wakao and Kaguei 1982) be read before
 δ is frozen.
 
+Live check (2026-11-10). The record is confirmed: Yagi, Kunii and Wakao, "Studies on axial effective
+thermal conductivities in packed beds", AIChE J. 6(4), 543–546 (1960), doi:10.1002/aic.690060407. Its
+abstract reports that the axial conductivity rises with air flow more steeply than the radial one and
+that the two coincide as Re → 0. The abstract gives no coefficient, and the full text is paywalled
+(Wiley), so 0.7 to 0.8 is not yet verified. A review notes that published correlations for the axial
+conductivity differ by up to an order of magnitude. The full text (YTÜ library) settles it.
+
 **Why now.** Both values enter the reference data. The 64 pilot trajectories (2026-11-10) were
 generated with δ = 0.5 and a constant h_v. The pilot's thresholds are per system and material (τ_ref, the violation
 thresholds, κ, the defect bound) and come from these data. If δ or h_v changes:
