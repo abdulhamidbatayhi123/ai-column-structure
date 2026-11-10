@@ -93,10 +93,14 @@ piece is S-L's learning curve: 16,000 iterations at h = 1, about 9.2 hours at 2.
 plus 16 batched validations. Kaggle sessions end at 12 hours, so the margin is about 2.5 hours (one
 earlier measurement on another session ran 50 % slower).
 
-**Still open: resuming across sessions.** The trainer writes resumable checkpoints
-(`TrainConfig.checkpoint`), but nothing yet carries a checkpoint from a session that ends into the next
-kernel. Confirmatory runs at 4 per session (S about 14 hours at h = 2) need it, and so does any pilot
-piece that hits the limit.
+**Resuming across sessions (2026-11-10).** Confirmatory runs at 4 per session (S about 14 hours at h = 2)
+need it. A cell still training after `--hours` (default 11) checkpoints and writes `RESUME.json`
+(`TrainConfig.deadline`, `train_cell`, `kaggle/train_chunk.py`). A kernel given that output as input
+continues it with `--resume-from`, using the same autoencoder, to the same weights; CPU time accumulates
+across sessions (`tests/test_resume_sessions.py`). Still open: the queue does not yet push the
+continuation kernel and re-point the evaluation jobs to it. That is part of the confirmatory run plan.
+Kernels already run each of their commands as a separate process, so 4 runs per session is 4 commands
+in one job.
 
 **Still open: the ceiling.** It is in CPU-equivalent hours and was set to bound cost. On Kaggle CPU,
 which is free, the binding constraint is wall time (5 sessions at once). Keeping it at 700,

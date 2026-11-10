@@ -51,6 +51,8 @@ class TrainConfig:
     checkpoint: str | None = None      # resumable state (Kaggle sessions end at 12 h)
     every: int = 200                   # iterations between checkpoints
     stop_after: int | None = None      # end this session after so many iterations (tests, budgets)
+    deadline: float | None = None      # time.monotonic() after which the session checkpoints and stops
+                                       # (at least one iteration per session); a later session resumes
 
 
 class TermsStandardiser:
@@ -168,18 +170,21 @@ def train(arm: Arm, ds, cfg: TrainConfig) -> dict:
         hist.update(ck["hist"])
         it0 = ck["it"]
         hist["resumed_from"] = it0
+    cpu_before = hist.get("cpu_s_done", 0.0)          # CPU time of earlier sessions
 
     def save(it):
         if cfg.checkpoint:
             tmp = cfg.checkpoint + ".partial"
             torch.save({"model": arm.dyn.state_dict(), "opt": opt.state_dict(), "rng": rng.bit_generator.state,
                         "torch_rng": torch.get_rng_state(), "it": it,
-                        "hist": {k: v for k, v in hist.items() if k != "resumed_from"}}, tmp)
+                        "hist": {**{k: v for k, v in hist.items() if k != "resumed_from"},
+                                 "cpu_s_done": cpu_before + time.process_time() - t0}}, tmp)
             os.replace(tmp, cfg.checkpoint)
 
     done_here = 0
     for it in range(it0, cfg.iterations):
-        if cfg.stop_after is not None and done_here >= cfg.stop_after:
+        if (cfg.stop_after is not None and done_here >= cfg.stop_after) or (
+                cfg.deadline is not None and done_here >= 1 and time.monotonic() >= cfg.deadline):
             save(it)
             hist["stopped_at"] = it
             break
@@ -211,7 +216,8 @@ def train(arm: Arm, ds, cfg: TrainConfig) -> dict:
         opt.step()
         hist["loss"].append(float(loss.detach()))
         hist["lr"].append(lr)
-    hist["wall_s"] = time.process_time() - t0
+    hist["wall_s"] = cpu_before + time.process_time() - t0     # all sessions
+    hist.pop("cpu_s_done", None)
     return hist
 
 

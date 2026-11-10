@@ -3,7 +3,10 @@ cell (--cell NAME), by the names of kaggle/train_jobs.py. Data: the kit's data/s
 directory (train/ and test/ subdirectories of stored trajectories); pilot values: the kit's
 results/pilot_values.json. Outputs go to --out (the kernel's output directory).
 
-    python kaggle/train_chunk.py --cell p3b-s-a-m303-full-s0 --out OUT
+    python kaggle/train_chunk.py --cell p3b-s-a-m303-full-s0 --out OUT [--hours 11] [--resume-from DIR]
+
+A cell still training after --hours checkpoints and writes OUT/RESUME.json; a later kernel given that
+output as input continues it with --resume-from.
 """
 from __future__ import annotations
 
@@ -67,7 +70,12 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--gate", default=os.path.join(ROOT, "results", "h3a_gate.json"))
     ap.add_argument("--pilot", default=os.path.join(ROOT, "results", "pilot_values.json"))
+    ap.add_argument("--resume-from", default=None, help="an earlier session's output (Kaggle kernel input)")
+    ap.add_argument("--hours", type=float, default=11.0,
+                    help="pause with a checkpoint and RESUME.json after so many hours (Kaggle sessions end at 12)")
     a = ap.parse_args(argv)
+    import time
+    deadline = time.monotonic() + a.hours * 3600
     os.makedirs(a.out, exist_ok=True)
     with open(a.pilot) as f:
         pilot = json.load(f)
@@ -83,7 +91,8 @@ def main(argv=None):
         print(evaluate_cell(c, set_name, data_dir(c), a.out, cell_pilot(c, pilot), gate), flush=True)
         return
     c = next(c for c in cells() if job_name(c) == a.cell)
-    print(train_cell(c, data_dir(c), a.out, cell_pilot(c, pilot)), flush=True)
+    print(train_cell(c, data_dir(c), a.out, cell_pilot(c, pilot), deadline=deadline, resume_from=a.resume_from),
+          flush=True)
 
 
 if __name__ == "__main__":
