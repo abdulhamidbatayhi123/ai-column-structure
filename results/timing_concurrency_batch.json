@@ -1,0 +1,94 @@
+{
+ "step_S": {
+  "h1|b1": {
+   "wall_s_per_interval": 0.05315664139999967,
+   "intervals": 20,
+   "first_interval": 10,
+   "failed_at": null,
+   "threads": 1
+  },
+  "h1|b48": {
+   "wall_s_per_interval": 0.10447388624999973,
+   "intervals": 20,
+   "first_interval": 10,
+   "failed_at": null,
+   "threads": 1
+  },
+  "h2|b1": {
+   "wall_s_per_interval": 0.07519635474999972,
+   "intervals": 20,
+   "first_interval": 10,
+   "failed_at": null,
+   "threads": 1
+  },
+  "h2|b48": {
+   "wall_s_per_interval": 0.18582352694999998,
+   "intervals": 20,
+   "first_interval": 10,
+   "failed_at": null,
+   "threads": 1
+  }
+ },
+ "concurrent": {
+  "U|h2|n1": {
+   "wall_s_per_iteration": [
+    0.25405458010000076
+   ],
+   "iterations": 10
+  },
+  "U|h2|n2": {
+   "wall_s_per_iteration": [
+    0.27022546260000124,
+    0.2627761774999954
+   ],
+   "iterations": 10
+  },
+  "U|h2|n4": {
+   "wall_s_per_iteration": [
+    0.44364334760000473,
+    0.5433682621999992,
+    0.5226779633999967,
+    0.5504624960000001
+   ],
+   "iterations": 10
+  },
+  "S|h2|n1": {
+   "wall_s_per_iteration": [
+    4.7828888441
+   ],
+   "iterations": 10
+  },
+  "S|h2|n2": {
+   "wall_s_per_iteration": [
+    6.298951550300001,
+    6.035715422200008
+   ],
+   "iterations": 10
+  },
+  "S|h2|n4": {
+   "wall_s_per_iteration": [
+    9.560731170999997,
+    9.412095514899999,
+    8.4687090797,
+    9.43464527540001
+   ],
+   "iterations": 10
+  }
+ },
+ "generation_cpu_s": {
+  "train_0_cpu_s": 38.499113984000005,
+  "train_1_cpu_s": 35.16090385100001,
+  "validation_0_cpu_s": 33.229802061
+ },
+ "settings": {
+  "N_z": 512,
+  "N_c": 128,
+  "n_snap": 200,
+  "q": {
+   "d": 16
+  }
+ },
+ "commit": "fcc5f73a50f6272c9f859cbf1a9dc8b309e546d4",
+ "torch": "2.11.0+cpu",
+ "cpu_count": 4
+}

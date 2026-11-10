@@ -75,12 +75,35 @@ def training_budget(timing: dict, iterations: int, h: int, c_plus_l_hours: float
             "reductions": [{"step": s, "hours": v} for s, v in reductions]}
 
 
+def evaluation_hours(s_per_interval: float, rollouts: int = 120, cycles: int = 60, snaps: int = 200) -> float:
+    """compute_3B Section 2's evaluation line: about 120 projected-arm rollouts of a test set, 60 cycles of
+    200 snapshot intervals, at a measured cost per interval for the whole batch."""
+    return rollouts * cycles * snaps * s_per_interval / 3600
+
+
+def evaluation_hours_from(timing2: dict, h: int, batched: bool = True, batch: int = 48) -> float:
+    """From S's measured rollout step (time_arms --batch): one 48-trajectory batch, or 48 single rollouts."""
+    st = timing2["step_S"]
+    if batched:
+        return evaluation_hours(st[f"h{h}|b{batch}"]["wall_s_per_interval"])
+    return batch * evaluation_hours(st[f"h{h}|b1"]["wall_s_per_interval"])
+
+
+def session_throughput(timing2: dict, arm: str, n: int, h: int = 2) -> float:
+    """Runs per unit time of n one-thread jobs in one session, relative to one job alone."""
+    c = timing2["concurrent"]
+    alone = c[f"{arm}|h{h}|n1"]["wall_s_per_iteration"][0]
+    walls = c[f"{arm}|h{h}|n{n}"]["wall_s_per_iteration"]
+    return sum(alone / w for w in walls)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--timing", default=os.path.join(ROOT, "results", "timing_arms.json"))
     ap.add_argument("--iterations", type=int, default=8000)
     ap.add_argument("--h", type=int, default=2)
     ap.add_argument("--c-plus-l-hours", type=float, default=1.0)
+    ap.add_argument("--timing2", default=os.path.join(ROOT, "results", "timing_concurrency_batch.json"))
     a = ap.parse_args(argv)
     with open(a.timing) as f:
         timing = json.load(f)
@@ -92,6 +115,15 @@ def main(argv=None):
     print("reduction order, hours saved:")
     for r in b["reductions"]:
         print(f"  {r['step']}: {r['hours']:.1f}")
+    if os.path.exists(a.timing2):
+        with open(a.timing2) as f:
+            t2 = json.load(f)
+        if a.h in (1, 2):
+            print(f"evaluation (120 rollouts x 60 cycles), h = {a.h}: batched 48 {evaluation_hours_from(t2, a.h):.0f} h, "
+                  f"one trajectory at a time {evaluation_hours_from(t2, a.h, batched=False):.0f} h")
+        for arm in ("U", "S"):
+            print(f"session throughput, {arm}: 2 jobs {session_throughput(t2, arm, 2):.2f} x, "
+                  f"4 jobs {session_throughput(t2, arm, 4):.2f} x one job")
     return b
 
 

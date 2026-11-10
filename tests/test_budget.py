@@ -47,3 +47,17 @@ def test_reduction_order_savings_are_listed_in_the_preregistered_order():
     assert saved["degraded-data sensitivity"] == pytest.approx(9.0)
     assert saved["learning-curve sizes 16 and 128 to 2 seeds"] == pytest.approx(6.0)   # U, P, S x 2 sizes
     assert saved["System B S-L"] == pytest.approx(6.0)
+
+
+def test_evaluation_hours_from_the_batched_step_cost():
+    # 120 projected-arm rollouts of a 48-trajectory test set, 60 cycles x 200 snapshot intervals
+    assert budget.evaluation_hours(0.3) == pytest.approx(120 * 60 * 200 * 0.3 / 3600)
+    t2 = {"step_S": {"h2|b48": {"wall_s_per_interval": 0.18}, "h2|b1": {"wall_s_per_interval": 0.075}}}
+    assert budget.evaluation_hours_from(t2, h=2) == pytest.approx(budget.evaluation_hours(0.18))
+    assert budget.evaluation_hours_from(t2, h=2, batched=False) == pytest.approx(48 * budget.evaluation_hours(0.075))
+
+
+def test_session_throughput_from_the_concurrency_timing():
+    t2 = {"concurrent": {"S|h2|n1": {"wall_s_per_iteration": [4.0]},
+                         "S|h2|n4": {"wall_s_per_iteration": [8.0, 8.0, 8.0, 8.0]}}}
+    assert budget.session_throughput(t2, "S", 4) == pytest.approx(2.0)   # 4 jobs, each twice as slow
