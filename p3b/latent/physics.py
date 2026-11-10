@@ -78,6 +78,17 @@ class ColumnPhysics:
     def cell_entropy(self, ch):
         c, x, T = self.fields(ch)
         n, a, _ = self.conserved(c, x, T)
+        return self._cell_entropy(c, x, T, n, a)
+
+    def values(self, ch):
+        """E, N and S of the same channels with the isotherm evaluated once (the same operations as
+        E(ch), N(ch) and S(ch), so the same numbers bit for bit)."""
+        c, x, T = self.fields(ch)
+        n, a, u = self.conserved(c, x, T)
+        dz = self._dz(ch)
+        return {"E": u.sum(-1) * dz, "N": (n + a).sum(-1) * dz, "S": self._cell_entropy(c, x, T, n, a).sum(-1) * dz}
+
+    def _cell_entropy(self, c, x, T, n, a):
         q = a / self.A
         s_gas = n * (self.s_w(T) - R * torch.log(c / C_REF) + R)
         s_ads = q * self.s_w(T) - R * (q * torch.log(x / (self.b0 * C_REF)) - Pi_torch(self.iso, x))

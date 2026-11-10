@@ -85,8 +85,10 @@ class SDynamics(nn.Module):
         # bracket's symmetry, semidefiniteness and degeneracy are unchanged)
         A = (self.A_net(z).reshape(-1, self.d, self.d) / (self.time_scale * self.grad_scale) ** 0.5
              if self.metriplectic else None)
-        return structure_terms(B, t["dS"], G, A, targets, t["Phi_S"], self.kappa, self.rank_tol,
-                               self.metriplectic, self.port_projection)
+        out, info = structure_terms(B, t["dS"], G, A, targets, t["Phi_S"], self.kappa, self.rank_tol,
+                                    self.metriplectic, self.port_projection)
+        info["values"] = t                    # reused as the stage values of the projected step
+        return out, info
 
 
 class SLDynamics(nn.Module):
@@ -128,6 +130,7 @@ class SLDynamics(nn.Module):
                                    metriplectic=False)
         info["bracket_rank_deficient"] = info_m["rank_deficient"]
         info["metriplectic"] = M
+        info["values"] = t
         return M + Pi, info
 
 
@@ -137,13 +140,19 @@ def _physical_b(t, system):
     return t["dE"].unsqueeze(-1), t["P_E"].unsqueeze(-1)
 
 
-def projected_rk4_step(f, z, raw, h, lf, rank_tol: float = RANK_TOL, iters: int = 20, scale=None):
+def projected_rk4_step(f, z, raw, h, lf, rank_tol: float = RANK_TOL, iters: int = 20, scale=None,
+                       stage_values=None):
     """RK4, then the Gauss-Newton projection onto N^ = N^_prev + Q[P_N], E^ = E^_prev + Q[P_E]
     (formulation 5.4), with the port integrals taken on the same four RK4 stages. System B: E only.
     `scale` (batch, m): the physical scale of each balance (PREREG 5), default |target|. The step is
-    differentiable when gradients are enabled (see integrate.balance_project)."""
+    differentiable when gradients are enabled (see integrate.balance_project). `stage_values`: a
+    list that f fills with lf's values at each stage it evaluates (the structured arms do), reused
+    instead of evaluating the decoder again at the same four states."""
     z_new, stages = rk4_step(f, z, h)
-    vals = [lf.evaluate(s_, raw, grads=False) for s_ in stages]
+    if stage_values is not None and len(stage_values) == 4:
+        vals = stage_values
+    else:
+        vals = [lf.evaluate(s_, raw, grads=False) for s_ in stages]
     v0 = vals[0]
     names = ["E", "N"] if lf.system == "A" else ["E"]
     ports = {"E": "P_E", "N": "P_N"}
@@ -166,14 +175,15 @@ def projected_rk4_step(f, z, raw, h, lf, rank_tol: float = RANK_TOL, iters: int 
 def structured_step(dyn, z, feat, raw, h, rank_tol: float = RANK_TOL, iters: int = 20, scale=None):
     """One projected RK4 step of S, S-M, S-Pi or S-L, keeping the defect flags of all four stages
     (a flag counts if it is raised at any stage) and of the projection: the H3a counts."""
-    infos = []
+    infos, values = [], []
 
     def f(x):
         dz, info = dyn(x, feat, raw)
+        values.append(info.pop("values"))
         infos.append(info)
         return dz
 
-    z_new, pinfo = projected_rk4_step(f, z, raw, h, dyn.lf, rank_tol, iters, scale)
+    z_new, pinfo = projected_rk4_step(f, z, raw, h, dyn.lf, rank_tol, iters, scale, stage_values=values)
     out = {"rank_deficient": torch.stack([i["rank_deficient"] for i in infos]).any(0),
            "kappa_binds": torch.stack([i["kappa_binds"] for i in infos]).any(0),
            "residual_deficit": torch.stack([i["residual_deficit"].detach() for i in infos]).amax(0),

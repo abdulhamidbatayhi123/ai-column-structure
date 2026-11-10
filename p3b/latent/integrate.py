@@ -82,15 +82,17 @@ def balance_project(z, cons, target, iters: int = 20, rank_tol: float = RANK_TOL
     sc = torch.where(sc > 0, sc, torch.full_like(sc, 1e-300))
     zs = z.detach()
     deficient = torch.zeros(z.shape[0], dtype=torch.bool)
+    at_zs = None                                   # (c, J) already evaluated at the final zs
     for _ in range(iters):
         c, J = _jacobian(cons, zs)
         if bool(((c - td).abs() <= tol * sc).all()):
+            at_zs = (c, J)
             break
         Js, norms = row_scaled(J)
         deficient |= rank_deficient(Js, rank_tol)
         r = (c - td) / torch.where(norms[..., 0] > 0, norms[..., 0], torch.ones_like(norms[..., 0]))
         zs = zs - (torch.linalg.pinv(Js, rtol=rank_tol) @ r.unsqueeze(-1)).squeeze(-1)
-    c, J = _jacobian(cons, zs)
+    c, J = at_zs if at_zs is not None else _jacobian(cons, zs)
     rel = ((c - td).abs() / sc)
     info = {"residual": rel.amax(-1), "converged": (rel <= tol).all(-1), "rank_deficient": deficient}
     if not differentiable:

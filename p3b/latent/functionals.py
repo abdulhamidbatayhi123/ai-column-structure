@@ -23,11 +23,11 @@ class LatentFunctionals:
 
     def _values(self, z, raw):
         ch, out = self.split(self.std.decode(self.decode(z)))
-        v = {"E": self.phys.E(ch), "S": self.phys.S(ch)}
         if self.system == "A":
-            v["N"] = self.phys.N(ch)
+            v = self.phys.values(ch)
             v["P_N"], v["P_E"], v["Phi_S"] = self.phys.ports(ch, out, raw)
         else:
+            v = {"E": self.phys.E(ch), "S": self.phys.S(ch)}
             v["P_E"], v["Phi_S"] = self.phys.ports(ch, out, raw)
         return v
 
