@@ -66,7 +66,7 @@ def test_I2_violation_rate_does_not_shrink_with_more_steps(monkeypatch):
     from p3b.eval import rollout as ro
     val = _val()
     res = [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0]            # one violating interval of 6, the same at every k
-    monkeypatch.setattr(ro, "rollout", lambda arm, ds, j, n, k, track=False: _result(6, res))
+    monkeypatch.setattr(ro, "rollout_batch", lambda arm, ds, js, n, k, track=False: [_result(6, res) for _ in js])
     out = runs.h_check(_arm(), val, tau_S=1e-3, steps=(1, 2, 4), n_states=2)
     rates = {k: v["viol_rate"] for k, v in out["h"].items()}
     assert rates[1] == rates[2] == rates[4] == pytest.approx(1 / 6)
@@ -77,7 +77,7 @@ def test_I3_stiffness_uses_the_picked_snapshots_own_interval(monkeypatch):
     from p3b.eval import rollout as ro
     # the driest snapshot (index 0) sits before a long interval (30 s); the median interval is 10 s
     val = _val(n_traj=1, ns=6, dts=[30.0, 10.0, 10.0, 10.0, 10.0, 10.0])
-    monkeypatch.setattr(ro, "rollout", lambda arm, ds, j, n, k, track=False: _result(6, [0.0] * 6))
+    monkeypatch.setattr(ro, "rollout_batch", lambda arm, ds, js, n, k, track=False: [_result(6, [0.0] * 6) for _ in js])
     out = runs.h_check(_arm(rate=0.1), val, tau_S=1.0, steps=(1,), n_states=1)
     assert out["h"][1]["h_rho"] == pytest.approx(3.0, rel=1e-4)       # 30 s x rho 0.1, not 10 s x 0.1
     assert out["h"][1]["stiff_ok"] is False
@@ -91,7 +91,7 @@ def test_I4_defects_are_recorded_per_k_once_per_interval(monkeypatch):
         if k == 1:
             return _result(6, [0.0] * 6, failed=1)
         return _result(6, [0.0] * 6, flags={"any_defect": 3, "rank_deficient": 3, "kappa_binds": 3})
-    monkeypatch.setattr(ro, "rollout", fake)
+    monkeypatch.setattr(ro, "rollout_batch", lambda arm_, ds_, js, n_, k_, track=False, _f=fake: [_f(arm_, ds_, j, n_, k_, track) for j in js])
     out = runs.h_check(_arm(), _val(), tau_S=1.0, steps=(1, 2), n_states=2)
     d = out["defects_per_step"]
     assert set(d) == {1, 2}

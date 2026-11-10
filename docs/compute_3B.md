@@ -65,10 +65,11 @@ skipped, one thread:
   about 14 h, so it resumes across sessions from its checkpoints.
 - **h.** At h = 1, S's rollout fails at the start-up interval, as on the laptop; at h = 2 it does not.
 - **Batched evaluation.** S's rollout step for 48 trajectories at once takes 0.19 s per snapshot
-  interval at h = 2, against 0.075 s for one: 19 × the throughput. `p3b/eval/rollout.py` still advances
-  one trajectory at a time. It must batch the test set (PREREG Section 5 says the learned arms do)
-  before the confirmatory study: the evaluation line of Section 2 is 74 hours batched and about
-  1,440 hours unbatched at h = 2 (42 and 1,021 at h = 1).
+  interval at h = 2, against 0.075 s for one: 19 × the throughput. The evaluation and the pilot's
+  validation rollouts therefore batch 48 trajectories per tensor (`rollouts` and `rollout_batch` in
+  `p3b/eval/rollout.py`, 2026-11-10, as PREREG Section 5 says), each trajectory's result as if rolled out
+  alone (`tests/test_eval_rollout_batch.py`). The evaluation line of Section 2 is 74 hours batched,
+  against about 1,440 one trajectory at a time, at h = 2 (42 and 1,021 at h = 1).
 
 `scripts/budget.py` turns these into hours. Training at 8,000 iterations comes to **381 CPU-hours at
 h = 1 and 756 at h = 2** (one run alone on a session), against 298 budgeted in Section 2. The

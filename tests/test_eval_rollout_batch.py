@@ -177,3 +177,23 @@ def test_structured_step_per_sample_flags_do_not_depend_on_the_batch():
             for k, v in fb.items():
                 if v.dtype == torch.bool:
                     assert bool(v[r]) == bool(f1[k][0]), k
+
+
+def test_rollouts_batches_a_whole_set_in_chunks_and_the_pilot_uses_it(ds, monkeypatch):
+    from p3b.eval import rollout as ro
+    from p3b.pilot import runs
+    std = Standardiser.fit(ds.X, NC, 3, 2, features=ds.features)
+    arm = Arm("U", Smooth(ds.X.shape[-1], ds.features.shape[-1]), Identity(), std, None)
+    chunks = []
+    real = ro.rollout_batch
+
+    def spy(arm_, ds_, js, n, k, track=False):
+        chunks.append(list(js))
+        return real(arm_, ds_, js, n, k, track)
+    monkeypatch.setattr(ro, "rollout_batch", spy)
+    rs = ro.rollouts(arm, ds, n_cycles=1, h_steps=1, batch=2)
+    assert chunks == [[0, 1], [2]] and len(rs) == 3
+    monkeypatch.setattr(ro, "rollout", lambda *a, **k: (_ for _ in ()).throw(AssertionError("unbatched")))
+    chunks.clear()
+    loss = runs.validation_loss(arm, ds, h_steps=1)
+    assert loss == loss and chunks == [[0, 1, 2]]

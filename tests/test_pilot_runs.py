@@ -215,7 +215,7 @@ def test_h_check_makes_an_h_with_a_failed_rollout_inadmissible(pilot_dir, monkey
         return ro.RolloutResult(X=torch.full((1,), float("nan")), X_end=torch.full((1,), float("nan")),
                                 finite=torch.tensor([False]), failed_cycle=1, cpu_s=0.0,
                                 residuals={"S": torch.zeros(1)}, error="LinAlgError")
-    monkeypatch.setattr(ro, "rollout", failed)
+    monkeypatch.setattr(ro, "rollout_batch", lambda arm_, ds_, js, n_, k_, track=False, _f=failed: [_f(arm_, ds_, j, n_, k_, track) for j in js])
     out = runs.h_check(Arm("S", s, ae, std, lf), val, tau_S=1e-9, steps=(1, 2))
     assert all(v["viol_rate"] == 1.0 and v["failed"] == val.X.shape[0] for v in out["h"].values())
     assert choose_h_steps({k: v["viol_rate"] for k, v in out["h"].items()},

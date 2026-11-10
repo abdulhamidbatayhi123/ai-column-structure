@@ -133,10 +133,9 @@ def g2_from_data(lf, ae, std, ds, n: int = 256, seed: int = 0) -> list:
 def validation_loss(arm, val, h_steps: int, n_cycles: int = 1) -> float:
     """MSE of the decoded standardised channels over the first n_cycles of every validation
     trajectory (the training loss's metric on a rollout); NaN if any rollout failed."""
-    from p3b.eval.rollout import rollout
+    from p3b.eval import rollout as ro
     losses = []
-    for j in range(val.X.shape[0]):
-        r = rollout(arm, val, j, n_cycles, h_steps)
+    for j, r in enumerate(ro.rollouts(arm, val, n_cycles, h_steps)):
         if r.failed_cycle is not None:
             return float("nan")
         d = arm.std.encode(r.X) - arm.std.encode(val.X[j, :n_cycles])
@@ -247,8 +246,7 @@ def h_check(arm, val, tau_S: float, steps=(1, 2, 4), n_states: int = 8) -> dict:
     for k in steps:
         viol = total = n_failed = 0
         defects = []
-        for j in range(val.X.shape[0]):
-            r = ro.rollout(arm, val, j, val.X.shape[1], k, track=True)
+        for j, r in enumerate(ro.rollouts(arm, val, val.X.shape[1], k, track=True)):
             failed = r.failed_cycle is not None
             n_failed += int(failed)
             if "S" in r.residuals:

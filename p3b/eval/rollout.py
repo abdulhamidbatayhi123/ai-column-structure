@@ -180,3 +180,15 @@ def rollout_batch(arm, ds, js, n_cycles: int, h_steps: int, track: bool = False)
                                      {k: torch.tensor(v, dtype=torch.float64) for k, v in residuals[b].items()},
                                      error[b]))
     return results
+
+
+BATCH = 48                      # one test set (PREREG 2) per tensor
+
+
+def rollouts(arm, ds, n_cycles: int, h_steps: int, track: bool = False, batch: int = BATCH, js=None) -> list:
+    """Every trajectory of `ds` (or `js`), rolled out `batch` at a time with `rollout_batch`."""
+    js = list(range(ds.X.shape[0])) if js is None else list(js)
+    out = []
+    for a in range(0, len(js), batch):
+        out += rollout_batch(arm, ds, js[a:a + batch], n_cycles, h_steps, track)
+    return out

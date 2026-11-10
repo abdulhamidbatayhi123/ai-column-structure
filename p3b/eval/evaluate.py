@@ -15,7 +15,7 @@ import torch
 
 from p3b._paper1 import PAPER1_SHA256
 from p3b.eval.metrics import apply_failure, cycle_errors, relative_error, release
-from p3b.eval.rollout import rollout
+from p3b.eval import rollout as ro
 from p3b.eval.violations import FACTOR, normalisers, trapezoid_residuals
 from p3b.latent.metrics import field_nrmse
 from p3b.provenance import git_commit
@@ -33,8 +33,8 @@ def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: fl
     norm = normalisers(ds)
     ns = ds.X.shape[2]
     rows = []
-    for j in range(ds.X.shape[0]):
-        r = rollout(arm, ds, j, n_cycles, h_steps, track=arm.lf is not None)
+    results = ro.rollouts(arm, ds, n_cycles, h_steps, track=arm.lf is not None)   # batched (PREREG 5)
+    for j, r in enumerate(results):
         ref = ds.X[j, :n_cycles]
         pred = torch.where(torch.isfinite(r.X), r.X, ref)              # failed snapshots: capped below
         e = cycle_errors(pred, ref, phys, ds.n_cells)
