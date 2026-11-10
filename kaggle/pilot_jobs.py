@@ -23,9 +23,11 @@ def _name(piece: str, suffix: str) -> str:
     return "p3b-pilot-" + piece.lower().replace("_", "").replace("+", "p") + "-" + suffix
 
 
-def _job(piece: str, expect: str, suffix: str, depends_on=None) -> dict:
+def _job(piece: str, expect: str, suffix: str, depends_on=None, threads: int = 1) -> dict:
+    """One pilot piece per kernel, on one thread (Kaggle, results/timing_arms.json: 4 threads are no faster
+    for the arms' small tensors and slower for the structured ones); autoencoders keep 4 (batched MLPs)."""
     name = _name(piece, suffix)
-    job = {"name": name, "system": "pilot", "set": piece, "threads": 4,
+    job = {"name": name, "system": "pilot", "set": piece, "threads": threads,
            "commands": [["kaggle/pilot_chunk.py", "--piece", piece, "--out", "OUT"]], "expect": [expect]}
     if depends_on:
         job["depends_on"] = depends_on
@@ -34,7 +36,7 @@ def _job(piece: str, expect: str, suffix: str, depends_on=None) -> dict:
 
 def _ae(key: str, seed: int, suffix: str) -> dict:
     sys_, mat = KEYS[key]
-    return _job(f"ae-{key}-s{seed}", f"ae_{sys_}_{mat}_pilot_s{seed}.pt", suffix)
+    return _job(f"ae-{key}-s{seed}", f"ae_{sys_}_{mat}_pilot_s{seed}.pt", suffix, threads=4)
 
 
 def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> dict:

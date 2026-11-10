@@ -72,7 +72,7 @@ def test_phase_jobs_cover_every_piece_once():
         jobs = m.phase_jobs(ph)["jobs"]
         within = {j["name"] for j in jobs}
         assert all(d in within for j in jobs for d in j.get("depends_on", []))   # no dependency across phases
-        assert all(j["threads"] == 4 and j["expect"] for j in jobs)
+        assert all(j["threads"] == (4 if j["set"].startswith("ae-") else 1) and j["expect"] for j in jobs)
 
 
 def test_collect_ae_copies_the_pilot_autoencoders(tmp_path):

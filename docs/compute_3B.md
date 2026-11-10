@@ -88,6 +88,16 @@ Removing them leaves the arithmetic unchanged (forward results bit for bit, para
 2 × 10⁻¹⁶, `tests/test_s_speed_refactor.py`). On Kaggle it cut S's iteration by 32 to 33 % and the
 other structured arms' by 22 to 34 %.
 
+**Pilot layout (2026-11-10).** One piece per kernel on one thread (autoencoders on four). The longest
+piece is S-L's learning curve: 16,000 iterations at h = 1, about 9.2 hours at 2.08 s per iteration,
+plus 16 batched validations. Kaggle sessions end at 12 hours, so the margin is about 2.5 hours (one
+earlier measurement on another session ran 50 % slower).
+
+**Still open: resuming across sessions.** The trainer writes resumable checkpoints
+(`TrainConfig.checkpoint`), but nothing yet carries a checkpoint from a session that ends into the next
+kernel. Confirmatory runs at 4 per session (S about 14 hours at h = 2) need it, and so does any pilot
+piece that hits the limit.
+
 **Still open: the ceiling.** It is in CPU-equivalent hours and was set to bound cost. On Kaggle CPU,
 which is free, the binding constraint is wall time (5 sessions at once). Keeping it at 700,
 redefining it (for example in session-hours), or reducing the design is the author's decision at the

@@ -314,3 +314,16 @@ def test_wall_piece_also_times_one_thread_for_the_job_layout(monkeypatch, tmp_pa
     assert calls == [4, 1] and torch.get_num_threads() == 4
     assert all(v == 4.0 for v in obj["value"].values())
     assert all(v == 1.0 for v in obj["meta"]["used"]["timing_1_thread"].values())
+
+
+# ---- 2026-11-10: pilot kernels on one thread (Kaggle: 4 threads no faster; S-L's curve near 12 h on 4) ----
+def test_pilot_jobs_run_on_one_thread():
+    import importlib.util
+    import pathlib
+    spec = importlib.util.spec_from_file_location(
+        "pilot_jobs", pathlib.Path(__file__).resolve().parent.parent / "kaggle" / "pilot_jobs.py")
+    pj = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pj)
+    for phase in range(5):
+        for j in pj.phase_jobs(phase, {})["jobs"]:
+            assert j["threads"] == (4 if j["set"].startswith("ae-") else 1), j["name"]

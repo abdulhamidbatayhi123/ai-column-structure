@@ -327,7 +327,7 @@ def k_discrepancy(rows) -> float:
 def wall_per_iter(make_arms: dict, ds, iterations: int = 50, warmup: int = 5, h_steps: int = 1, lr: float = 1e-3,
                   seed: int = 0, n_windows: int = 8, n_steps: int = 20) -> dict:
     """{arm: training seconds per iteration} for a fresh arm per maker, timed after `warmup`
-    iterations, on the machine and threads the study trains on (Kaggle CPU, 4 threads). U and S set
+    iterations, on the machine and threads the study trains on (Kaggle CPU, one thread per run). U and S set
     U-long's iteration count (p3b.pilot.rules.iterations_ulong)."""
     import time
 
