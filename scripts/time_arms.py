@@ -7,13 +7,18 @@ skipped iterations, and S's seconds per rollout interval, each on 4 threads and 
 layout: one 4-thread job or four 1-thread jobs per session). It generates its own small data set
 (3 trajectories, 2 cycles); it reports costs only, never an error value.
 
-    python scripts/time_arms.py --out OUT/time_arms.json [--quick]
+    python scripts/time_arms.py --out OUT/time_arms.json [--quick] [--concurrency 1,2,4]
+
+With --concurrency, it instead runs n one-thread training processes of the same arm at once (U and S,
+h = 2) for each n, and reports each worker's seconds per iteration: four 1-thread jobs per session
+only pay if the session's cores do not slow each other.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -83,10 +88,97 @@ def time_arms(root: str, q: dict, arms, threads=(4, 1), steps=(1, 2), iterations
     return res
 
 
+def _worker(root, arm_name, k, out_dir, q, iterations, warmup, tag):
+    """One 1-thread training process; waits at a file barrier so that all n time the same window."""
+    torch.set_num_threads(1)
+    ds = load_set(pieces.files(root, KEY, "train"))
+    stage = {"d": {KEY: int(q.get("d", 16))}}
+    arm = pieces.make_arm(arm_name, KEY, 0, stage, ds, out_dir, q)
+    cfg = dict(lr=1e-3, seed=0, h_steps=k, n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20))
+    train(arm, ds, TrainConfig(iterations=warmup, **cfg))
+    open(os.path.join(out_dir, f"ready_{tag}"), "w").close()
+    while not os.path.exists(os.path.join(out_dir, "go")):
+        time.sleep(0.05)
+    w0 = time.perf_counter()
+    train(arm, ds, TrainConfig(iterations=iterations, **cfg))
+    with open(os.path.join(out_dir, f"result_{tag}.json"), "w") as f:
+        json.dump((time.perf_counter() - w0) / iterations, f)
+
+
+def time_concurrent(root, q, arms, ns, k=2, iterations=10, warmup=2):
+    out = {}
+    for arm_name in arms:
+        for n in ns:
+            out_dir = tempfile.mkdtemp()
+            stage = {"d": {KEY: int(q.get("d", 16))}}
+            pieces.piece_ae(root, KEY, 0, stage, out_dir, q)
+            args = [json.dumps([root, arm_name, k, out_dir, q, iterations, warmup])]
+            procs = [subprocess.Popen([sys.executable, os.path.abspath(__file__), "--worker", args[0], str(i)])
+                     for i in range(n)]
+            while not all(os.path.exists(os.path.join(out_dir, f"ready_{i}")) for i in range(n)):
+                if any(p.poll() not in (None, 0) for p in procs):
+                    raise RuntimeError(f"concurrency worker failed: {arm_name} n{n}")
+                time.sleep(0.05)
+            open(os.path.join(out_dir, "go"), "w").close()
+            if any(p.wait() != 0 for p in procs):
+                raise RuntimeError(f"concurrency worker failed: {arm_name} n{n}")
+            walls = [json.load(open(os.path.join(out_dir, f"result_{i}.json"))) for i in range(n)]
+            out[f"{arm_name}|h{k}|n{n}"] = {"wall_s_per_iteration": walls, "iterations": iterations}
+            print(f"timed {arm_name} h{k} n{n}: {[round(w, 3) for w in walls]}", flush=True)
+    return out
+
+
+def time_batched(root, q, bs, steps=(1, 2), intervals: int = 20, arm_name: str = "S"):
+    """S's rollout step without gradients on one thread, the validation trajectory repeated b times:
+    seconds per snapshot interval for the whole batch (evaluation rolls out a test set at once)."""
+    torch.set_num_threads(1)
+    ds = load_set(pieces.files(root, KEY, "train"))
+    val = load_set(pieces.files(root, KEY, "validation"))
+    out_dir = tempfile.mkdtemp()
+    stage = {"d": {KEY: int(q.get("d", 16))}}
+    pieces.piece_ae(root, KEY, 0, stage, out_dir, q)
+    arm = pieces.make_arm(arm_name, KEY, 0, stage, ds, out_dir, q)
+    std = arm.std
+    ns = val.X.shape[2]
+    i0 = min(10, ns // 4)                        # past the start-up interval, where S at h = 1 fails
+    n = min(intervals, ns - 1 - i0)
+    F = std.encode_features(val.features[0, 0])
+    R, t = val.raw_inputs[0, 0], val.t[0, 0]
+    res = {}
+    with torch.no_grad():
+        z0 = arm.ae.encode(std.encode(val.X[0, 0, i0])[None])
+        for k in steps:
+            for b in bs:
+                z, done, failed = z0.expand(b, -1).clone(), 0, None
+                w0 = time.perf_counter()
+                for i in range(i0, i0 + n):
+                    dt = (t[i + 1:i + 2] - t[i:i + 1]).expand(b)[:, None]
+                    try:
+                        z, _ = arm.step(z, F[i:i + 1].expand(b, -1), R[i:i + 1].expand(b, -1), dt, k)
+                    except torch.linalg.LinAlgError:
+                        failed = i
+                        break
+                    if not bool(torch.isfinite(z).all()):
+                        failed = i
+                        break
+                    done += 1
+                wall = time.perf_counter() - w0
+                res[f"h{k}|b{b}"] = {"wall_s_per_interval": wall / done if done else float("nan"),
+                                     "intervals": done, "first_interval": i0, "failed_at": failed, "threads": 1}
+                print(f"timed {arm_name} step h{k} b{b}: {done} intervals, failed at {failed}", flush=True)
+    return res
+
+
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["--worker"]:
+        root, arm_name, k, out_dir, q, iterations, warmup = json.loads(argv[1])
+        return _worker(root, arm_name, k, out_dir, q, iterations, warmup, argv[2])
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--quick", action="store_true", help="tiny settings for tests only")
+    ap.add_argument("--concurrency", default=None, help="comma-separated worker counts, e.g. 1,2,4")
+    ap.add_argument("--batch", default=None, help="comma-separated batch sizes for S's rollout step, e.g. 1,48")
     a = ap.parse_args(argv)
     if a.quick:
         n_z, n_c, n_snap, q, arms, its = 32, 8, 40, {"d": 4, "ae_epochs": 1, "ae_width": 8, "width": 8, "n_windows": 1,
@@ -95,7 +187,15 @@ def main(argv=None):
         n_z, n_c, n_snap, q, arms, its = 512, 128, 200, {"d": 16}, pieces.LATENT_ARMS, 10
     data = tempfile.mkdtemp()
     gen = make_data(data, n_z, n_c, n_snap)
-    res = time_arms(data, q, arms, iterations=its, warmup=1 if a.quick else 2)
+    if a.concurrency or a.batch:
+        res = {}
+        if a.batch:
+            res["step_S"] = time_batched(data, q, [int(b) for b in a.batch.split(",")])
+        if a.concurrency:
+            ns = [int(n) for n in a.concurrency.split(",")]
+            res["concurrent"] = time_concurrent(data, q, ("U", "S"), ns, iterations=its, warmup=1 if a.quick else 2)
+    else:
+        res = time_arms(data, q, arms, iterations=its, warmup=1 if a.quick else 2)
     res.update({"generation_cpu_s": gen, "settings": {"N_z": n_z, "N_c": n_c, "n_snap": n_snap, "q": q},
                 "commit": open(os.path.join(ROOT, "kit_commit.txt")).read().strip()
                 if os.path.exists(os.path.join(ROOT, "kit_commit.txt")) else git_commit(),

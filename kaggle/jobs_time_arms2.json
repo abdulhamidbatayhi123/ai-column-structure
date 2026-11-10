@@ -1,0 +1,10 @@
+{
+ "kit_slug": "abdulhamidbatayhi/p3b-reference-kit",
+ "nz": 0,
+ "jobs": [
+  {"name": "p3b-time-arms2",
+   "threads": 4,
+   "commands": [["scripts/time_arms.py", "--out", "OUT/time_arms2.json", "--concurrency", "1,2,4", "--batch", "1,48"]],
+   "expect": ["time_arms2.json"]}
+ ]
+}
