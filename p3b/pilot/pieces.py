@@ -176,11 +176,14 @@ def _kappa(key, seed, stage, ds, out, q, used=None):
 
 def make_arm(arm: str, key: str, seed: int, stage: dict, ds, out, q: dict | None = None, used: dict | None = None):
     """A fresh pilot arm built exactly as the study builds its cells (p3b.train.cells._build): matched
-    widths, the shared autoencoder of (key, seed), S's kappa from the encoded pilot data. The
+    widths, the shared autoencoder of (key, seed), S's kappa from the encoded pilot data and seed 0's
+    autoencoder (one kappa per key, as in the study). The
     autoencoder's SHA-256 goes into `used`."""
     from p3b.train.cells import _build
     q = q or {}
-    kappa = _kappa(key, seed, stage, ds, out, q)[0] if arm in STRUCTURED else None
+    # one kappa per key, from seed 0's autoencoder, for every seed: the study's cells use pilot_values'
+    # single kappa per key (p3b.train.cells), so the pilot's two-seed runs must too (M7)
+    kappa = _kappa(key, 0, stage, ds, out, q, used)[0] if arm in STRUCTURED else None
     built, _, _, meta = _build(_cell(arm, key, seed), _pilot(stage, key, kappa), {**q, "require_ae": True}, ds,
                                str(out))
     if used is not None and meta.get("autoencoder"):

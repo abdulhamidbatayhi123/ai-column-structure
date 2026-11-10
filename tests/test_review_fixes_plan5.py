@@ -327,3 +327,17 @@ def test_pilot_jobs_run_on_one_thread():
     for phase in range(5):
         for j in pj.phase_jobs(phase, {})["jobs"]:
             assert j["threads"] == (4 if j["set"].startswith("ae-") else 1), j["name"]
+
+
+# ---- M7 (2026-11-10): pilot arms of every seed use the seed-0 kappa, as the study's cells do -------------
+def test_M7_make_arm_takes_kappa_from_seed_0_whatever_the_arm_seed(monkeypatch):
+    from p3b.pilot import pieces
+    seen = []
+
+    def fake_kappa(key, seed, stage, ds, out, q, used=None):
+        seen.append(seed)
+        raise RuntimeError("stop after kappa")
+    monkeypatch.setattr(pieces, "_kappa", fake_kappa)
+    with pytest.raises(RuntimeError, match="stop after kappa"):
+        pieces.make_arm("S", pieces.PRIMARY_KEY, 1, {"d": {pieces.PRIMARY_KEY: 4}}, None, "out", {})
+    assert seen == [0]
