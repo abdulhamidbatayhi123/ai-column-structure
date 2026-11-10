@@ -39,16 +39,46 @@ of each training box (Task 10, `results/timing_reference.json`):
 | the Paper 1 limit at 2048 cells | c 1.8e-9, q 8.9e-9, T 1.8e-7 K, all within their bounds | `verify/results_v1_2048.json` |
 | structured-arm block of 2560 dynamics evaluations | 4.6 s (unstructured 0.42 s), laptop CPU, 4 threads | 2026-10-12 benchmark |
 
-**Open: the structured arms' training cost (2026-11-09).** On the laptop, under load from other
-sessions, at 128 stored cells, 200 snapshots per cycle and d = 16, 10 training iterations of 8
-windows × 20 steps took 0.47 CPU-s per iteration for U and 10.5 for S at h = 1 step per snapshot
-interval (20.5 at h = 2), so S cost about 22 × U against the 14 × the budget of Section 2 assumes.
-The absolute values are not trustworthy: on the same machine an exponential of 3,000 values took
-180 µs on one thread and 720 µs on four. The pilot's timing piece measures every arm on Kaggle at 4
-threads and at 1 thread; Section 2 is then replaced by measured values, the job layout (one 4-thread
-job or four 1-thread jobs per session) is chosen from them, and the ceiling's reduction order applies
-if the total exceeds 700 hours. A run longer than a Kaggle session (12 h) needs resuming across
-sessions before phase 2 of the pilot.
+**The arms' training cost, measured on Kaggle (2026-11-10, kernel p3b-time-arms, kit 9940214,
+`results/timing_arms.json`).** At 128 stored cells, 200 snapshots per cycle and d = 16, seconds
+per training iteration (8 windows × 20 snapshot intervals), 10 timed iterations, none skipped:
+
+| arm | 1 thread, h = 1 | 1 thread, h = 2 | 4 threads, h = 1 | × U (1 thread, h = 1) |
+|---|---|---|---|---|
+| U | 0.086 | 0.151 | 0.091 | 1 |
+| U+F | 1.40 | 2.99 | 1.67 | 16 |
+| P | 0.54 | 1.11 | 0.67 | 6 |
+| S | 2.32 | 4.69 | 2.77 | 27 |
+| S-L | 2.67 | 5.65 | 3.28 | 31 |
+| S−M | 2.19 | 4.53 | 2.87 | 25 |
+| S−Π | 2.44 | 5.07 | 3.04 | 28 |
+| FNO | 0.35 | 0.36 | 0.35 | 4 |
+
+Four threads are no faster than one (the tensors are small), so runs use one thread each. At
+h = 1, S's rollout fails at the start-up interval, as on the laptop; at h = 2 it does not
+(0.088 s per snapshot interval, one trajectory, one thread).
+
+`scripts/budget.py` turns these into the training budget: at 8,000 iterations, **521 CPU-hours
+at h = 1 and 1,065 at h = 2**, against 298 budgeted in Section 2 (S 5.2 and 10.4 h per run
+against 3.25; S-L 5.9 and 12.6 against 1.5). With the evaluation scaled alike, the total exceeds
+the 700-hour ceiling at either h, and at h = 2 even after the whole reduction order of Section 3
+(which saves about 294 hours of training there).
+
+**The speed-up (commit 638d3bc).** A profile of S's iteration showed three repeated computations:
+the isotherm evaluated separately for E^, N^ and S^; the projected step re-decoding the four RK4
+stages that the dynamics had just evaluated; and a second Jacobian at the point where the
+projection had converged. Removing them leaves the arithmetic unchanged (forward results bit for
+bit, parameter gradients to 2 × 10⁻¹⁶, `tests/test_s_speed_refactor.py`) and cut S's profiled
+time by about 30 % on the laptop. Kernel p3b-time-arms3 (kit fcc5f73) re-measures every arm after
+it, and measures two things the budget still needs: whether four one-thread runs in one session
+slow each other, and S's rollout step for a 48-trajectory batch (`rollout` currently advances one
+trajectory at a time).
+
+**Still open.** The ceiling is in CPU-equivalent hours. On Kaggle CPU, which is free, the binding
+constraint is wall time (5 sessions at once); the ceiling was set to bound cost. Whether to keep it
+at 700, redefine it, or reduce the design is the author's decision at the freeze, from the
+re-measured costs and the pilot's iteration count and h. A run longer than a Kaggle session
+(12 h) needs resuming across sessions before phase 2 of the pilot.
 
 **The stall and its fix.** scipy's BDF estimates the Jacobian by finite differences. On the steep
 MOF-303 isotherm that estimate failed as the front crossed the isotherm step, so the solver
