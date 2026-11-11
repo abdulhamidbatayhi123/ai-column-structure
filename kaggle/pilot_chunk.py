@@ -36,7 +36,7 @@ def run_piece(name: str, data: str, stage: dict, out: str, q: dict, deadline=Non
         key, _, seed = rest.rpartition("-s")
         return pieces.piece_ae(data, key, int(seed), stage, out, q)
     if kind == "lr":
-        return pieces.piece_lr(ARMS[rest], data, stage, out, q)
+        return pieces.piece_lr(ARMS[rest], data, stage, out, q, deadline=deadline, resume_from=resume_from)
     if kind == "curve":
         return pieces.piece_curve(ARMS[rest], data, stage, out, q, deadline=deadline, resume_from=resume_from)
     if kind == "s":
@@ -59,7 +59,7 @@ def main(argv=None):
     ap.add_argument("--stage", default=os.path.join(ROOT, "results", "pilot_stage.json"))
     ap.add_argument("--quick", default=None, help="JSON overrides for tests on tiny data only")
     ap.add_argument("--hours", type=float, default=11.0,
-                    help="a resumable piece (curve-CpL) checkpoints after so many hours (Kaggle sessions end at 12)")
+                    help="resumable pieces (lr-*, curve-*) checkpoint after so many hours (Kaggle sessions end at 12)")
     ap.add_argument("--resume-from", default=None, help="an earlier session's output (Kaggle kernel input)")
     a = ap.parse_args(argv)
     import time

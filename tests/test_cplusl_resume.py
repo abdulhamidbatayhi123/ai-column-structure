@@ -174,3 +174,25 @@ def test_a_cplusl_cell_resumed_across_sessions_equals_the_cell_in_one_go(study, 
     got = json.loads(res.read_text())
     assert got["meta"]["weights"]["sha256"] == straight["meta"]["weights"]["sha256"]
     assert got["meta"]["resumed_from"] == 2
+
+
+def test_the_cplusl_lr_piece_resumes_across_sessions(pilot_root, tmp_path):
+    import json
+    import time
+    from p3b.pilot import pieces
+    q = {**Q, "lr_grid": (3e-4, 1e-3), "lr_iterations": 2}
+    straight = pieces.piece_lr("C+L", pilot_root, STAGE, tmp_path / "straight", q)
+    prev, sessions = None, 0
+    while True:
+        out = tmp_path / f"s{sessions}"
+        res = pieces.piece_lr("C+L", pilot_root, STAGE, out, q, deadline=time.monotonic() - 1,
+                              resume_from=str(prev) if prev else None)
+        sessions += 1
+        if os.path.basename(res) != "RESUME.json":
+            break
+        assert json.loads(open(res).read())["piece"] == "lr-CpL"
+        prev = out
+    assert sessions == 3
+    a, b = json.load(open(straight))["value"], json.load(open(res))["value"]
+    assert set(a) == set(b) and np.array_equal(np.array([a[k] for k in sorted(a)]), np.array([b[k] for k in sorted(b)]),
+                                               equal_nan=True)

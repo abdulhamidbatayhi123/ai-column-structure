@@ -144,27 +144,35 @@ def validation_loss(arm, val, h_steps: int, n_cycles: int = 1) -> float:
 
 
 def train_curve(arm, ds, val, lr: float, iterations: int, every: int, h_steps: int, seed: int,
-                n_windows: int = 8, n_steps: int = 20) -> list:
+                n_windows: int = 8, n_steps: int = 20, checkpoint: str | None = None,
+                deadline: float | None = None, state: dict | None = None):
     """Train with one cosine schedule over `iterations`, pausing every `every` iterations (a
     checkpoint) to record the pooled validation loss: [(iteration, loss), ...]. A checkpoint after more
     than SKIP_LIMIT of the iterations so far were skipped (diverged windows leave a barely trained,
-    finite model) records NaN: not finished (plan 5 review I5)."""
+    finite model) records NaN: not finished (plan 5 review I5).
+
+    Sessions: with `checkpoint` (a persistent file) and `deadline`, a session that runs out of time
+    stops inside a stretch and returns {"stopped_at", "state"}; called again with that state (and the
+    checkpoint) it continues, and the curve equals the one done in one go."""
     import tempfile
 
     from p3b.train import trainer
-    curve = []
+    st = state or {}
+    curve = [tuple(x) for x in st.get("curve", [])]
+    pos = int(st.get("it", 0))                          # iterations held by the checkpoint
     with tempfile.TemporaryDirectory() as tmp:
-        ck = os.path.join(tmp, "ck.pt")
-        done = 0
-        while done < iterations:
-            step = min(every, iterations - done)
+        ck = checkpoint or os.path.join(tmp, "ck.pt")
+        while pos < iterations:
+            target = min((pos // every + 1) * every, iterations)
             hist = trainer.train(arm, ds, trainer.TrainConfig(lr=lr, iterations=iterations, seed=seed,
                                                               h_steps=h_steps, n_windows=n_windows,
                                                               n_steps=n_steps, checkpoint=ck, every=every,
-                                                              stop_after=step))
-            done += step
-            loss = float("nan") if too_many_skipped(hist, done) else validation_loss(arm, val, h_steps)
-            curve.append((done, loss))
+                                                              stop_after=target - pos, deadline=deadline))
+            if hist.get("stopped_at", target) < target:  # the deadline fell inside this stretch
+                return {"stopped_at": hist["stopped_at"], "state": {"curve": curve, "it": hist["stopped_at"]}}
+            pos = target
+            loss = float("nan") if too_many_skipped(hist, pos) else validation_loss(arm, val, h_steps)
+            curve.append((pos, loss))
     return curve
 
 
@@ -176,10 +184,33 @@ def too_many_skipped(hist: dict, iterations: int) -> bool:
 
 
 def lr_sweep(make_arm, ds, val, rates=(3e-4, 1e-3, 3e-3), iterations: int = 2000, h_steps: int = 1, seed: int = 0,
-             n_windows: int = 8, n_steps: int = 20) -> dict:
-    """{lr: validation rollout loss over one cycle after `iterations`} for a fresh arm per rate."""
-    return {lr: train_curve(make_arm(), ds, val, lr, iterations, iterations, h_steps, seed,
-                            n_windows, n_steps)[-1][1] for lr in rates}
+             n_windows: int = 8, n_steps: int = 20, checkpoint_dir: str | None = None,
+             deadline: float | None = None, state: dict | None = None) -> dict:
+    """{lr: validation rollout loss over one cycle after `iterations`} for a fresh arm per rate. With
+    `checkpoint_dir` and `deadline` it spans sessions like train_curve (one checkpoint per rate)."""
+    def one(lr, deadline, inner):
+        ck = os.path.join(checkpoint_dir, f"lr_{lr:g}_ckpt.pt") if checkpoint_dir else None
+        return train_curve(make_arm(), ds, val, lr, iterations, iterations, h_steps, seed, n_windows, n_steps,
+                           checkpoint=ck, deadline=deadline, state=inner)
+    return _sweep(rates, one, deadline, state)
+
+
+def _sweep(rates, one, deadline, state):
+    """The rates one after another; a session that stops returns {"stopped_at", "state"} with the
+    finished rates' losses and the running rate's own state."""
+    st = state or {}
+    done = {float(k): v for k, v in st.get("done", {}).items()}
+    for lr in rates:
+        if float(lr) in done:
+            continue
+        inner = st.get("inner") if st.get("current") == float(lr) else None
+        out = one(lr, deadline, inner)
+        if isinstance(out, dict):
+            return {"stopped_at": out["stopped_at"],
+                    "state": {"done": {str(k): v for k, v in done.items()}, "current": float(lr),
+                              "inner": out.get("state", out)}}
+        done[float(lr)] = out[-1][1]
+    return {lr: done[float(lr)] for lr in rates}
 
 
 # ---- Task 3: the step size h, S's defects ------------------------------------------------------------
@@ -453,7 +484,12 @@ def cplusl_curve(ds, val, material: str, lr: float, iterations: int, every: int,
 
 
 def cplusl_lr_sweep(ds, val, material: str, K: int, rates=(3e-4, 1e-3, 3e-3), iterations: int = 2000, seed: int = 0,
-                    n_coarse: int = 32, n_windows: int = 8, n_steps: int = 20) -> dict:
-    """{lr: C+L's validation loss after `iterations`} for fresh multipliers per rate."""
-    return {lr: cplusl_curve(ds, val, material, lr, iterations, iterations, K, seed, n_coarse, n_windows,
-                             n_steps)[-1][1] for lr in rates}
+                    n_coarse: int = 32, n_windows: int = 8, n_steps: int = 20, checkpoint_dir: str | None = None,
+                    deadline: float | None = None, state: dict | None = None) -> dict:
+    """{lr: C+L's validation loss after `iterations`} for fresh multipliers per rate; with
+    `checkpoint_dir` and `deadline` it spans sessions (the running rate's state is in its checkpoint)."""
+    def one(lr, deadline, inner):
+        ck = os.path.join(checkpoint_dir, f"lr_CpL_{lr:g}_ckpt.pt") if checkpoint_dir else None
+        return cplusl_curve(ds, val, material, lr, iterations, iterations, K, seed, n_coarse, n_windows, n_steps,
+                            checkpoint=ck, deadline=deadline)
+    return _sweep(rates, one, deadline, state)

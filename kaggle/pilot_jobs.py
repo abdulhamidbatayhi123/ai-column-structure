@@ -52,8 +52,6 @@ def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> di
                        for a in LR_ARMS]
     elif phase == 2:
         jobs += [_job(f"curve-{_tag(a)}", f"curve_{_tag(a)}.json", x) for a in LR_ARMS]
-        for j in jobs:                    # C+L's 16,000-iteration curve (~18 h) spans sessions (run_queue continuation)
-            j["resumable"] = j["set"] == "curve-CpL"
     elif phase == 3:
         jobs += [_job(f"s-{k}", f"s_{k}.json", x) for k in KEYS] + [_job("wall", "wall_per_iter.json", x)]
     elif phase == 4:
@@ -61,6 +59,8 @@ def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> di
         jobs += [_job(f"pcq-s{s}", f"rows_Uq_s{s}.json", x) for s in TWO_SEEDS]
     else:
         raise ValueError(f"phase {phase}")
+    for j in jobs:          # the sweeps span sessions (structured arms at the pilot d, C+L): run_queue continues them
+        j["resumable"] = j["set"].startswith(("lr-", "curve-"))
     return {"kit_slug": kit_slug, "nz": 0, "jobs": jobs}
 
 

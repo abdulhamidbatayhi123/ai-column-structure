@@ -126,8 +126,9 @@ def test_I5_cplusl_curve_marks_a_mostly_skipped_run_unfinished(monkeypatch):
     from p3b.train import cplusl
 
     def fake_train(mult, ds, material, n_coarse, lr, iterations, seed, every=0, callback=None, **kw):
-        callback(10, mult, {"skipped": 3, "skipped_grad": 0})
-        return {}
+        hist = {"skipped": 3, "skipped_grad": 0}          # train_cplusl calls back with the history it returns
+        callback(10, mult, hist)
+        return hist
     monkeypatch.setattr(cplusl, "train_cplusl", fake_train)
     monkeypatch.setattr(cplusl, "cplusl_val_loss", lambda *a, **k: 0.5)
     curve = runs.cplusl_curve(None, None, "MOF-303", lr=1e-3, iterations=10, every=10, K=1, seed=0)

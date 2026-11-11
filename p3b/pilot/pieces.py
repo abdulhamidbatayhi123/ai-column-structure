@@ -213,18 +213,54 @@ def _primary(data_root):
 
 
 # ---- phase 1 and 2 ---------------------------------------------------------------------------------------
-def piece_lr(arm: str, data_root, stage: dict, out, q: dict | None = None) -> str:
+def _session_in(resume_from, out, prefix: str):
+    """A resumed piece's state (None for a first session): its <prefix>_state.json and <prefix>*_ckpt.pt
+    files are copied from the earlier session's output (searched recursively, as Kaggle mounts it)."""
+    import shutil
+    os.makedirs(str(out), exist_ok=True)
+    if not resume_from:
+        return None
+    states = glob.glob(os.path.join(str(resume_from), "**", f"{prefix}_state.json"), recursive=True)
+    if len(states) != 1:
+        raise FileNotFoundError(f"{len(states)} {prefix}_state.json under {resume_from} (expected one)")
+    for p in glob.glob(os.path.join(os.path.dirname(states[0]), f"{prefix}*_ckpt.pt")):
+        shutil.copy(p, os.path.join(str(out), os.path.basename(p)))
+    with open(states[0]) as f:
+        return json.load(f)
+
+
+def _session_out(out, prefix: str, piece: str, res: dict, stage: dict) -> str:
+    """A session that ran out of time: its state and RESUME.json (run_queue continues the job)."""
+    with open(os.path.join(str(out), f"{prefix}_state.json"), "w") as f:
+        json.dump(res["state"], f)
+    path = os.path.join(str(out), "RESUME.json")
+    with open(path, "w") as f:
+        json.dump({"piece": piece, "stopped_at": res["stopped_at"], "state": f"{prefix}_state.json",
+                   "stage_sha256": stage_sha(stage)}, f, indent=1)
+    return path
+
+
+def piece_lr(arm: str, data_root, stage: dict, out, q: dict | None = None, deadline: float | None = None,
+             resume_from: str | None = None) -> str:
+    """The learning-rate sweep; it spans Kaggle sessions (RESUME.json past `deadline`, continued from
+    `resume_from`), the result equal to one done in a single session."""
     q = q or {}
     ds, val, used = _primary(data_root)
     rates = q.get("lr_grid", (3e-4, 1e-3, 3e-3))
     its = q.get("lr_iterations", LR_ITERATIONS)
     nw, ns = q.get("n_windows", 8), q.get("n_steps", 20)
+    prefix = f"lr_{_tag(arm)}"
+    state = _session_in(resume_from, out, prefix)
     if arm == "C+L":
         res = runs.cplusl_lr_sweep(ds, val, KEYS[PRIMARY_KEY][1], int(stage["K"][PRIMARY_KEY]), rates, its,
-                                   n_coarse=q.get("n_coarse", 32), n_windows=nw, n_steps=ns)
+                                   n_coarse=q.get("n_coarse", 32), n_windows=nw, n_steps=ns,
+                                   checkpoint_dir=str(out), deadline=deadline, state=state)
     else:
         res = runs.lr_sweep(lambda: make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, rates, its,
-                            h_steps=1, seed=0, n_windows=nw, n_steps=ns)
+                            h_steps=1, seed=0, n_windows=nw, n_steps=ns, checkpoint_dir=str(out),
+                            deadline=deadline, state=state)
+    if "stopped_at" in res:
+        return _session_out(out, prefix, f"lr-{_tag(arm)}", res, stage)
     return _write(out, f"lr_{_tag(arm)}.json", {str(k): v for k, v in res.items()}, stage, q, used, seeds=[0])
 
 
@@ -263,8 +299,13 @@ def piece_curve(arm: str, data_root, stage: dict, out, q: dict | None = None, de
                            "checkpoint": ckpt, "stage_sha256": stage_sha(stage)}, f, indent=1)
             return path
     else:
+        prefix = f"curve_{_tag(arm)}"
+        state = _session_in(resume_from, out, prefix)
         curve = runs.train_curve(make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, lr, its, every,
-                                 1, 0, nw, ns)
+                                 1, 0, nw, ns, checkpoint=os.path.join(str(out), f"{prefix}_ckpt.pt"),
+                                 deadline=deadline, state=state)
+        if isinstance(curve, dict):
+            return _session_out(out, prefix, f"curve-{_tag(arm)}", curve, stage)
     return _write(out, f"curve_{_tag(arm)}.json", [list(x) for x in curve], stage, q, used, seeds=[0])
 
 

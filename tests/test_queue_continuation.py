@@ -81,9 +81,10 @@ def test_the_cplusl_curve_and_the_study_cells_are_resumable_jobs():
     import importlib
     pj = importlib.import_module("pilot_jobs")
     phase2 = {j["name"]: j for j in pj.phase_jobs(2)["jobs"]}
-    curve = [j for n, j in phase2.items() if "curve-cpl" in n]
-    assert curve and all(j.get("resumable") for j in curve)
-    assert not any(j.get("resumable") for n, j in phase2.items() if "curve-cpl" not in n)
+    assert phase2 and all(j.get("resumable") for j in phase2.values())        # every curve
+    phase1 = {j["name"]: j for j in pj.phase_jobs(1)["jobs"]}
+    assert all(j.get("resumable") for n, j in phase1.items() if "-lr-" in n)    # every lr sweep
+    assert not any(j.get("resumable") for n, j in phase1.items() if "-ae-" in n)
     tj = importlib.import_module("train_jobs")
     from p3b.train.cells import cells
     jobs = tj.build_jobs(cells())["jobs"]
