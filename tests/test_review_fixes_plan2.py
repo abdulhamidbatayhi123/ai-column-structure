@@ -306,3 +306,65 @@ def test_decoder_gate_uses_physical_fields(tmp_path):
 
     g = decoder_gate(LogCOff(), ds, std, phys)
     assert g["field_nrmse_channels"] < 0.02 < g["field_nrmse"] and not g["passed"]
+
+
+def test_step_jacobian_equals_the_dense_jacobian_inside_no_grad():
+    # Newton forms its Jacobian under no_grad; the vectorised reverse-mode one is 4x cheaper than the
+    # coloured forward-mode one on CPU (torch.func.vmap over jvp falls back to Python decompositions)
+    from p3b.solvers.c_plus_l import step_jacobian
+    torch.manual_seed(6)
+    col, sched, y0 = _state_a()
+    m = Multipliers(n_out=3)
+    for net in m.nets:
+        net[-1].weight.data.normal_(0, 1.0)
+    rhs = TorchColumnRHS(col, m)
+    inp = torch.tensor(sched[0][2], dtype=F64)
+    dense = torch.autograd.functional.jacobian(lambda x: rhs(x, inp), y0)
+    with torch.no_grad():
+        J = step_jacobian(lambda x: rhs(x, inp), y0)
+    assert not J.requires_grad
+    assert torch.allclose(J, dense, rtol=1e-12, atol=1e-12 * float(dense.abs().max()))
+
+
+def _rollout(rhs, y, inp, h, n, **kw):
+    ys = []
+    for _ in range(n):
+        y = implicit_euler_step(rhs, y, inp, h, **kw)
+        ys.append(y)
+    return torch.stack(ys)
+
+
+def test_modified_newton_matches_full_newton_with_fewer_jacobians(monkeypatch):
+    # the Jacobian is reused while the residual contracts fast and refreshed when it does not; with no
+    # gradient needed the converged point's Jacobian is not formed. The answer is the same to Newton's tol.
+    import p3b.solvers.c_plus_l as m
+    col, sched, y0 = _state_a()
+    rhs = TorchColumnRHS(col, Multipliers(n_out=3, constant=1.0))
+    inp, h = torch.tensor(sched[0][2], dtype=F64), sched[0][1] / 100
+    calls = {"n": 0}
+    real = m.batch_jacobian
+
+    def counted(f, y):
+        calls["n"] += 1
+        return real(f, y)
+    monkeypatch.setattr(m, "batch_jacobian", counted)
+    with torch.no_grad():
+        full = _rollout(rhs, y0, inp, h, 10, chord=False)
+        n_full, calls["n"] = calls["n"], 0
+        fast = _rollout(rhs, y0, inp, h, 10)
+    sc = full.reshape(10, 3, 32).abs().amax((0, 2), keepdim=True)
+    assert float(((fast - full).reshape(10, 3, 32).abs() / sc).max()) < 1e-9
+    assert 0 < calls["n"] <= n_full / 2
+
+
+def test_modified_newton_keeps_the_implicit_function_gradient():
+    col, sched, y0 = _state_a()
+    m = Multipliers(n_out=3)
+    rhs = TorchColumnRHS(col, m)
+    inp, h = torch.tensor(sched[0][2], dtype=F64), sched[0][1] / 100
+    grads = []
+    for chord in (False, True):
+        m.zero_grad()
+        _rollout(rhs, y0, inp, h, 3, chord=chord)[-1].sum().backward()
+        grads.append(torch.cat([p.grad.flatten() for p in m.parameters() if p.grad is not None]))
+    assert torch.allclose(grads[0], grads[1], rtol=1e-7, atol=1e-12 * float(grads[0].abs().max()))

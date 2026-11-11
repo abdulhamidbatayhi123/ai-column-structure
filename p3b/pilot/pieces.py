@@ -32,7 +32,7 @@ LR_ITERATIONS = 2_000
 TWO_SEEDS = (0, 1)
 STRUCTURED = ("S", "S-L", "S-M", "S-Pi")
 # the stage keys each phase adds (p3b.pilot.collect.stage); a phase-p piece runs under the keys of phases < p
-PHASE_KEYS = (("d", "K", "tau_S"), ("lr",), ("iterations",), ("h_steps",))
+PHASE_KEYS = (("d", "decoder", "K", "tau_S"), ("lr",), ("iterations",), ("h_steps",))
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
@@ -108,10 +108,13 @@ def piece_data(data_root, key: str, out, q: dict | None = None, stage: dict | No
     """CSS per long trajectory, the decoder gate over the d grid, the reference noise."""
     q = q or {}
     lf, tr, va = long_files(data_root, key), files(data_root, key, "train"), files(data_root, key, "validation")
-    gate = runs.decoder_gate_grid(tr, va, q.get("d_grid", (16, 24, 32, 48, 64)), q.get("ae_epochs", 60),
-                                  q.get("ae_width", 256))
+    grid = q.get("d_grid", (16, 24, 32, 48, 64))
+    gate = runs.decoder_gate_grid(tr, va, grid, q.get("ae_epochs", 60), q.get("ae_width", 256))
     value = {"css": runs.css_cycles(lf), "decoder_gate": {str(k): v for k, v in gate.items()},
              "reference_noise": runs.reference_noise(lf)}
+    if not any(g["passed"] for g in gate.values()):     # PREREG 4: the convolutional decoder on the same grid
+        conv = runs.decoder_gate_grid(tr, va, grid, q.get("ae_epochs", 60), q.get("ae_width", 256), kind="conv")
+        value["decoder_gate_conv"] = {str(k): v for k, v in conv.items()}
     return _write(out, f"data_{key}.json", value, stage, q, {"data": _data_used(tr, va)}, seeds=[0])
 
 
@@ -119,7 +122,8 @@ def piece_cplk(data_root, key: str, out, q: dict | None = None, stage: dict | No
     q = q or {}
     sys_, mat = KEYS[key]
     va = files(data_root, key, "validation")
-    eps = runs.cplusl_K(va, mat, n_coarse=q.get("n_coarse", 32), Ks=q.get("Ks", (1, 2, 4, 8)))
+    eps = runs.cplusl_K(va, mat, n_coarse=q.get("n_coarse", 32), Ks=q.get("Ks", (1, 2, 4, 8)),
+                     workers=q.get("workers", min(4, os.cpu_count() or 1)))
     return _write(out, f"cplusl_K_{key}.json", {str(k): v for k, v in eps.items()}, stage, q,
                   {"data": _data_used(va)})
 
@@ -141,13 +145,13 @@ def piece_ae(data_root, key: str, seed: int, stage: dict, out, q: dict | None = 
     """The pilot autoencoder of (key, seed) at the chosen d, saved under the study's naming
     (ae_<system>_<material>_pilot_s<seed>.pt) so p3b.train.cells._build finds it; its SHA-256 is
     recorded by every piece that uses it."""
-    from p3b.latent.autoencoder import MLPAutoencoder, train_autoencoder
+    from p3b.latent.autoencoder import train_autoencoder
     from p3b.latent.data import load_set
     q = q or {}
     ds = load_set(files(data_root, key, "train"))
     std = _std(ds)
     torch.manual_seed(seed)
-    ae = MLPAutoencoder(ds.X.shape[-1], int(stage["d"][key]), width=q.get("ae_width", 256))
+    ae = _ae(ds, stage, key, q)
     train_autoencoder(ae, std.encode(ds.X), epochs=q.get("ae_epochs", 60), seed=seed)
     c = _cell("U", key, seed)
     os.makedirs(str(out), exist_ok=True)
@@ -156,17 +160,28 @@ def piece_ae(data_root, key: str, seed: int, stage: dict, out, q: dict | None = 
     return path
 
 
+def _decoder(stage, key) -> str:
+    return (stage.get("decoder") or {}).get(key, "mlp")
+
+
+def _ae(ds, stage, key, q):
+    from p3b.latent.autoencoder import make_autoencoder
+    n_ch, n_out = (3, 2) if ds.system == "A" else (2, 1)
+    return make_autoencoder(_decoder(stage, key), ds.n_cells, n_ch, n_out, int(stage["d"][key]),
+                            width=q.get("ae_width", 256))
+
+
 def _pilot(stage, key, kappa):
-    return {"d": stage["d"][key], "kappa": kappa, "ae_input_root": stage.get("ae_input_root", "/kaggle/input")}
+    return {"d": stage["d"][key], "decoder": _decoder(stage, key), "kappa": kappa,
+            "ae_input_root": stage.get("ae_input_root", "/kaggle/input")}
 
 
 def _kappa(key, seed, stage, ds, out, q, used=None):
-    from p3b.latent.autoencoder import MLPAutoencoder
     from p3b.latent.functionals import LatentFunctionals
     from p3b.train.cells import _load_ae, _physics
     c = _cell("S", key, seed)
     std = _std(ds)
-    ae = MLPAutoencoder(ds.X.shape[-1], int(stage["d"][key]), width=q.get("ae_width", 256))
+    ae = _ae(ds, stage, key, q)
     meta = _load_ae(c, ae, str(out), _pilot(stage, key, None), {**q, "require_ae": True}, std, ds)
     if used is not None:
         used.setdefault("autoencoders", {})[meta["file"]] = meta["sha256"]

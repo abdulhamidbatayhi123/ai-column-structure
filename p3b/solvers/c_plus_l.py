@@ -30,6 +30,7 @@ from p3b.thermal_store import T0 as T0_B
 F64 = torch.float64
 _INV_SOFTPLUS_1 = math.log(math.e - 1.0)
 STALL_TOL = 1e-8     # Newton may stop where it stalls only below this block-relative residual
+CHORD_RATE = 0.25    # modified Newton reuses its Jacobian while each iteration cuts the residual 4-fold
 
 
 class Multipliers(nn.Module):
@@ -50,8 +51,11 @@ class Multipliers(nn.Module):
 
 
 def _div(J, N, dz):
-    zero = torch.zeros(1, dtype=J.dtype)
-    return (torch.cat([J, zero]) * -1 + torch.cat([zero, J])) / dz
+    zero = torch.zeros(J.shape[:-1] + (1,), dtype=J.dtype)
+    return (torch.cat([J, zero], -1) * -1 + torch.cat([zero, J], -1)) / dz
+
+
+PER_POINT = ("v", "D_L", "k_z", "k_LDF")      # the column constants that differ between trajectories
 
 
 class TorchColumnRHS(nn.Module):
@@ -67,6 +71,24 @@ class TorchColumnRHS(nn.Module):
         self.D_L, self.k_z, self.k_LDF, self.compensate = float(p.D_L), float(p.k_z), float(p.k_LDF), col.compensate
         self.q_cap = col.iso.q_capacity
 
+    @classmethod
+    def stack(cls, rhs_list):
+        """One right-hand side for a batch of trajectories (states (B, 3N), inputs (B, 3)): the
+        per-trajectory constants PER_POINT become (B, 1) tensors; the multipliers and every other
+        constant must be shared (one material, one grid)."""
+        first = rhs_list[0]
+        for r in rhs_list[1:]:
+            if r.mult is not first.mult:
+                raise ValueError("a batch shares one set of multipliers")
+            same = all(getattr(r, k) == getattr(first, k)
+                       for k in ("N", "dz", "eps", "A", "Cs", "c_w", "dH", "rhoC", "h_a", "compensate", "q_cap"))
+            if not same or vars(r.iso) != vars(first.iso):
+                raise ValueError("a batch shares one material and one grid")
+        out = cls(first.col, first.mult)
+        for k in PER_POINT:
+            setattr(out, k, torch.tensor([[float(getattr(r, k))] for r in rhs_list], dtype=F64))
+        return out
+
     def e_w(self, T):
         return self.c_w * (T - T0)
 
@@ -78,7 +100,7 @@ class TorchColumnRHS(nn.Module):
 
     def state(self, y):
         N = self.N
-        n, a, u = y[:N], y[N:2 * N], y[2 * N:]
+        n, a, u = y[..., :N], y[..., N:2 * N], y[..., 2 * N:]
         T = T0 + (u - a * self.dH - (n + a) * self.e_w(torch.tensor(T0, dtype=F64))) / (self.Cs + (n + a) * self.c_w)
         return n, a, u, n / self.eps, a / self.A, T
 
@@ -87,45 +109,46 @@ class TorchColumnRHS(nn.Module):
 
     def multipliers(self, c, q, T):
         if self.mult is None:
-            one_f, one_c = torch.ones(self.N - 1, dtype=F64), torch.ones(self.N, dtype=F64)
+            one_f, one_c = torch.ones(c.shape[:-1] + (self.N - 1,), dtype=F64), torch.ones_like(c)
             return one_f, one_f, one_c
         x = self.local_inputs(c, q, T)
-        mf = self.mult(0.5 * (x[1:] + x[:-1]))
+        mf = self.mult(0.5 * (x[..., 1:, :] + x[..., :-1, :]))
         mc = self.mult(x)
-        return mf[:, 0], mf[:, 1], mc[:, 2]
+        return mf[..., 0], mf[..., 1], mc[..., 2]
 
     def fluxes(self, y, inp):
-        c_in, T_in, T_w = inp[0], inp[1], inp[2]
+        c_in, T_in, T_w = inp[..., 0:1], inp[..., 1:2], inp[..., 2:3]
         n, a, u, c, q, T = self.state(y)
         dz, v = self.dz, self.v
         mD, mk, mL = self.multipliers(c, q, T)
         b = self.iso.b0 * torch.exp(-self.dH / (R * T))
         r_ldf = self.A * self.k_LDF * mL * (Q_torch(self.iso, b * torch.clamp(c, min=0.0)) - q)
         epsD = self.eps * self.D_L
-        k_eff = torch.full((self.N - 1,), self.k_z, dtype=F64)
+        k_eff = self.k_z * torch.ones(c.shape[:-1] + (self.N - 1,), dtype=F64)
         if self.compensate:
-            epsD = max(0.0, epsD - v * dz / 2)
-            c_face = 0.5 * (c[1:] + c[:-1])
+            epsD = torch.clamp(torch.as_tensor(epsD - v * dz / 2, dtype=F64), min=0.0)
+            c_face = 0.5 * (c[..., 1:] + c[..., :-1])
             k_eff = torch.clamp(self.k_z - (self.rhoC + c_face * self.c_w) * v * dz / 2, min=0.0)
         epsD = epsD * mD
         k_eff = k_eff * mk
-        J_n = -epsD * (c[1:] - c[:-1]) / dz
-        dinvT = 1.0 / T[1:] - 1.0 / T[:-1]
-        dphi = self.phi_over_T(T[1:]) - self.phi_over_T(T[:-1])
+        J_n = -epsD * (c[..., 1:] - c[..., :-1]) / dz
+        dinvT = 1.0 / T[..., 1:] - 1.0 / T[..., :-1]
+        dphi = self.phi_over_T(T[..., 1:]) - self.phi_over_T(T[..., :-1])
         small = dinvT.abs() < 1e-14
-        eta = torch.where(small, self.e_w(0.5 * (T[1:] + T[:-1])), dphi / torch.where(small, torch.ones_like(dinvT), dinvT))
-        J_u = eta * J_n - k_eff * (T[1:] - T[:-1]) / dz
-        g_n = torch.cat([c_in.reshape(1), c])
-        g_u = torch.cat([self.stream_energy(c_in, T_in).reshape(1), self.stream_energy(c, T)])
+        eta = torch.where(small, self.e_w(0.5 * (T[..., 1:] + T[..., :-1])),
+                          dphi / torch.where(small, torch.ones_like(dinvT), dinvT))
+        J_u = eta * J_n - k_eff * (T[..., 1:] - T[..., :-1]) / dz
+        g_n = torch.cat([c_in.expand(c.shape[:-1] + (1,)), c], -1)
+        g_u = torch.cat([self.stream_energy(c_in, T_in).expand(c.shape[:-1] + (1,)), self.stream_energy(c, T)], -1)
         W = self.h_a * (T - T_w)
         return dict(c=c, q=q, T=T, r_ldf=r_ldf, J_n=J_n, J_u=J_u, g_n=g_n, g_u=g_u, W=W)
 
     def forward(self, y, inp):
         f = self.fluxes(y, inp)
         dz, v, N = self.dz, self.v, self.N
-        dn = v * (f["g_n"][:-1] - f["g_n"][1:]) / dz + _div(f["J_n"], N, dz) - f["r_ldf"]
-        du = v * (f["g_u"][:-1] - f["g_u"][1:]) / dz + _div(f["J_u"], N, dz) - f["W"]
-        return torch.cat([dn, f["r_ldf"], du])
+        dn = v * (f["g_n"][..., :-1] - f["g_n"][..., 1:]) / dz + _div(f["J_n"], N, dz) - f["r_ldf"]
+        du = v * (f["g_u"][..., :-1] - f["g_u"][..., 1:]) / dz + _div(f["J_u"], N, dz) - f["W"]
+        return torch.cat([dn, f["r_ldf"], du], -1)
 
     def _X(self, q):
         lo, hi = torch.full_like(q, -60.0), torch.full_like(q, 60.0)
@@ -202,55 +225,93 @@ def colored_jacobian(f, y, n_cells: int, n_var: int):
     return J
 
 
-def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: int = 50, substeps: int = 1):
+def batch_jacobian(f, y):
+    """Per-sample Jacobians (B, n, n) of a right-hand side whose sample b depends only on y[b]: the
+    Jacobian of the batch sum, one batched backward pass for the whole batch."""
+    with torch.enable_grad():
+        J = torch.autograd.functional.jacobian(lambda x: f(x).sum(0), y.detach(), vectorize=True)
+    return J.detach().permute(1, 0, 2)
+
+
+def step_jacobian(f, y):
+    """Dense Jacobian of f at y by vectorised reverse mode (one batched backward pass), detached and
+    usable under no_grad. Newton's Jacobian: on CPU it is about 4x cheaper than `colored_jacobian`,
+    whose torch.func.vmap over jvp falls back to Python decompositions (28 against 111 ms at 32 cells,
+    system A; the two agree to round-off)."""
+    with torch.enable_grad():
+        return torch.autograd.functional.jacobian(f, y.detach(), vectorize=True).detach()
+
+
+def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: int = 50, substeps: int = 1,
+                        chord: bool = True):
     """y(h) by `substeps` implicit-Euler steps of h/substeps, each solved by Newton with the
-    coloured Jacobian; differentiable in y0 and the multiplier weights (see module doc).
+    dense Jacobian (`step_jacobian`); differentiable in y0 and the multiplier weights (see module doc).
 
     Convergence is tested per variable block (n, a, u for system A; u_f, u_s for B), each against
     the larger of its magnitude and its update h f, because the blocks differ by up to 1e13. A Newton solve that does not
     converge raises RuntimeError: a wrong value with a wrong gradient is never returned. A solve that
     stalls (the residual no longer halves) is accepted only below STALL_TOL, the round-off floor of
-    some states lying between 1e-12 and 1e-9."""
-    n = y0.numel()
+    some states lying between 1e-12 and 1e-9, and only after an iteration with a fresh Jacobian.
+
+    With chord (the default) Newton is modified: the factorised Jacobian is reused while each
+    iteration cuts the residual by CHORD_RATE or more and refreshed otherwise, and with no gradient
+    needed the converged point's Jacobian (used only for the gradient correction, which changes the
+    value by less than tol) is not formed. The tolerance is the same, so the answer agrees with full
+    Newton to tol; chord=False is full Newton."""
+    single = y0.dim() == 1
+    if single:                                          # one trajectory: a batch of one
+        y0, inp = y0.unsqueeze(0), inp.unsqueeze(0)
+    B, n = y0.shape
     N = rhs.N
     n_var = n // N
     eye = torch.eye(n, dtype=F64)
-    hs = h / substeps
+    hs = (torch.as_tensor(h, dtype=F64).reshape(-1, 1) / substeps).expand(B, 1)
     y_prev = y0
+    params = list(rhs.parameters()) if hasattr(rhs, "parameters") else []
+    need_grad = torch.is_grad_enabled() and (y0.requires_grad or any(q.requires_grad for q in params))
     for _ in range(substeps):
-        f = lambda x: rhs(x, inp)  # noqa: E731
+        if single:                                      # any rhs taking one state (system B's too)
+            f = lambda x: rhs(x[0], inp[0]).unsqueeze(0)  # noqa: E731
+        else:
+            f = lambda x: rhs(x, inp)  # noqa: E731
         with torch.no_grad():
             base = y_prev.detach()
             y = base.clone()
             # each block against the larger of its own magnitude and its update h f: in a pre-wetted
             # bed n is ~1e-4 of the feed term, and a tolerance on |n| alone sits below round-off
-            scale = torch.maximum(base.reshape(n_var, N).abs().amax(-1, keepdim=True),
-                                  (hs * f(base)).reshape(n_var, N).abs().amax(-1, keepdim=True)).clamp(min=1e-300)
+            scale = torch.maximum(base.reshape(B, n_var, N).abs().amax(-1, keepdim=True),
+                                  (hs * f(base)).reshape(B, n_var, N).abs().amax(-1, keepdim=True)).clamp(min=1e-300)
             ok = False
-            prev = float("inf")
+            prev = torch.full((B,), float("inf"), dtype=F64)
+            lu, fresh = None, False
             for _ in range(max_iter):
                 F = y - base - hs * f(y)
-                rel = float((F.reshape(n_var, N).abs() / scale).max())
-                if rel <= tol:
+                rel = (F.reshape(B, n_var, N).abs() / scale).amax((1, 2))
+                done = rel <= tol
+                if fresh:                                   # stalled at the round-off floor of this state
+                    done = done | ((rel >= 0.5 * prev) & (rel <= STALL_TOL))
+                if bool(done.all()):
                     ok = True
                     break
-                if rel >= 0.5 * prev and rel <= STALL_TOL:   # stalled at the round-off floor of this state
-                    ok = True
-                    break
+                fresh = lu is None or not chord or bool((rel > CHORD_RATE * prev).any())
+                if fresh:
+                    lu = torch.linalg.lu_factor(eye - hs.unsqueeze(-1) * batch_jacobian(f, y))
                 prev = rel
-                J = colored_jacobian(f, y, N, n_var)
-                y = y - torch.linalg.solve(eye - hs * J, F)
+                y = y - torch.linalg.lu_solve(*lu, F.unsqueeze(-1)).squeeze(-1)
             if not ok:
                 F = y - base - hs * f(y)
-                ok = bool((F.reshape(n_var, N).abs() <= tol * scale).all())
+                ok = bool((F.reshape(B, n_var, N).abs() <= tol * scale).all())
             if not ok:
-                worst = float((F.reshape(n_var, N).abs() / scale).max())
+                worst = float((F.reshape(B, n_var, N).abs() / scale).max())
                 raise RuntimeError(f"Newton did not converge in {max_iter} iterations "
                                    f"(largest block-relative residual {worst:.3e}, tol {tol:g})")
-            J = colored_jacobian(f, y, N, n_var)
+            if not (need_grad or not chord):
+                y_prev = y
+                continue
+            J = batch_jacobian(f, y)
         F = y - y_prev - hs * f(y)
-        y_prev = y - torch.linalg.solve(eye - hs * J, F)
-    return y_prev
+        y_prev = y - torch.linalg.solve(eye - hs.unsqueeze(-1) * J, F.unsqueeze(-1)).squeeze(-1)
+    return y_prev.squeeze(0) if single else y_prev
 
 
 class CPlusL(nn.Module):

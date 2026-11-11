@@ -1,0 +1,501 @@
+{
+ "kit_commit": "b483968b73bfc0f8e5eaf1ca0af403c7edcb1c28",
+ "rows": [
+  {
+   "key": "A_MOF-303",
+   "decoder": "mlp",
+   "d": 16,
+   "epochs": 60,
+   "train_s": 168.10591387748718,
+   "final_train_loss": 0.0002259706914319709,
+   "n_train_traj": 32,
+   "field_nrmse": 0.014633300199332315,
+   "field_nrmse_per_field": [
+    0.008026422627502633,
+    0.014633300199332315,
+    0.006243453269865413
+   ],
+   "field_nrmse_channels": 0.00830165238940106,
+   "outlet_c": 0.028310786747780082,
+   "outlet_T": 0.00791886820928548,
+   "balance_N": 0.0975598594131862,
+   "balance_E": 0.059684623567064346,
+   "passed": false
+  },
+  {
+   "key": "A_MOF-303",
+   "decoder": "mlp",
+   "d": 64,
+   "epochs": 60,
+   "train_s": 171.34572386741638,
+   "final_train_loss": 0.0001952575641084206,
+   "n_train_traj": 32,
+   "field_nrmse": 0.01430089095060263,
+   "field_nrmse_per_field": [
+    0.007518024333901541,
+    0.01430089095060263,
+    0.005866593250432306
+   ],
+   "field_nrmse_channels": 0.008272450387809103,
+   "outlet_c": 0.01934684650829263,
+   "outlet_T": 0.00814769432537758,
+   "balance_N": 0.07421069810032434,
+   "balance_E": 0.049162015460066516,
+   "passed": false
+  },
+  {
+   "key": "A_MOF-303",
+   "decoder": "mlp",
+   "d": 16,
+   "epochs": 300,
+   "train_s": 733.5153479576111,
+   "final_train_loss": 1.7930265364058756e-05,
+   "n_train_traj": 32,
+   "field_nrmse": 0.010172663869674772,
+   "field_nrmse_per_field": [
+    0.00538550934836771,
+    0.010172663869674772,
+    0.004257394868469109
+   ],
+   "field_nrmse_channels": 0.005788351423316468,
+   "outlet_c": 0.019119390059288893,
+   "outlet_T": 0.004943045369198294,
+   "balance_N": 0.1122045508345251,
+   "balance_E": 0.06793156789893941,
+   "passed": false
+  },
+  {
+   "key": "A_MOF-303",
+   "decoder": "mlp",
+   "d": 64,
+   "epochs": 300,
+   "train_s": 769.7728128433228,
+   "final_train_loss": 1.0100762506836009e-05,
+   "n_train_traj": 32,
+   "field_nrmse": 0.009241883442133258,
+   "field_nrmse_per_field": [
+    0.004996584488581416,
+    0.009241883442133258,
+    0.004392601117890745
+   ],
+   "field_nrmse_channels": 0.005309941998704776,
+   "outlet_c": 0.019704499926454143,
+   "outlet_T": 0.005429110584700027,
+   "balance_N": 0.1708919750080199,
+   "balance_E": 0.10762684026460387,
+   "passed": false
+  },
+  {
+   "key": "A_MOF-303",
+   "decoder": "conv",
+   "d": 16,
+   "epochs": 60,
+   "train_s": 886.1777973175049,
+   "final_train_loss": 0.00031043142865904886,
+   "n_train_traj": 32,
+   "field_nrmse": 0.01580461450951278,
+   "field_nrmse_per_field": [
+    0.009199712351351952,
+    0.01580461450951278,
+    0.006749406239495826
+   ],
+   "field_nrmse_channels": 0.00924031657256785,
+   "outlet_c": 0.03589284552939939,
+   "outlet_T": 0.01029071512271835,
+   "balance_N": 0.17272735878676873,
+   "balance_E": 0.10769196822830339,
+   "passed": false
+  },
+  {
+   "key": "A_MOF-303",
+   "decoder": "conv",
+   "d": 64,
+   "epochs": 60,
+   "train_s": 887.4904677867889,
+   "final_train_loss": 0.00018944424680192626,
+   "n_train_traj": 32,
+   "field_nrmse": 0.013805168641224785,
+   "field_nrmse_per_field": [
+    0.006661664150346102,
+    0.013805168641224785,
+    0.005611805378590467
+   ],
+   "field_nrmse_channels": 0.0079220703614491,
+   "outlet_c": 0.026971456129026433,
+   "outlet_T": 0.009109313746742712,
+   "balance_N": 0.19924692719025777,
+   "balance_E": 0.12000950860016882,
+   "passed": false
+  },
+  {
+   "key": "A_MOF-303",
+   "decoder": "mlp",
+   "d": 32,
+   "epochs": 300,
+   "train_s": 741.0189599990845,
+   "final_train_loss": 1.3704282144721972e-05,
+   "n_train_traj": 32,
+   "field_nrmse": 0.00996036510053643,
+   "field_nrmse_per_field": [
+    0.00516048335687436,
+    0.00996036510053643,
+    0.00414881699242296
+   ],
+   "field_nrmse_channels": 0.005594180930361834,
+   "outlet_c": 0.019401883685524233,
+   "outlet_T": 0.006121302411806478,
+   "balance_N": 0.12115891523852179,
+   "balance_E": 0.07910750669389079,
+   "passed": false
+  },
+  {
+   "key": "A_MOF-303",
+   "decoder": "conv",
+   "d": 32,
+   "epochs": 60,
+   "train_s": 881.0676417350769,
+   "final_train_loss": 0.00022877439464740476,
+   "n_train_traj": 32,
+   "field_nrmse": 0.01474062794701961,
+   "field_nrmse_per_field": [
+    0.007765259232495133,
+    0.01474062794701961,
+    0.006090572335948712
+   ],
+   "field_nrmse_channels": 0.008308981554122517,
+   "outlet_c": 0.02519382111201002,
+   "outlet_T": 0.009344902091153438,
+   "balance_N": 0.15787643665901058,
+   "balance_E": 0.09546803826631035,
+   "passed": false
+  },
+  {
+   "key": "A_Al-fumarate",
+   "decoder": "mlp",
+   "d": 16,
+   "epochs": 60,
+   "train_s": 274.80452370643616,
+   "final_train_loss": 2.9725015222879805e-05,
+   "n_train_traj": 6,
+   "field_nrmse": 0.21488115423209997,
+   "field_nrmse_per_field": [
+    0.030372957323673747,
+    0.21488115423209997,
+    0.038755976704253306
+   ],
+   "field_nrmse_channels": 0.046918568902924465,
+   "outlet_c": 0.1203357517295024,
+   "outlet_T": 0.041693874299688946,
+   "balance_N": 1.7341250061204907,
+   "balance_E": 0.911167679535176,
+   "passed": false
+  },
+  {
+   "key": "A_Al-fumarate",
+   "decoder": "mlp",
+   "d": 64,
+   "epochs": 60,
+   "train_s": 283.99257469177246,
+   "final_train_loss": 2.8887859595097284e-05,
+   "n_train_traj": 6,
+   "field_nrmse": 0.1837937892611962,
+   "field_nrmse_per_field": [
+    0.02560105925846826,
+    0.1837937892611962,
+    0.03347073086521184
+   ],
+   "field_nrmse_channels": 0.04636535170718117,
+   "outlet_c": 0.08364038363519269,
+   "outlet_T": 0.03820588935143542,
+   "balance_N": 1.3288417037293878,
+   "balance_E": 0.6975638578022362,
+   "passed": false
+  },
+  {
+   "key": "A_Al-fumarate",
+   "decoder": "mlp",
+   "d": 16,
+   "epochs": 300,
+   "train_s": 1344.342173576355,
+   "final_train_loss": 1.7332803424351842e-06,
+   "n_train_traj": 6,
+   "field_nrmse": 0.27235171106583117,
+   "field_nrmse_per_field": [
+    0.03074645072360065,
+    0.27235171106583117,
+    0.042720504769588975
+   ],
+   "field_nrmse_channels": 0.048389921224193125,
+   "outlet_c": 0.09773897979777924,
+   "outlet_T": 0.05187086679931812,
+   "balance_N": 2.4621455383140205,
+   "balance_E": 1.3133050175491672,
+   "passed": false
+  },
+  {
+   "key": "A_Al-fumarate",
+   "decoder": "mlp",
+   "d": 64,
+   "epochs": 300,
+   "train_s": 1423.0757005214691,
+   "final_train_loss": 2.604843104719875e-06,
+   "n_train_traj": 6,
+   "field_nrmse": 0.2944776642216244,
+   "field_nrmse_per_field": [
+    0.0430468689776975,
+    0.2944776642216244,
+    0.0655140892240025
+   ],
+   "field_nrmse_channels": 0.06598533644769182,
+   "outlet_c": 0.08209492886387705,
+   "outlet_T": 0.05322019312089744,
+   "balance_N": 1.6329078084341844,
+   "balance_E": 0.9297614445430287,
+   "passed": false
+  },
+  {
+   "key": "A_Al-fumarate",
+   "decoder": "conv",
+   "d": 16,
+   "epochs": 60,
+   "train_s": 1518.328943490982,
+   "final_train_loss": 6.305010062905815e-05,
+   "n_train_traj": 6,
+   "field_nrmse": 0.1542272393257609,
+   "field_nrmse_per_field": [
+    0.028967028362918992,
+    0.1542272393257609,
+    0.04409817803349207
+   ],
+   "field_nrmse_channels": 0.04498694664949636,
+   "outlet_c": 0.10326836124610146,
+   "outlet_T": 0.044272553315068096,
+   "balance_N": 1.613790057164195,
+   "balance_E": 0.849062233873401,
+   "passed": false
+  },
+  {
+   "key": "A_Al-fumarate",
+   "decoder": "conv",
+   "d": 64,
+   "epochs": 60,
+   "train_s": 1543.493970155716,
+   "final_train_loss": 2.697170914453603e-05,
+   "n_train_traj": 6,
+   "field_nrmse": 0.16349102024312864,
+   "field_nrmse_per_field": [
+    0.025803643344380154,
+    0.16349102024312864,
+    0.0411060500425703
+   ],
+   "field_nrmse_channels": 0.042761919015796006,
+   "outlet_c": 0.07356879485647956,
+   "outlet_T": 0.039379714550134316,
+   "balance_N": 0.7712629565079174,
+   "balance_E": 0.4208512760427751,
+   "passed": false
+  },
+  {
+   "key": "A_Al-fumarate",
+   "decoder": "mlp",
+   "d": 32,
+   "epochs": 300,
+   "train_s": 1390.9526290893555,
+   "final_train_loss": 2.4254451619834056e-06,
+   "n_train_traj": 6,
+   "field_nrmse": 0.2170294916591102,
+   "field_nrmse_per_field": [
+    0.0456141702595242,
+    0.2170294916591102,
+    0.055451865804038394
+   ],
+   "field_nrmse_channels": 0.05532755249536526,
+   "outlet_c": 0.09340000400603463,
+   "outlet_T": 0.04549061566427885,
+   "balance_N": 0.6927981091929619,
+   "balance_E": 0.3872510860239174,
+   "passed": false
+  },
+  {
+   "key": "A_Al-fumarate",
+   "decoder": "conv",
+   "d": 32,
+   "epochs": 60,
+   "train_s": 1528.698963880539,
+   "final_train_loss": 3.6326512986749803e-05,
+   "n_train_traj": 6,
+   "field_nrmse": 0.11606380030835754,
+   "field_nrmse_per_field": [
+    0.02513846675932627,
+    0.11606380030835754,
+    0.04190563108739837
+   ],
+   "field_nrmse_channels": 0.04399870750978547,
+   "outlet_c": 0.09104965299754911,
+   "outlet_T": 0.03810892511441344,
+   "balance_N": 0.7896678237988063,
+   "balance_E": 0.42848371243831335,
+   "passed": false
+  },
+  {
+   "key": "B",
+   "decoder": "mlp",
+   "d": 16,
+   "epochs": 60,
+   "train_s": 237.71595120429993,
+   "final_train_loss": 7.657125724270976e-06,
+   "n_train_traj": 6,
+   "field_nrmse": 0.008598890708426095,
+   "field_nrmse_per_field": [
+    0.008598890708426095,
+    0.006764963242126185
+   ],
+   "field_nrmse_channels": 0.008598890708426095,
+   "outlet_c": null,
+   "outlet_T": 0.015985749509680354,
+   "balance_N": null,
+   "balance_E": 0.010307481058749929,
+   "passed": false
+  },
+  {
+   "key": "B",
+   "decoder": "mlp",
+   "d": 64,
+   "epochs": 60,
+   "train_s": 250.5965428352356,
+   "final_train_loss": 7.1498121834954986e-06,
+   "n_train_traj": 6,
+   "field_nrmse": 0.010598071940644722,
+   "field_nrmse_per_field": [
+    0.010598071940644722,
+    0.0082817805850993
+   ],
+   "field_nrmse_channels": 0.010598071940644722,
+   "outlet_c": null,
+   "outlet_T": 0.03205304130736986,
+   "balance_N": null,
+   "balance_E": 0.018045863186327494,
+   "passed": false
+  },
+  {
+   "key": "B",
+   "decoder": "mlp",
+   "d": 16,
+   "epochs": 300,
+   "train_s": 1221.2805936336517,
+   "final_train_loss": 3.5621155319454357e-07,
+   "n_train_traj": 6,
+   "field_nrmse": 0.00898741190325709,
+   "field_nrmse_per_field": [
+    0.00898741190325709,
+    0.006990819827018483
+   ],
+   "field_nrmse_channels": 0.00898741190325709,
+   "outlet_c": null,
+   "outlet_T": 0.016235454642040993,
+   "balance_N": null,
+   "balance_E": 0.019762811022824234,
+   "passed": false
+  },
+  {
+   "key": "B",
+   "decoder": "mlp",
+   "d": 64,
+   "epochs": 300,
+   "train_s": 1272.9274244308472,
+   "final_train_loss": 2.1491173401438836e-07,
+   "n_train_traj": 6,
+   "field_nrmse": 0.01603980458089802,
+   "field_nrmse_per_field": [
+    0.01603980458089802,
+    0.006517965415496351
+   ],
+   "field_nrmse_channels": 0.01603980458089802,
+   "outlet_c": null,
+   "outlet_T": 0.025483600355764042,
+   "balance_N": null,
+   "balance_E": 0.031166867847170758,
+   "passed": false
+  },
+  {
+   "key": "B",
+   "decoder": "conv",
+   "d": 16,
+   "epochs": 60,
+   "train_s": 1474.8676795959473,
+   "final_train_loss": 1.704468566243807e-05,
+   "n_train_traj": 6,
+   "field_nrmse": 0.008443687382084602,
+   "field_nrmse_per_field": [
+    0.007453778742944983,
+    0.008443687382084602
+   ],
+   "field_nrmse_channels": 0.008443687382084602,
+   "outlet_c": null,
+   "outlet_T": 0.02568184276079915,
+   "balance_N": null,
+   "balance_E": 0.02203748717252094,
+   "passed": false
+  },
+  {
+   "key": "B",
+   "decoder": "conv",
+   "d": 64,
+   "epochs": 60,
+   "train_s": 1502.7264277935028,
+   "final_train_loss": 1.0640654859505842e-05,
+   "n_train_traj": 6,
+   "field_nrmse": 0.0073751898671738925,
+   "field_nrmse_per_field": [
+    0.0073751898671738925,
+    0.0067281610224721195
+   ],
+   "field_nrmse_channels": 0.0073751898671738925,
+   "outlet_c": null,
+   "outlet_T": 0.022126698261147798,
+   "balance_N": null,
+   "balance_E": 0.016214130044976818,
+   "passed": false
+  },
+  {
+   "key": "B",
+   "decoder": "mlp",
+   "d": 32,
+   "epochs": 300,
+   "train_s": 1265.8889935016632,
+   "final_train_loss": 2.8855596358686376e-07,
+   "n_train_traj": 6,
+   "field_nrmse": 0.010925149435082208,
+   "field_nrmse_per_field": [
+    0.010925149435082208,
+    0.008113343063623928
+   ],
+   "field_nrmse_channels": 0.010925149435082208,
+   "outlet_c": null,
+   "outlet_T": 0.0206803524934412,
+   "balance_N": null,
+   "balance_E": 0.033865150419549316,
+   "passed": false
+  },
+  {
+   "key": "B",
+   "decoder": "conv",
+   "d": 32,
+   "epochs": 60,
+   "train_s": 1536.984822511673,
+   "final_train_loss": 1.0942143498537163e-05,
+   "n_train_traj": 6,
+   "field_nrmse": 0.007679810702219466,
+   "field_nrmse_per_field": [
+    0.007679810702219466,
+    0.006753419456754658
+   ],
+   "field_nrmse_channels": 0.007679810702219466,
+   "outlet_c": null,
+   "outlet_T": 0.022241858077707545,
+   "balance_N": null,
+   "balance_E": 0.024291762199019015,
+   "passed": false
+  }
+ ]
+}

@@ -73,3 +73,21 @@ def test_train_cplusl_calls_back_at_each_checkpoint(paths):
     train_cplusl(Multipliers(n_out=3), ds, "MOF-303", n_coarse=4, lr=1e-3, iterations=4, seed=0, n_windows=1,
                  n_steps=2, every=2, callback=lambda it, mult, hist: seen.append(it))
     assert seen == [2, 4]
+
+
+def test_evaluation_rollouts_run_without_autograd(paths, tmp_path, monkeypatch):
+    # forward-only paths need no graph and, with modified Newton, no Jacobian at the converged point
+    import torch
+
+    from p3b.train import cplusl
+    seen = []
+    real = cplusl.implicit_euler_step
+
+    def spy(*a, **k):
+        seen.append(torch.is_grad_enabled())
+        return real(*a, **k)
+    monkeypatch.setattr(cplusl, "implicit_euler_step", spy)
+    mult = Multipliers(n_out=3, constant=1.0)
+    rollout_cplusl_to_file(mult, POINTS[0], "MOF-303", n_coarse=4, n_target=NC, n_snap=20, K=8, path=tmp_path / "c.npz")
+    cplusl.cplusl_val_loss(mult, load_set(paths[:1]), "MOF-303", n_coarse=4, K=1)
+    assert seen and not any(seen)

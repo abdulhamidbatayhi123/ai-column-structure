@@ -187,3 +187,59 @@ def choose_d(passed: dict):
     """The smallest d whose full-data autoencoders all passed the gate; None if none passed."""
     ok = [d for d, p in passed.items() if p]
     return min(ok) if ok else None
+
+
+def choose_decoder(mlp: dict, conv: dict | None = None):
+    """(decoder, d): the MLP's smallest passing d; if none passes, the convolutional decoder's on the same
+    grid (PREREG 4); (None, None) if neither passes."""
+    d = choose_d(mlp)
+    if d is not None:
+        return "mlp", d
+    d = choose_d(conv or {})
+    return ("conv", d) if d is not None else (None, None)
+
+
+def full_data_choice(metrics: dict):
+    """(decoder, d) from the full-data gate (PREREG 4, 5.1): metrics = {kind: {d: [gate dict per seed]}}.
+    A d passes when it was scored for at least one seed and every seed passed (and passed_long where the
+    long-validation check was recorded); the smallest passing MLP d, else the smallest passing conv d,
+    else (None, None): not testable."""
+    def passes(seeds):
+        return bool(seeds) and all(s["passed"] and s.get("passed_long", True) for s in seeds)
+    return choose_decoder({int(d): passes(s) for d, s in (metrics.get("mlp") or {}).items()},
+                          {int(d): passes(s) for d, s in (metrics.get("conv") or {}).items()})
+
+
+def gate_ratio(m: dict) -> float:
+    """The worst decoder-gate criterion as a multiple of its threshold (<= 1 passes); None criteria
+    (system B has no outlet_c and no balance_N) are skipped."""
+    pairs = [(m.get("field_nrmse"), GATE["field"]), (m.get("outlet_c"), GATE["outlet"]),
+             (m.get("outlet_T"), GATE["outlet"]), (m.get("balance_N"), GATE["balance"]),
+             (m.get("balance_E"), GATE["balance"])]
+    return max(v / t for v, t in pairs if v is not None)
+
+
+def _passed(gate: dict) -> dict:
+    return {int(k): bool(v["passed"] if isinstance(v, dict) else v) for k, v in gate.items()}
+
+
+def pilot_working_decoder(mlp: dict, conv: dict | None = None):
+    """The (decoder, d) the pilot's own runs use. The pilot does not set d (PREREG 10); d is set at full
+    data (PREREG 4). Rule: the smallest passing d, MLP then conv; if none passes, the MLP d whose worst
+    criterion is nearest its threshold (ties: the smaller d). Gates are metric dicts or booleans."""
+    dec, d = choose_decoder(_passed(mlp), _passed(conv or {}))
+    if d is not None:
+        return dec, d
+    if not mlp or not all(isinstance(v, dict) for v in mlp.values()):
+        raise ValueError("no pilot d passes and the gate has no metrics to rank the d grid")
+    return "mlp", min((gate_ratio(v), int(k)) for k, v in mlp.items())[1]
+
+
+def make_autoencoder(kind: str, n_cells: int, n_ch: int, n_out: int, d: int, width: int = 256):
+    """The shared autoencoder of the recorded kind: "mlp" (pre-registered) or "conv" (the fallback)."""
+    n_in = n_cells * n_ch + n_out
+    if kind == "mlp":
+        return MLPAutoencoder(n_in, d, width=width)
+    if kind == "conv":
+        return ConvDecoderAutoencoder(n_cells, n_ch, n_out, d, width=width)
+    raise ValueError(f"unknown decoder {kind!r}")

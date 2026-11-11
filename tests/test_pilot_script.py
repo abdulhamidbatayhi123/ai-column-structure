@@ -6,7 +6,7 @@ import os
 import numpy as np
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-KEYS = {"lr", "iterations", "iterations_ulong", "h_steps", "thresholds", "K", "sds", "css", "d",
+KEYS = {"lr", "iterations", "iterations_ulong", "h_steps", "thresholds", "K", "sds", "css", "decoder_gate_pilot",
         "positive_control", "script_sha256", "inputs_sha256"}
 
 
@@ -53,7 +53,8 @@ def test_output_has_exactly_the_section_10_keys(tmp_path, capsys):
     v = json.loads(out.read_text())
     assert set(v) == KEYS
     assert v["lr"] == {"U": 0.001, "S": 0.0003} and v["iterations"] == 3000
-    assert v["h_steps"] == {"A_MOF-303": 1} and v["K"] == {"A_MOF-303": 2} and v["d"] == {"A_MOF-303": 24}
+    assert v["h_steps"] == {"A_MOF-303": 1} and v["K"] == {"A_MOF-303": 2}
+    assert v["decoder_gate_pilot"]["A_MOF-303"]["working"] == ["mlp", 24]
     assert v["iterations_ulong"] == 4 * v["iterations"]
     assert v["css"] == {"A_MOF-303": 7, "B": 4}
 

@@ -108,12 +108,14 @@ def test_train_chunk_passes_a_deadline_and_the_resume_directory(tmp_path, monkey
         seen.update(deadline=deadline, resume_from=resume_from)
         return "x"
     monkeypatch.setattr(tc, "train_cell", fake)
-    monkeypatch.setattr(tc, "cell_pilot", lambda c, pilot: {})
+    monkeypatch.setattr(tc, "cell_pilot", lambda c, pilot, choice=None: {})
     pilot = tmp_path / "p.json"
     pilot.write_text("{}")
+    choice = tmp_path / "choice.json"
+    choice.write_text('{"A_MOF-303": {"decoder": "mlp", "d": 16}}')
     name = tc.job_name(next(c for c in tc.cells() if c.arm == "U"))
     t0 = time.monotonic()
     tc.main(["--cell", name, "--out", str(tmp_path / "o"), "--pilot", str(pilot), "--resume-from", "/kaggle/input",
-             "--hours", "2"])
+             "--hours", "2", "--decoder-choice", str(choice)])
     assert seen["resume_from"] == "/kaggle/input"
     assert t0 + 2 * 3600 - 5 <= seen["deadline"] <= time.monotonic() + 2 * 3600

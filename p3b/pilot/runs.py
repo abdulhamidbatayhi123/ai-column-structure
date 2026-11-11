@@ -69,8 +69,8 @@ def css_cycles(paths) -> list:
 
 
 def decoder_gate_grid(train_paths, val_paths, d_grid=(16, 24, 32, 48, 64), epochs: int = 60, width: int = 256,
-                      seed: int = 0) -> dict:
-    from p3b.latent.autoencoder import MLPAutoencoder, decoder_gate, train_autoencoder
+                      seed: int = 0, kind: str = "mlp") -> dict:
+    from p3b.latent.autoencoder import decoder_gate, make_autoencoder, train_autoencoder
     from p3b.latent.data import Standardiser, load_set
     ds, val = load_set(train_paths), load_set(val_paths)
     n_ch, n_out = (3, 2) if ds.system == "A" else (2, 1)
@@ -79,9 +79,9 @@ def decoder_gate_grid(train_paths, val_paths, d_grid=(16, 24, 32, 48, 64), epoch
     out = {}
     for d in d_grid:
         torch.manual_seed(seed)
-        ae = MLPAutoencoder(ds.X.shape[-1], d, width=width)
+        ae = make_autoencoder(kind, ds.n_cells, n_ch, n_out, d, width=width)
         train_autoencoder(ae, std.encode(ds.X), epochs=epochs, seed=seed)
-        out[int(d)] = bool(decoder_gate(ae, val, std, phys)["passed"])
+        out[int(d)] = decoder_gate(ae, val, std, phys)        # the metrics, not only "passed" (a risk report)
     return out
 
 
@@ -264,7 +264,26 @@ def h_check(arm, val, tau_S: float, steps=(1, 2, 4), n_states: int = 8) -> dict:
 
 
 # ---- Task 4: C+L's substeps K, wall-clock per iteration ----------------------------------------------
-def cplusl_K(val_paths, material: str, n_coarse: int = 32, Ks=(1, 2, 4, 8)) -> dict:
+def _run_c_one(args):
+    from p3b.solvers.coarse import run_c
+    system, pt, material, n_coarse, n_snap, n_target, path = args
+    return path if run_c(system, pt, material, N_c=n_coarse, path=path, n_snap=n_snap, n_target=n_target).ok else None
+
+
+def run_c_all(system: str, points: list, material: str, n_coarse: int, n_snap: int, n_target: int, out_dir,
+              workers: int = 1) -> list:
+    """Arm C on every trajectory (the path, or None for a failed run), in a pool of `workers` processes
+    (each run is independent; the files are the serial ones)."""
+    jobs = [(system, pt, material, n_coarse, n_snap, n_target, os.path.join(str(out_dir), f"C_{j}.npz"))
+            for j, pt in enumerate(points)]
+    if workers <= 1:
+        return [_run_c_one(a) for a in jobs]
+    import multiprocessing as mp
+    with mp.get_context("spawn").Pool(min(workers, len(jobs))) as pool:
+        return pool.map(_run_c_one, jobs)
+
+
+def cplusl_K(val_paths, material: str, n_coarse: int = 32, Ks=(1, 2, 4, 8), workers: int = 1) -> dict:
     """{K: k_discrepancy, the largest |W(C+L) - W(C)| / |W_ref| over the pilot trajectories and
     cycles}, with C+L's multipliers all fixed at 1 and C (BDF) on the same n_coarse cells (PREREG
     Section 10): "reproduces C's eps_W within 1 %" read as the two releases within 1 % of the reference
@@ -284,20 +303,10 @@ def cplusl_K(val_paths, material: str, n_coarse: int = 32, Ks=(1, 2, 4, 8)) -> d
     unit = Multipliers(n_out=3, constant=1.0)
     out = {}
     with tempfile.TemporaryDirectory() as tmp:
-        c_files = []
-        for j, pt in enumerate(points):
-            p = os.path.join(tmp, f"C_{j}.npz")
-            c_files.append(p if run_c(ds.system, pt, material, N_c=n_coarse, path=p, n_snap=ns, n_target=nc).ok
-                           else None)
+        c_files = run_c_all(ds.system, points, material, n_coarse, ns, nc, tmp, workers=workers)
         for K in Ks:
-            files = []
-            for j, pt in enumerate(points):
-                p = os.path.join(tmp, f"CL_{K}_{j}.npz")
-                try:
-                    cplusl.rollout_cplusl_to_file(unit, pt, material, n_coarse, nc, ns, int(K), p)
-                    files.append(p)
-                except RuntimeError:                             # Newton failure
-                    files.append(None)
+            files = cplusl.rollout_cplusl_each(unit, points, material, n_coarse, nc, ns, int(K),
+                                               [os.path.join(tmp, f"CL_{K}_{j}.npz") for j in range(len(points))])
             if None in files or None in c_files:
                 out[int(K)] = float("inf")
                 continue

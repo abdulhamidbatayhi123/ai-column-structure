@@ -1,0 +1,78 @@
+{
+ "kit_slug": "abdulhamidbatayhi/p3b-reference-kit",
+ "nz": 0,
+ "jobs": [
+  {
+   "name": "p3b-pilot-data-amof-303-44136f",
+   "system": "pilot",
+   "set": "data-A_MOF-303",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "data-A_MOF-303",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "data_A_MOF-303.json"
+   ]
+  },
+  {
+   "name": "p3b-pilot-data-aal-fumarate-44136f",
+   "system": "pilot",
+   "set": "data-A_Al-fumarate",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "data-A_Al-fumarate",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "data_A_Al-fumarate.json"
+   ]
+  },
+  {
+   "name": "p3b-pilot-data-b-44136f",
+   "system": "pilot",
+   "set": "data-B",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "data-B",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "data_B.json"
+   ]
+  },
+  {
+   "name": "p3b-pilot-cplk-amof-303-44136f",
+   "system": "pilot",
+   "set": "cplk-A_MOF-303",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "cplk-A_MOF-303",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "cplusl_K_A_MOF-303.json"
+   ]
+  }
+ ]
+}

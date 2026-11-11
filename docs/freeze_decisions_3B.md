@@ -39,6 +39,59 @@ If they stay, nothing is redone.
 the fluid-phase value, a lower bound for a one-temperature model. (b) δ = 0.75 for A and h_v(v) for B,
 as T7 proposes, after the primary sources; regenerate the pilot data.
 
+## 1b. The decoder gate's balance criterion is at risk: needed at the freeze (added 2026-11-11)
+
+**What.** PREREG 5.1 requires the full-data autoencoders to reconstruct the water inventory and the
+energy to within 1 % of the cycle's release (|N̂ − N| ≤ 0.01 W_ref, taken as the maximum over every
+validation snapshot). If no d passes, with the MLP or the conv decoder, the system is "not testable"
+(PREREG 4), and H1 to H5 cannot be answered for it.
+
+**Evidence (pilot data only; no arm trained; `results/decoder_diag/decoder_diag.json`).**
+For MOF-303 (32 training trajectories), the field error passes (nRMSE 0.009 to 0.016 against 0.02),
+but the balance errors are 5 to 20 times the threshold (N 0.07 to 0.20, E 0.05 to 0.12). Training five
+times longer (300 epochs) lowers the field error and raises the balance error, and the conv decoder
+is no better. A plain reconstruction loss does not target the conserved totals. For Al-fumarate and B
+the pilot has only 6 training trajectories and the networks overfit. The 256-trajectory study set will
+help there, but there is no sign it fixes MOF-303's balance error.
+
+**Second diagnostic** (`results/decoder_diag/decoder_diag2.json`; MOF-303, d = 32, the 16
+long validation trajectories):
+
+| training trajectories | loss | field | outlet c | balance N (max) | balance E (max) | N, 90th pct | snapshots with N > 0.01 |
+|---|---|---|---|---|---|---|---|
+| 8 | MSE | 0.044 | 0.067 | 0.251 | 0.156 | 0.040 | 59 % |
+| 16 | MSE | 0.023 | 0.036 | 0.175 | 0.106 | 0.031 | 37 % |
+| 32 | MSE | 0.014 | 0.024 | 0.117 | 0.068 | 0.010 | 10 % |
+| 32 | MSE + 0.1 × balance² | 0.015 | 0.023 | 0.086 | 0.055 | 0.008 | 7 % |
+| 32 | MSE + 1 × balance² | 0.018 | 0.024 | 0.047 | 0.028 | 0.007 | 6 % |
+
+- The maximum falls with data roughly as n^−0.55. Extrapolated to the study's 256 trajectories with
+  plain MSE it is about 0.04: still four times the threshold. This is an extrapolation, not a measurement.
+- The maximum is phase-locked. After cycle 7 the worst snapshot repeats to four digits in every cycle
+  (one trajectory, mid-cycle), so it is a systematic reconstruction bias at one state of the cyclic
+  steady state, not noise. Taking the maximum over 60 cycles therefore adds little over one cycle.
+- The balance term at λ = 1 halves both balance errors at a small cost in field error (0.014 to 0.018,
+  still under 0.02). For B it brings the energy balance under the threshold (0.0125 to 0.0064). B then
+  fails only on the outlet temperature (0.022 against 0.02).
+- The outlet concentration of MOF-303 (0.024 at 32 trajectories) also fails at pilot size; it is not
+  helped by the balance term.
+- Al-fumarate (6 trajectories) overfits under every loss: the pilot cannot inform it.
+
+A third diagnostic (`p3b-decoder-diag3`: λ = 3, 10, 30; the λ = 1 learning curve; d = 64) is queued.
+
+**The pilot no longer stops on this.** The pilot gate is a risk report (PREREG 10). d is set at full data
+by `scripts/decoder_choice.py` (PREREG 4, 5.1).
+
+**Options.** (a) Keep the gate and the loss as registered, and accept a real chance of "not testable".
+(b) Pre-freeze revision: train the autoencoder on MSE + λ × (the gate's own balance errors)² with λ
+fixed before the freeze, so the decoder is trained for what the gate checks. This is blind to the arms,
+and every arm shares the autoencoder. (c) Relax the criterion (for example an RMS over snapshots instead of
+the maximum). This is not recommended: it changes the test after seeing the pilot. Recommended: (b), with λ
+fixed from diag3 by a rule stated before its results are read (the largest λ in {1, 3, 10, 30} whose field
+error stays at or below 0.015 for MOF-303 on pilot data), the reason and the diag evidence in the PREREG
+change log. Even with (b), MOF-303 may be "not testable" at the registered thresholds, and the paper must be
+ready to report that honestly.
+
 ## 2. The compute ceiling: needed at the freeze
 
 **What.** PREREG Section 11: a hard ceiling of 700 CPU-equivalent hours, with a reduction order that

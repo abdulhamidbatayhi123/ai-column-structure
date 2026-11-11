@@ -207,6 +207,73 @@ def matched_widths(d: int, k: int, system: str, n_cells: int, n_ch: int, n_out: 
             "FNO": match_width(lambda w: FNO1d(n_cells, n_ch, n_out, k, width=w), target), "_S_params": target}
 
 
+# ---- the full-data decoder gate (PREREG 4, 5.1; plan 2026-11-11-p3b-full-data-decoder-gate) -------------
+D_GRID = (16, 24, 32, 48, 64)
+
+
+def gate_specs(cs, kind: str, grid=D_GRID) -> list:
+    """One gate autoencoder per (system, material, d, seed of the full-data autoencoders) for one decoder kind."""
+    seeds = {}
+    for c in cs:
+        if c.size == "full" and c.arm in LEARNED_WITH_AE:
+            seeds.setdefault((c.system, c.material), set()).add(c.seed)
+    return [{"name": f"p3b-gate-{system.lower()}{_MAT[material]}-{kind}-d{d}-s{s}", "system": system,
+             "material": material, "kind": kind, "d": int(d), "seed": int(s)}
+            for (system, material), ss in seeds.items() for d in grid for s in sorted(ss)]
+
+
+def _cycles_from(ds, first: int):
+    """The Dataset restricted to cycles first, first + 1, ... (long validation at cycles 40 to 60: first = 39)."""
+    import dataclasses
+    kw = {f.name: getattr(ds, f.name) for f in dataclasses.fields(ds)}
+    for name in ("X", "raw_inputs", "features", "t", "N_true", "E_true", "W_ref", "wall_abs"):
+        if kw[name] is not None:
+            kw[name] = kw[name][:, first:]
+    return type(ds)(**kw)
+
+
+def gate_ae(spec: dict, data_dir: str, out_dir: str, css_cycle: int, q: dict | None = None) -> str:
+    """Train one full-data autoencoder of the spec and score the decoder gate on validation, and on long
+    validation at cycles 40 to 60 when the pilot's cyclic steady state is after cycle 6 (PREREG 5.1).
+    Writes gate_<name>.json and the weights; returns the json path."""
+    from p3b.latent.autoencoder import decoder_gate, make_autoencoder, train_autoencoder
+    from p3b.latent.data import Standardiser, load_set
+    from p3b.pilot.rules import pilot_key
+    q = q or {}
+    c = Cell("gate", spec["system"], spec["material"], "full", spec["seed"])
+    files, _ = _train_files(data_dir, "full", _pool_size(c, q))
+    ds = load_set(files)
+    n_ch, n_out = (3, 2) if c.system == "A" else (2, 1)
+    std = Standardiser.fit(ds.X, ds.n_cells, n_ch, n_out, features=ds.features)
+    torch.manual_seed(c.seed)
+    ae = make_autoencoder(spec["kind"], ds.n_cells, n_ch, n_out, int(spec["d"]), width=q.get("ae_width", 256))
+    train_autoencoder(ae, std.encode(ds.X), epochs=q.get("ae_epochs", 60), seed=c.seed)
+    os.makedirs(out_dir, exist_ok=True)
+    w = os.path.join(out_dir, f"{spec['name']}.pt")
+    torch.save(ae.state_dict(), w)
+    del ds
+    val = load_set(_set_files(data_dir, "validation"))
+    g = decoder_gate(ae, val, std, _physics(c.system, c.material, val))
+    res = {**spec, "key": pilot_key(c.system, c.material), "n_train": len(files), "gate": g, "gate_long": None,
+           "passed": bool(g["passed"]), "css_cycle": int(css_cycle), "weights_sha256": _sha(w)}
+    if css_cycle > 6:
+        lv = _cycles_from(load_set(_set_files(data_dir, "long_validation")), q.get("long_from", 39))
+        res["gate_long"] = decoder_gate(ae, lv, std, _physics(c.system, c.material, lv))
+        res["passed_long"] = bool(res["gate_long"]["passed"])
+    path = os.path.join(out_dir, f"gate_{spec['name']}.json")
+    with open(path, "w") as f:
+        json.dump(res, f, indent=1)
+    return path
+
+
+def _autoencoder_for(pilot: dict, n_state: int, d: int, n_cells: int, system: str, q: dict):
+    """The cell's autoencoder of the kind the pilot recorded for its system and material (PREREG 4)."""
+    from p3b.latent.autoencoder import make_autoencoder
+    n_ch, n_out = (3, 2) if system == "A" else (2, 1)
+    assert n_state == n_cells * n_ch + n_out, (n_state, n_cells, n_ch, n_out)
+    return make_autoencoder(pilot.get("decoder", "mlp"), n_cells, n_ch, n_out, d, width=q.get("ae_width", 256))
+
+
 def _ae_file(cell) -> str:
     return f"ae_{cell.system}_{cell.material}_{cell.size}_s{cell.seed}.pt"
 
@@ -245,7 +312,6 @@ def _build(cell, pilot, q, ds, out_dir):
     """(Arm, evaluate-also arms, meta parts) for a learned cell, with the autoencoder loaded."""
     from p3b.latent.arms_structured import SDynamics, SLDynamics
     from p3b.latent.arms_unstructured import UDynamics, UFDynamics
-    from p3b.latent.autoencoder import MLPAutoencoder
     from p3b.latent.data import Standardiser
     from p3b.latent.fno import FNO1d
     from p3b.latent.functionals import LatentFunctionals
@@ -263,7 +329,7 @@ def _build(cell, pilot, q, ds, out_dir):
     ae_meta, ae, lf, terms = None, None, None, None
     torch.manual_seed(cell.seed)
     if kind != "FNO":
-        ae = MLPAutoencoder(n_state, d, width=q.get("ae_width", 256))
+        ae = _autoencoder_for(pilot, n_state, d, nc, cell.system, q)
         ae_meta = _load_ae(cell, ae, out_dir, pilot, q, std, ds)
         lf = LatentFunctionals(ae.decode, std, phys, cell.system, nc)
     ts = time_scale(ds)
@@ -449,16 +515,9 @@ def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool):
                     paths.append(p if res.ok else None)
                 by_arm[f"{cell.arm}@{g}"] = paths
         else:
-            from p3b.train.cplusl import rollout_cplusl_to_file
-            paths = []
-            for j, pt in enumerate(points):
-                p = os.path.join(tmp, f"{set_name}_CL_{j}.npz")
-                try:
-                    rollout_cplusl_to_file(mult, pt, cell.material, q.get("n_coarse", 32), nc, ns, pilot["K"], p)
-                    paths.append(p)
-                except RuntimeError:                         # Newton failure: a failure at cycle 1
-                    paths.append(None)
-            by_arm["C+L"] = paths
+            from p3b.train.cplusl import rollout_cplusl_each
+            by_arm["C+L"] = rollout_cplusl_each(mult, points, cell.material, q.get("n_coarse", 32), nc, ns, pilot["K"],
+                                                [os.path.join(tmp, f"{set_name}_CL_{j}.npz") for j in range(len(points))])
         n_cycles = q.get("n_cycles", ds.X.shape[1])
         for r in evaluate_files(by_arm, ds, phys, n_cycles, cell.seed, pilot.get("floors"), pilot.get("tau_S")):
             r.update(set=set_name, design_index=int(points[r["trajectory"]]["index"]))

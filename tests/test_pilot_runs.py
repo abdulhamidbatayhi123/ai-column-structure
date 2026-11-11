@@ -41,7 +41,7 @@ def test_decoder_gate_grid(pilot_dir):
     g = runs.decoder_gate_grid(sorted((pilot_dir / "train").glob("*.npz")),
                                sorted((pilot_dir / "validation").glob("*.npz")),
                                d_grid=(4, 8), epochs=1, width=8, seed=0)
-    assert set(g) == {4, 8} and all(isinstance(v, bool) for v in g.values())
+    assert set(g) == {4, 8} and all(isinstance(v["passed"], bool) and "balance_N" in v for v in g.values())
 
 
 def test_write_inputs_creates_the_files_pilot_rules_reads(pilot_dir, tmp_path):
@@ -137,7 +137,7 @@ def test_cplusl_K_counts_a_failed_run_as_infinite(pilot_dir, monkeypatch):
 
     def fail(*a, **k):
         raise RuntimeError("Newton failed")
-    monkeypatch.setattr(cplusl, "rollout_cplusl_to_file", fail)
+    monkeypatch.setattr(cplusl, "rollout_cplusl_to_files", fail)
     out = runs.cplusl_K(sorted((pilot_dir / "validation").glob("*.npz")), "MOF-303", n_coarse=4, Ks=(1,))
     assert out == {1: float("inf")}
 
@@ -220,3 +220,24 @@ def test_h_check_makes_an_h_with_a_failed_rollout_inadmissible(pilot_dir, monkey
     assert all(v["viol_rate"] == 1.0 and v["failed"] == val.X.shape[0] for v in out["h"].values())
     assert choose_h_steps({k: v["viol_rate"] for k, v in out["h"].items()},
                           {k: v["stiff_ok"] for k, v in out["h"].items()}) is None
+
+
+def test_c_runs_in_a_process_pool_equal_the_serial_runs(pilot_dir, tmp_path):
+    # the K piece runs C (the reference simulator, about 52 min per 60-cycle trajectory) in parallel
+    from p3b.gates import load_meta
+    points = [load_meta(p)["point"] for p in sorted((pilot_dir / "validation").glob("*.npz"))]
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    serial = runs.run_c_all("A", points, "MOF-303", 4, n_snap=20, n_target=8, out_dir=tmp_path / "a", workers=1)
+    pooled = runs.run_c_all("A", points, "MOF-303", 4, n_snap=20, n_target=8, out_dir=tmp_path / "b", workers=2)
+    assert len(serial) == len(pooled) == len(points) and all(serial) and all(pooled)
+    for a, b in zip(serial, pooled):
+        A, B = np.load(a), np.load(b)
+        for k in A.files:
+            if k == "meta":                      # CPU times differ between any two runs
+                import json
+                ma, mb = (json.loads(str(x[k])) for x in (A, B))
+                timing = {"cpu_s", "cycle_cpu_s"}
+                assert {q: v for q, v in ma.items() if q not in timing} == {q: v for q, v in mb.items() if q not in timing}
+            else:
+                assert (A[k] == B[k]).all(), k

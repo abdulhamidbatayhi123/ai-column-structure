@@ -88,19 +88,20 @@ def _load(pieces_dir, name, stage):
 
 def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS)) -> dict:
     """The stage after phase n (0 to 3): the previous stage's values of phases before n, plus phase n's."""
-    from p3b.latent.autoencoder import choose_d
+    from p3b.latent.autoencoder import pilot_working_decoder
     s = restrict(previous or {}, n)
     if n == 0:
-        s["d"], s["tau_S"] = {}, {}
+        s["d"], s["decoder"], s["tau_S"] = {}, {}, {}
         for key in keys:
             data = _load(pieces_dir, f"data_{key}.json", s)
-            s["d"][key] = choose_d({int(k): bool(v) for k, v in data["decoder_gate"].items()})
+            # the pilot's working d (PREREG 10 does not set d; the full-data gate does, PREREG 4)
+            s["decoder"][key], s["d"][key] = pilot_working_decoder(data["decoder_gate"],
+                                                                   data.get("decoder_gate_conv", {}))
             s["tau_S"][key] = rules.tau_S_from(data["reference_noise"]["ref_production"])
         k = _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", s)
         s["K"] = {PRIMARY_KEY: rules.choose_K({int(a): v for a, v in k.items()})}
-        missing = [key for key in keys if s["d"][key] is None]
-        if missing or s["K"][PRIMARY_KEY] is None:
-            raise RuntimeError(f"no admissible d for {missing} or no K: the pilot stops here (PREREG 5.1, 10)")
+        if s["K"][PRIMARY_KEY] is None:
+            raise RuntimeError("no admissible K: the pilot stops here (PREREG 10)")
     elif n == 1:
         s["lr"] = rules.choose_lr({arm: {float(k): v for k, v in _load(pieces_dir, f"lr_{_tag(arm)}.json", s).items()}
                                    for arm in LR_ARMS})
@@ -161,6 +162,7 @@ def final(pieces_dir, inputs_dir, stage: dict, keys=tuple(KEYS), hyp_stat: dict 
         "sds.json": sds,
         "css.json": {key: data[key]["css"] for key in keys},
         "decoder_gate.json": {key: data[key]["decoder_gate"] for key in keys},
+        "decoder_gate_conv.json": {key: data[key].get("decoder_gate_conv", {}) for key in keys},
         "positive_control.json": pc,
         "wall_per_iter.json": _load(pieces_dir, "wall_per_iter.json", stage),
     }

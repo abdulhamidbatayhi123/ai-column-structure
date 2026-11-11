@@ -73,12 +73,12 @@ def test_pilot_dry_run_end_to_end(gen, tmp_path):
         run(f"pcq-s{s}", stage)
 
     paths = collect.final(pieces, inputs, stage, keys=(KEY,), hyp_stat=STAT, draws=200)
-    assert len(paths) == 10
+    assert len(paths) == 11                     # ten Section 10 inputs + decoder_gate_conv.json (PREREG 4)
     pr = _load("scripts/pilot_rules.py", "pilot_rules")
     out = pr.main(str(inputs), str(tmp_path / "pilot_values.json"))
     # tiny models may leave a rule without an admissible value (None), which the rules report as such
     assert set(out["sds"]) == {"H1", "H2", "H4", "H5"} and set(out["K"]) == {KEY} and set(out["lr"]) == set(LR_ARMS)
     assert out["lr"]["U"] in (1e-3, 3e-3) and out["lr"]["S"] in (1e-3, 3e-3)       # S's runs finished
     assert out["positive_control"] in ("SUPPORTED", "SMALL", "REFUTED", "REFUTED (REVERSED)", "INCONCLUSIVE")
-    assert set(out["inputs_sha256"]) == set(pr.FILES)
+    assert set(out["inputs_sha256"]) == set(pr.FILES) | set(pr.OPTIONAL)   # the conv grid ran (no d passed)
     assert all(v > 0 for v in out["sds"]["H1"].values())

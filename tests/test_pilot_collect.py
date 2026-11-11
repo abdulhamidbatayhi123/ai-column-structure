@@ -29,9 +29,9 @@ def test_stage0_chooses_d_K_and_tau_S(tmp_path):
     assert s["tau_S"][KEY] == tau_S_from([-2e-6, 1e-5, -1e-7, 3e-6])
 
 
-def test_stage0_stops_when_no_d_passes(tmp_path):
+def test_stage0_cannot_rank_boolean_gates_when_no_d_passes(tmp_path):
     _phase0(tmp_path, gate={"16": False, "24": False})
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         collect.stage(0, tmp_path, keys=(KEY,))
 
 
@@ -56,7 +56,7 @@ def test_stage_values_are_chosen_values_only(tmp_path):
     """Blinding: no loss or error enters a stage file."""
     _phase0(tmp_path)
     s = collect.stage(0, tmp_path, keys=(KEY,))
-    assert set(s) == {"d", "K", "tau_S"}
+    assert set(s) == {"d", "decoder", "K", "tau_S"}
 
 
 def test_phase_jobs_cover_every_piece_once():

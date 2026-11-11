@@ -54,7 +54,7 @@ def test_u_long_iterations_follow_s_wall_clock_and_are_required():
     pilot = _pilot_values()
     pilot.pop("iterations_ulong")
     with pytest.raises(KeyError, match="iterations_ulong"):
-        train_chunk.cell_pilot(Cell("U-long", "A", "MOF-303", "full", 0), pilot)
+        train_chunk.cell_pilot(Cell("U-long", "A", "MOF-303", "full", 0), pilot, {"A_MOF-303": {"decoder": "mlp", "d": 4}})
 
 
 def _pilot_values():

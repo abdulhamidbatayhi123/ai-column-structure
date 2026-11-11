@@ -268,7 +268,7 @@ def test_final_takes_the_defects_of_the_chosen_h_and_writes_the_ten_inputs(tmp_p
     stage = _full_stage()
     _write_all(tmp_path, stage)
     paths = collect.final(tmp_path, tmp_path / "inputs", stage, keys=(KEY,), hyp_stat=_STAT, draws=50)
-    assert len(paths) == 10
+    assert len(paths) == 11                     # ten Section 10 inputs + decoder_gate_conv.json (PREREG 4)
     th = json.loads((tmp_path / "inputs" / "threshold_inputs.json").read_text())
     assert th[KEY]["defects_per_step"] == [0.0, 1e-5]                  # h_steps 2, not the failed h_steps 1
 
