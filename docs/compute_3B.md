@@ -79,6 +79,19 @@ h = 2 the whole reduction order of Section 3 saves about 204 hours of training, 
 860, still above the 700-hour ceiling. In wall time, 5 sessions with 4 runs each do about 10 runs'
 worth of work at once, so 1,060 hours take about 4 to 5 days of Kaggle time plus queueing.
 
+**C+L, timed (2026-11-11).** C+L had not been timed, and it was far from its 1-hour budget. In the
+pilot's K piece it took about 146 s per trajectory-cycle at K = 1 (local, one thread), and a training run
+would have taken about 230 hours. The solver was made faster without changing its numerics (commit
+212ba17):
+- the Jacobian by vectorised reverse mode;
+- modified Newton;
+- trajectories and training windows integrated together in one Newton solve.
+
+On Kaggle (one thread, `results/timing_cplusl_eval.json`), 16 MOF-303 trajectories over 2 cycles take
+39.7 s at K = 1 and 140 s at K = 8, that is 1.2 and 4.4 s per trajectory-cycle. Evaluation is now a
+small item, and the pilot's K piece fits one session. The training cost per iteration is being timed
+(`p3b-cl-train-timing`) and replaces the 1-hour placeholder at the freeze.
+
 **The speed-up (commit 638d3bc).** A profile of S's iteration showed three repeated computations:
 - the isotherm evaluated separately for E^, N^ and S^;
 - the projected step decoding again the four RK4 stages that the dynamics had just evaluated;

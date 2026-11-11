@@ -34,7 +34,7 @@ def _batch(m, N=32):
 def _rel(a, b, N=32):
     B = a.shape[0]
     sc = b.reshape(B, -1, N).abs().amax(-1, keepdim=True).clamp(min=1e-300)
-    return float(((a - b).reshape(B, -1, N).abs() / sc).max())
+    return float(((a - b).detach().reshape(B, -1, N).abs() / sc.detach()).max())
 
 
 def test_stacked_rhs_equals_each_trajectory_rhs():
@@ -134,7 +134,7 @@ def test_batched_training_loss_and_gradient_equal_the_serial_ones(paths):
     got = cplusl._loss(data, 4, 3, 2, np.random.default_rng(5))
     got.backward()
     g = torch.cat([p.grad.flatten() for p in m.parameters()])
-    assert float(got) == pytest.approx(float(ref), rel=1e-8)
+    assert float(got.detach()) == pytest.approx(float(ref.detach()), rel=1e-8)
     assert torch.allclose(g, g_ref, rtol=1e-6, atol=1e-9 * float(g_ref.abs().max()))
 
 
