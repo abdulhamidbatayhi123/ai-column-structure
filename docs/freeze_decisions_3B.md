@@ -77,7 +77,22 @@ long validation trajectories):
   helped by the balance term.
 - Al-fumarate (6 trajectories) overfits under every loss: the pilot cannot inform it.
 
-A third diagnostic (`p3b-decoder-diag3`: λ = 3, 10, 30; the λ = 1 learning curve; d = 64) is queued.
+**Third diagnostic** (`results/decoder_diag/decoder_diag3.json`; MOF-303 at 32 trajectories unless stated):
+
+| loss | d | field | outlet c | balance N | balance E |
+|---|---|---|---|---|---|
+| MSE + 1 × balance² (diag2) | 32 | 0.018 | 0.024 | 0.047 | 0.028 |
+| MSE + 3 × balance² | 32 | 0.021 | 0.028 | 0.081 | 0.055 |
+| MSE + 10 × balance² | 32 | 0.027 | 0.031 | 0.067 | 0.043 |
+| MSE + 30 × balance² | 32 | 0.037 | 0.039 | 0.106 | 0.062 |
+| MSE + 3 × balance² | 64 | 0.021 | 0.026 | 0.060 | 0.030 |
+
+- A larger weight does not help. Above λ = 1 the field error passes 0.02 and the balance errors do not fall
+  further (one seed each, so the order among λ = 3, 10 and 30 is not reliable). d = 64 does not change this.
+- With λ = 1 the balance error falls faster with data than with plain MSE: balance N 0.339, 0.131 and 0.047 at
+  8, 16 and 32 trajectories (about n^−1.4, against n^−0.55 for MSE). Extrapolated to 256 trajectories that is
+  about 0.003, under the gate. This rests on three points and one seed: it is a reason for hope, not evidence.
+- B (6 trajectories): λ = 10 gives balance E 0.0045 and outlet T 0.021, against the threshold 0.02.
 
 **The pilot no longer stops on this.** The pilot gate is a risk report (PREREG 10). d is set at full data
 by `scripts/decoder_choice.py` (PREREG 4, 5.1).
@@ -86,11 +101,13 @@ by `scripts/decoder_choice.py` (PREREG 4, 5.1).
 (b) Pre-freeze revision: train the autoencoder on MSE + λ × (the gate's own balance errors)² with λ
 fixed before the freeze, so the decoder is trained for what the gate checks. This is blind to the arms,
 and every arm shares the autoencoder. (c) Relax the criterion (for example an RMS over snapshots instead of
-the maximum). This is not recommended: it changes the test after seeing the pilot. Recommended: (b), with λ
-fixed from diag3 by a rule stated before its results are read (the largest λ in {1, 3, 10, 30} whose field
-error stays at or below 0.015 for MOF-303 on pilot data), the reason and the diag evidence in the PREREG
-change log. Even with (b), MOF-303 may be "not testable" at the registered thresholds, and the paper must be
-ready to report that honestly.
+the maximum). This is not recommended: it changes the test after seeing the pilot. Recommended: (b) with λ = 1.
+Before diag3 I wrote down a rule (the largest λ in {1, 3, 10, 30} whose MOF-303 field error stays at or
+below 0.015). It selects none, because λ = 1 already gives 0.018. λ = 1 is proposed instead because it is
+the only tested weight that lowers the balance errors without failing the field criterion, and its errors
+fall fastest with data. This choice was made after seeing pilot-data diagnostics (no arm trained or
+evaluated), and the change log must say so. Even with (b), MOF-303 may be "not testable" at the registered
+thresholds, and the paper must be ready to report that honestly.
 
 ## 2. The compute ceiling: needed at the freeze
 
