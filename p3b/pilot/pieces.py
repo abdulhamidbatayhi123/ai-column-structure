@@ -228,15 +228,40 @@ def piece_lr(arm: str, data_root, stage: dict, out, q: dict | None = None) -> st
     return _write(out, f"lr_{_tag(arm)}.json", {str(k): v for k, v in res.items()}, stage, q, used, seeds=[0])
 
 
-def piece_curve(arm: str, data_root, stage: dict, out, q: dict | None = None) -> str:
+def _resume_into(resume_from, out, name: str) -> None:
+    """Copy an earlier session's file `name` (searched recursively, as Kaggle mounts kernel outputs)."""
+    import shutil
+    hits = glob.glob(os.path.join(str(resume_from), "**", name), recursive=True)
+    if not hits:
+        raise FileNotFoundError(f"no {name} under {resume_from}")
+    os.makedirs(str(out), exist_ok=True)
+    shutil.copy(hits[0], os.path.join(str(out), name))
+
+
+def piece_curve(arm: str, data_root, stage: dict, out, q: dict | None = None, deadline: float | None = None,
+                resume_from: str | None = None) -> str:
+    """The arm's curve to CURVE_MAX iterations. C+L's run (about 18 h at 16,000 iterations) spans Kaggle
+    sessions: past `deadline` it checkpoints and writes RESUME.json instead of the curve, and a later
+    session continues from `resume_from` (the earlier session's output)."""
     q = q or {}
     ds, val, used = _primary(data_root)
     its, every = q.get("curve_iterations", CURVE_MAX), q.get("curve_every", CURVE_EVERY)
     nw, ns = q.get("n_windows", 8), q.get("n_steps", 20)
     lr = stage["lr"][arm]
     if arm == "C+L":
+        ckpt = f"curve_{_tag(arm)}_ckpt.pt"
+        os.makedirs(str(out), exist_ok=True)
+        if resume_from:
+            _resume_into(resume_from, out, ckpt)
         curve = runs.cplusl_curve(ds, val, KEYS[PRIMARY_KEY][1], lr, its, every, int(stage["K"][PRIMARY_KEY]), 0,
-                                  n_coarse=q.get("n_coarse", 32), n_windows=nw, n_steps=ns)
+                                  n_coarse=q.get("n_coarse", 32), n_windows=nw, n_steps=ns,
+                                  checkpoint=os.path.join(str(out), ckpt), deadline=deadline)
+        if isinstance(curve, dict):                      # the session ends; a later one resumes
+            path = os.path.join(str(out), "RESUME.json")
+            with open(path, "w") as f:
+                json.dump({"piece": f"curve-{_tag(arm)}", "stopped_at": curve["stopped_at"], "iterations": its,
+                           "checkpoint": ckpt, "stage_sha256": stage_sha(stage)}, f, indent=1)
+            return path
     else:
         curve = runs.train_curve(make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, lr, its, every,
                                  1, 0, nw, ns)

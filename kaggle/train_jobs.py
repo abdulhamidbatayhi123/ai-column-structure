@@ -31,7 +31,7 @@ def build_jobs(cs, kit_slug: str = KIT) -> dict:
         n = job_name(c)
         job = {"name": n, "system": "train", "set": n,
                "commands": [["kaggle/train_chunk.py", "--cell", n, "--out", "OUT"]], "expect": [f"{n}.json"],
-               "threads": 4}
+               "threads": 4, "resumable": True}           # past --hours: RESUME.json, run_queue continues it
         if c.arm in LEARNED_WITH_AE:
             job["depends_on"] = [ae_job_name(c)]
         jobs.append(job)

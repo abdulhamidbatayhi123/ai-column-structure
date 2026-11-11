@@ -430,21 +430,26 @@ def two_seed_rows(make_arm, ds, val, lr: float, iterations: int, h_steps: int, s
 
 # ---- Task 6 building block: C+L's curve and learning-rate sweep -------------------------------------
 def cplusl_curve(ds, val, material: str, lr: float, iterations: int, every: int, K: int, seed: int,
-                 n_coarse: int = 32, n_windows: int = 8, n_steps: int = 20) -> list:
+                 n_coarse: int = 32, n_windows: int = 8, n_steps: int = 20, checkpoint: str | None = None,
+                 deadline: float | None = None, stop_after: int | None = None):
     """C+L trained with one cosine schedule over `iterations`; its deterministic validation loss
-    (p3b.train.cplusl.cplusl_val_loss) every `every` iterations: [(iteration, loss), ...]."""
+    (p3b.train.cplusl.cplusl_val_loss) every `every` iterations: [(iteration, loss), ...]. With a
+    checkpoint the run spans sessions (train_cplusl): a session that stops returns its history (a
+    dict with "stopped_at"), and the curve so far travels in the checkpoint."""
     from p3b.solvers.c_plus_l import Multipliers
     from p3b.train import cplusl
     torch.manual_seed(seed)
     mult = Multipliers(n_out=3)
-    curve = []
 
     def record(it, m, hist):
         loss = float("nan") if too_many_skipped(hist, it) else cplusl.cplusl_val_loss(m, val, material, n_coarse, K)
-        curve.append((it, loss))
-    cplusl.train_cplusl(mult, ds, material, n_coarse, lr, iterations, seed, n_windows=n_windows, n_steps=n_steps,
-                        K=K, every=every, callback=record)
-    return curve
+        hist.setdefault("curve", []).append((it, loss))
+    hist = cplusl.train_cplusl(mult, ds, material, n_coarse, lr, iterations, seed, n_windows=n_windows,
+                               n_steps=n_steps, K=K, every=every, callback=record, checkpoint=checkpoint,
+                               deadline=deadline, stop_after=stop_after)
+    if "stopped_at" in hist:
+        return hist
+    return [tuple(x) for x in hist.get("curve", [])]
 
 
 def cplusl_lr_sweep(ds, val, material: str, K: int, rates=(3e-4, 1e-3, 3e-3), iterations: int = 2000, seed: int = 0,

@@ -99,21 +99,56 @@ def cplusl_val_loss(mult, val, material: str, n_coarse: int, K: int) -> float:
 
 def train_cplusl(mult, ds, material: str, n_coarse: int, lr: float, iterations: int, seed: int,
                  n_windows: int = 8, n_steps: int = 20, K: int = 1, lr_min: float = 1e-5, every: int = 0,
-                 callback=None) -> dict:
+                 callback=None, checkpoint: str | None = None, deadline: float | None = None,
+                 stop_after: int | None = None, save_every: int = 200) -> dict:
+    """Sessions (as p3b.train.trainer.train): with `checkpoint`, a run resumes from the file if it exists
+    (weights, optimiser, both random states, history), saves it every `save_every` iterations, and past
+    `deadline` (time.monotonic(); at least one iteration per session) or after `stop_after` iterations
+    saves it and returns with hist["stopped_at"]. A resumed run equals the run done in one go."""
+    import os
+    import time
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     data = _Data(ds, material, n_coarse, mult)
     params = [p for p in mult.parameters() if p.requires_grad]
     opt = torch.optim.Adam(params, lr=lr)
     hist = {"loss": [], "skipped": 0, "skipped_grad": 0}
-    for it in range(iterations):
+    it0 = 0
+    if checkpoint and os.path.exists(checkpoint):
+        ck = torch.load(checkpoint, weights_only=False)
+        mult.load_state_dict(ck["model"])
+        opt.load_state_dict(ck["opt"])
+        rng.bit_generator.state = ck["rng"]
+        torch.set_rng_state(ck["torch_rng"])
+        hist.update(ck["hist"])
+        it0 = ck["it"]
+        hist["resumed_from"] = it0
+
+    def save(it):
+        if checkpoint:
+            tmp = checkpoint + ".partial"
+            torch.save({"model": mult.state_dict(), "opt": opt.state_dict(), "rng": rng.bit_generator.state,
+                        "torch_rng": torch.get_rng_state(), "it": it,
+                        "hist": {k: v for k, v in hist.items() if k not in ("resumed_from", "stopped_at")}}, tmp)
+            os.replace(tmp, checkpoint)
+
+    done_here = 0
+    for it in range(it0, iterations):
+        if (stop_after is not None and done_here >= stop_after) or (
+                deadline is not None and done_here >= 1 and time.monotonic() >= deadline):
+            save(it)
+            hist["stopped_at"] = it
+            return hist
+        done_here += 1
+        if checkpoint and it > it0 and it % save_every == 0:
+            save(it)
         for g in opt.param_groups:
             g["lr"] = cosine_lr(it, max(iterations - 1, 1), lr, lr_min)
         try:
             loss = _loss(data, n_windows, n_steps, K, rng)
         except RuntimeError:                         # Newton failure: skipped and counted, never applied
             loss = None
-        if loss is None or not math.isfinite(float(loss)):
+        if loss is None or not math.isfinite(float(loss.detach())):
             hist["skipped"] += 1
             hist["loss"].append(float("nan"))
             _checkpoint(it, every, callback, mult, hist)

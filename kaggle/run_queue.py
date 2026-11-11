@@ -125,9 +125,11 @@ def write_kernels(spec: dict) -> list[dict]:
                                            threads=job.get("threads", 1)))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
                 json.dump(_metadata(job["name"], spec["kit_slug"], job.get("depends_on", ())), f, indent=1)
-            kernels.append({"name": job["name"], "dir": d, "system": job.get("system", "timing"),
+            kernels.append({"name": job["name"], "base": job["name"], "dir": d, "system": job.get("system", "timing"),
                             "set": job.get("set", job["name"]), "expect": job["expect"],
-                            "depends_on": list(job.get("depends_on", ()))})
+                            "depends_on": list(job.get("depends_on", ())), "commands": job["commands"],
+                            "threads": job.get("threads", 1), "resumable": bool(job.get("resumable", False)),
+                            "kit_name": spec["kit_slug"].split("/")[-1], "r": 0})
             continue
         with open(os.path.join(ROOT, "data", "design", f"{job['system']}_{job['set']}.json")) as f:
             n_traj = len(json.load(f)["points"])
@@ -147,9 +149,25 @@ def write_kernels(spec: dict) -> list[dict]:
                 f.write(RUN_PY.format(args=args, kit_name=spec["kit_slug"].split("/")[-1]))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
                 json.dump(_metadata(name, spec["kit_slug"]), f, indent=1)
-            kernels.append({"name": name, "dir": d, "system": job["system"], "set": job["set"], "chunk": chunk,
-                            "expected_reports": len(args)})
+            kernels.append({"name": name, "base": name, "dir": d, "system": job["system"], "set": job["set"],
+                            "chunk": chunk, "expected_reports": len(args)})
     return kernels
+
+
+def continuation(k: dict, kit_slug: str) -> dict:
+    """The next session of a resumable command job whose kernel ended with RESUME.json: kernel
+    <base>-r<n>, the same commands with --resume-from /kaggle/input, the previous session's output
+    attached (with the job's own inputs). The job stays the same logical job (k["base"])."""
+    n = k.get("r", 0) + 1
+    name = f"{k['base']}-r{n}"
+    d = os.path.join(BUILD, name)
+    os.makedirs(d, exist_ok=True)
+    cmds = [list(c) + ["--resume-from", "/kaggle/input"] for c in k["commands"]]
+    with open(os.path.join(d, "run.py"), "w") as f:
+        f.write(RUN_CMDS_PY.format(cmds=cmds, kit_name=k["kit_name"], threads=k.get("threads", 1)))
+    with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
+        json.dump(_metadata(name, kit_slug, list(k.get("depends_on", ())) + [k["name"]]), f, indent=1)
+    return {**k, "name": name, "dir": d, "r": n}
 
 
 def log(msg: str) -> None:
@@ -182,12 +200,16 @@ def main(jobs_file: str) -> None:
             return all(e in names for e in k["expect"])
         return sum(f.endswith("_report.json") for f in names) >= k["expected_reports"]
 
-    done = {k["name"] for k in kernels if is_done(k)}
+    def resumed(k):
+        d = out_dir(k)
+        return k.get("resumable") and os.path.isdir(d) and any("RESUME.json" in fs for _, _, fs in os.walk(d))
+
+    done = {k["base"] for k in kernels if is_done(k)}         # logical jobs (a continuation keeps its base)
     while len(done) < len(kernels):
         status = {k["name"]: parse_status(run("kernels", "status", f"{OWNER}/{k['name']}"))
-                  for k in kernels if k["name"] not in done}
+                  for k in kernels if k["base"] not in done}
         busy = sum(s in ("RUNNING", "QUEUED") for s in status.values())
-        for k in kernels:
+        for i, k in enumerate(kernels):
             s = status.get(k["name"])
             if s is None:
                 continue
@@ -195,8 +217,11 @@ def main(jobs_file: str) -> None:
                 os.makedirs(out_dir(k), exist_ok=True)
                 run("kernels", "output", f"{OWNER}/{k['name']}", "-p", out_dir(k))
                 if is_done(k):
-                    done.add(k["name"])
+                    done.add(k["base"])
                     log(f"{k['name']} output downloaded")
+                elif resumed(k):                            # the session ended; the next one resumes
+                    kernels[i] = continuation(k, spec["kit_slug"])
+                    log(f"{k['name']} ended with RESUME.json: continues as {kernels[i]['name']}")
             elif s in ("ERROR", "CANCEL_ACKNOWLEDGED"):
                 log(f"{k['name']} status {s}: needs attention")
             elif s == "ABSENT" and k["name"] not in pushed and busy < MAX_RUNNING and ready(k, done):

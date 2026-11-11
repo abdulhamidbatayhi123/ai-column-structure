@@ -375,7 +375,8 @@ def train_cell(cell: Cell, data_dir: str, out_dir: str, pilot: dict, quick: dict
     q = quick or {}
     os.makedirs(out_dir, exist_ok=True)
     if cell.arm in SOLVER_ARMS:
-        return _solver_cell(cell, data_dir, out_dir, pilot, q, VALIDATION_SETS, train=True)
+        return _solver_cell(cell, data_dir, out_dir, pilot, q, VALIDATION_SETS, train=True, deadline=deadline,
+                            resume_from=resume_from)
     ckpt = os.path.join(out_dir, job_name(cell) + "_ckpt.pt")
     if resume_from:
         _copy_session(resume_from, out_dir, [os.path.basename(ckpt), _ae_file(cell)])
@@ -462,10 +463,12 @@ def evaluate_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot:
     return Path(path)
 
 
-def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool):
+def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline: float | None = None,
+                 resume_from: str | None = None):
     """C (16-128 cells) and MUSCL-C (32, 64): deterministic runs on each set's trajectories. C+L:
     trained once (multipliers saved first), then rolled out like C. A failed run is a failure at
-    cycle 1 (capped), never a lost cell."""
+    cycle 1 (capped), never a lost cell. C+L's training spans sessions like train_cell's: past
+    `deadline` it checkpoints and RESUME.json is returned; `resume_from` continues it."""
     from pathlib import Path
 
     from p3b.eval.evaluate import evaluate_files, write_results
@@ -481,12 +484,24 @@ def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool):
         torch.manual_seed(cell.seed)
         mult = Multipliers(n_out=3)
         if train:
+            from pathlib import Path
+            ckpt = os.path.join(out_dir, job_name(cell) + "_ckpt.pt")
+            if resume_from:
+                _copy_session(resume_from, out_dir, [os.path.basename(ckpt)])
             train_files, train_idx = _train_files(data_dir, cell.size, _pool_size(cell, q))
             hist = train_cplusl(mult, load_set(train_files), cell.material, n_coarse=q.get("n_coarse", 32),
                                 lr=pilot["lr"]["C+L"], iterations=pilot["iterations"], seed=cell.seed,
-                                n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20), K=pilot["K"])
+                                n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20), K=pilot["K"],
+                                checkpoint=ckpt, deadline=deadline)
+            if "stopped_at" in hist:                               # the session ends; a later one resumes
+                path = Path(out_dir) / "RESUME.json"
+                path.write_text(json.dumps({"job": job_name(cell), "stopped_at": hist["stopped_at"],
+                                            "iterations": pilot["iterations"],
+                                            "checkpoint": os.path.basename(ckpt)}, indent=1))
+                return path
             torch.save(mult.state_dict(), mfile)                 # saved before any rollout can fail
             meta_extra = {"train_indices": train_idx, "train_skipped": hist["skipped"],
+                          "resumed_from": hist.get("resumed_from"),
                           "train_skipped_grad": hist["skipped_grad"],
                           "params": sum(p.numel() for p in mult.parameters()),
                           "weights": {"file": os.path.basename(mfile), "sha256": _sha(mfile)}}
