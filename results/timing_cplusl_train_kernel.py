@@ -1,5 +1,5 @@
 # C+L training cost at kit 212ba17: train_cplusl (8 windows x 20 steps, the study defaults) for 20 iterations
-# on the 32 MOF-303 pilot training trajectories at 32 cells, K = 1 and 2, one thread.
+# on the 32 MOF-303 pilot training trajectories at 32 cells, K = 1 and 4 (the pilot chose 4), one thread.
 import glob, json, os, sys, time
 hits = glob.glob("/kaggle/input/p3b-reference-kit/**/kaggle/generate_chunk.py", recursive=True)
 kit = os.path.dirname(os.path.dirname(hits[0]))
@@ -15,7 +15,7 @@ kit_commit = open(os.path.join(kit, "kit_commit.txt")).read().strip()
 print("kit", kit_commit, flush=True)
 ds = load_set(files(os.path.join(kit, "data", "pilot"), "A_MOF-303", "train"))
 out = {"kit": kit_commit, "n_traj": int(ds.X.shape[0]), "iterations": 20}
-for K in (1, 2):
+for K in (1, 4):
     torch.manual_seed(0)
     t = time.time(); c = time.process_time()
     h = train_cplusl(Multipliers(n_out=3), ds, "MOF-303", 32, lr=1e-3, iterations=20, seed=0, K=K)

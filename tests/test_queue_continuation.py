@@ -77,15 +77,23 @@ def test_the_queue_pushes_continuations_until_the_expected_output_arrives(rq, tm
     assert "ALL_OUTPUTS_DOWNLOADED" in open(rq.REG).read()
 
 
+def _load(name):
+    # by file: other tests restore sys.path, so the kaggle/ entry above may be gone by now
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, os.path.join(os.path.dirname(__file__), "..", "kaggle", f"{name}.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def test_the_cplusl_curve_and_the_study_cells_are_resumable_jobs():
-    import importlib
-    pj = importlib.import_module("pilot_jobs")
+    pj = _load("pilot_jobs")
     phase2 = {j["name"]: j for j in pj.phase_jobs(2)["jobs"]}
     assert phase2 and all(j.get("resumable") for j in phase2.values())        # every curve
     phase1 = {j["name"]: j for j in pj.phase_jobs(1)["jobs"]}
     assert all(j.get("resumable") for n, j in phase1.items() if "-lr-" in n)    # every lr sweep
     assert not any(j.get("resumable") for n, j in phase1.items() if "-ae-" in n)
-    tj = importlib.import_module("train_jobs")
+    tj = _load("train_jobs")
     from p3b.train.cells import cells
     jobs = tj.build_jobs(cells())["jobs"]
     cell_jobs = [j for j in jobs if j["commands"][0][1] == "--cell"]

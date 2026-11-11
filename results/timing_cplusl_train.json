@@ -1,0 +1,17 @@
+{
+ "kit": "9dc6103009d833a52f83bca3375ded4cb5faa58d",
+ "n_traj": 32,
+ "iterations": 20,
+ "K1": {
+  "wall_s_per_iter": 2.6881708025932314,
+  "cpu_s_per_iter": 2.63053120465,
+  "skipped": 0,
+  "skipped_grad": 0
+ },
+ "K4": {
+  "wall_s_per_iter": 8.115727496147155,
+  "cpu_s_per_iter": 8.106569879899999,
+  "skipped": 0,
+  "skipped_grad": 0
+ }
+}

@@ -101,9 +101,10 @@ about 14 s:
 - the multiplier networks evaluated once per right-hand side;
 - Newton started from the previous interval's factorised Jacobian.
 
-The Kaggle re-timing replaces these numbers. On the local ratio it gives about 4 s per iteration, that is
-about 9 hours per run and about 55 hours for the six C+L cells, against 6 in the pre-pilot budget.
-That excess enters the ceiling decision.
+Re-timed on Kaggle at 9dc6103 (`results/timing_cplusl_train.json`, same set-up): **2.7 s per iteration
+at K = 1, 8.1 s at K = 4**. The pilot set K = 4 (`results/pilot_stage.json`), so a C+L run of 8,000
+iterations takes about 18 hours, two Kaggle sessions (the cells resume across sessions). The six C+L cells
+take about 108 hours, against 6 in the pre-pilot budget. That excess enters the ceiling decision.
 
 **The speed-up (commit 638d3bc).** A profile of S's iteration showed three repeated computations:
 - the isotherm evaluated separately for E^, N^ and S^;
