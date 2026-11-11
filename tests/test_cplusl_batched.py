@@ -197,3 +197,81 @@ def test_a_failing_trajectory_fails_alone_and_the_others_are_stored(paths, tmp_p
     single = tmp_path / "s2.npz"
     real(m, [POINTS[2]], "MOF-303", 4, 8, 20, 8, paths=[single])
     assert np.allclose(np.load(out[2])["channels"], np.load(single)["channels"], rtol=1e-8, atol=0)
+
+
+def test_batch_jacobian_equals_each_trajectory_dense_jacobian_with_learned_multipliers():
+    # training forms Newton's Jacobian with MLP multipliers in the graph: it must stay exact
+    from p3b.solvers.c_plus_l import batch_jacobian
+    m = _mult(sd=1.0)
+    rhs, Y, I, _ = _batch(m)
+    st = TorchColumnRHS.stack(rhs)
+    with torch.no_grad():
+        J = batch_jacobian(lambda x: st(x, I), Y, 32)
+    assert J.shape == (3, Y.shape[1], Y.shape[1]) and not J.requires_grad
+    for j, r in enumerate(rhs):
+        dense = torch.autograd.functional.jacobian(lambda x: r(x, I[j]), Y[j])
+        assert torch.allclose(J[j], dense, rtol=1e-12, atol=1e-12 * float(dense.abs().max()))
+
+
+def test_batch_jacobian_is_cheaper_coloured_than_vectorised_with_learned_multipliers():
+    # 9 coloured reverse passes against the vectorised 96-cotangent pass, in the same process (a
+    # relative check, robust to machine load): about 3x on a laptop
+    import time
+    from p3b.solvers.c_plus_l import batch_jacobian
+    m = _mult(sd=1.0)
+    rhs, Y, I, _ = _batch(m)
+    st = TorchColumnRHS.stack(rhs * 3)
+    Y8, I8 = Y.repeat(3, 1), I.repeat(3, 1)
+
+    def best(n_cells):
+        batch_jacobian(lambda x: st(x, I8), Y8, n_cells)
+        ts = []
+        for _ in range(5):
+            t = time.perf_counter()
+            batch_jacobian(lambda x: st(x, I8), Y8, n_cells)
+            ts.append(time.perf_counter() - t)
+        return min(ts)
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)                      # as the study runs; many threads only add contention here
+    try:
+        assert best(32) < best(None) / 1.5
+    finally:
+        torch.set_num_threads(threads)
+
+
+def test_a_jacobian_carried_between_steps_gives_the_same_states_with_fewer_jacobians(monkeypatch):
+    import p3b.solvers.c_plus_l as cl
+    m = _mult(sd=0.3)
+    rhs, Y, I, H = _batch(m)
+    st = TorchColumnRHS.stack(rhs)
+    calls = {"n": 0}
+    real = cl.batch_jacobian
+
+    def counted(*a, **k):
+        calls["n"] += 1
+        return real(*a, **k)
+    monkeypatch.setattr(cl, "batch_jacobian", counted)
+    runs = {}
+    for carry in (False, True):
+        calls["n"] = 0
+        cache = {} if carry else None
+        y, ys = Y, []
+        for _ in range(6):
+            y = implicit_euler_step(st, y, I, H, substeps=2, jac_cache=cache)
+            ys.append(y)
+        runs[carry] = (torch.stack(ys).detach(), calls["n"])
+    (a, na), (b, nb) = runs[False], runs[True]
+    assert _rel(b.reshape(-1, b.shape[-1]), a.reshape(-1, a.shape[-1])) < 1e-9
+    assert nb < na
+
+
+def test_a_carried_jacobian_for_another_step_size_is_not_used():
+    m = _mult(sd=0.3)
+    rhs, Y, I, H = _batch(m)
+    st = TorchColumnRHS.stack(rhs)
+    cache = {}
+    implicit_euler_step(st, Y, I, H, jac_cache=cache)
+    assert "lu" in cache
+    ref = implicit_euler_step(st, Y, I, 3 * H)
+    got = implicit_euler_step(st, Y, I, 3 * H, jac_cache=cache)
+    assert _rel(got.detach(), ref.detach()) < 1e-9

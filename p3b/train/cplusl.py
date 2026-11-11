@@ -55,10 +55,11 @@ class _Data:
         snapshot interval; yields (step k, states, targets), each (windows, 3 n_coarse)."""
         rhs = TorchColumnRHS.stack([self.rhs[j] for j, _ in picks])
         y = torch.stack([self.flat[j][s] for j, s in picks])
+        cache = {}                                     # Newton's Jacobian, carried between intervals
         for k in range(n_steps):
             inp = torch.stack([torch.as_tensor(self.raw[j][s + k, :3], dtype=F64) for j, s in picks])
             h = torch.tensor([float(self.t[j][s + k + 1] - self.t[j][s + k]) for j, s in picks], dtype=F64)
-            y = implicit_euler_step(rhs, y, inp, h, substeps=K)
+            y = implicit_euler_step(rhs, y, inp, h, substeps=K, jac_cache=cache)
             yield k, y, torch.stack([self.flat[j][s + k + 1] for j, s in picks])
 
 
@@ -164,6 +165,7 @@ def rollout_cplusl_to_files(mult, points: list, material: str, n_coarse: int, n_
     half = n_snap // 2
     B = len(points)
     t_abs = np.zeros(B)
+    cache = {}                                         # Newton's Jacobian, carried between intervals
     for k in range(n_cycles.pop()):
         ys, ts = [], []
         for ph in range(len(setups[0][1])):
@@ -173,7 +175,7 @@ def rollout_cplusl_to_files(mult, points: list, material: str, n_coarse: int, n_
             for i in range(half):
                 ys.append(y.numpy().copy())
                 ts.append(t_abs + i * h)
-                y = implicit_euler_step(rhs, y, inp, torch.tensor(h, dtype=F64), substeps=K)
+                y = implicit_euler_step(rhs, y, inp, torch.tensor(h, dtype=F64), substeps=K, jac_cache=cache)
             t_abs = t_abs + durs
         Y, T = np.stack(ys, axis=1), np.stack(ts, axis=1)                     # (B, snaps, ...)
         for b, cz in enumerate(czs):

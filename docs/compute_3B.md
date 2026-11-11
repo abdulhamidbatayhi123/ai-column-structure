@@ -89,8 +89,21 @@ would have taken about 230 hours. The solver was made faster without changing it
 
 On Kaggle (one thread, `results/timing_cplusl_eval.json`), 16 MOF-303 trajectories over 2 cycles take
 39.7 s at K = 1 and 140 s at K = 8, that is 1.2 and 4.4 s per trajectory-cycle. Evaluation is now a
-small item, and the pilot's K piece fits one session. The training cost per iteration is being timed
-(`p3b-cl-train-timing`) and replaces the 1-hour placeholder at the freeze.
+small item, and the pilot's K piece fits one session.
+
+Training is the costly part. One iteration is 8 windows of 20 implicit steps with the learned multipliers
+in the graph. At 212ba17 it took 15.0 s at K = 1 and 17.8 s at K = 2 on Kaggle (32 pilot trajectories,
+one thread; `results/timing_cplusl_train_212ba17.json`), that is 33 to 40 hours per 8,000-iteration
+run. A profile showed Newton's Jacobian as 88 % of it: with MLP multipliers the vectorised 96-cotangent
+pass costs about 0.5 s. Three more changes, numerics again unchanged, take a local iteration from 51 s to
+about 14 s:
+- the Jacobian from 9 reverse passes coloured by the three-cell stencil (exact);
+- the multiplier networks evaluated once per right-hand side;
+- Newton started from the previous interval's factorised Jacobian.
+
+The Kaggle re-timing replaces these numbers. On the local ratio it gives about 4 s per iteration, that is
+about 9 hours per run and about 55 hours for the six C+L cells, against 6 in the pre-pilot budget.
+That excess enters the ceiling decision.
 
 **The speed-up (commit 638d3bc).** A profile of S's iteration showed three repeated computations:
 - the isotherm evaluated separately for E^, N^ and S^;

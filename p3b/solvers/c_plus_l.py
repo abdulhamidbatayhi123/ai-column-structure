@@ -30,7 +30,7 @@ from p3b.thermal_store import T0 as T0_B
 F64 = torch.float64
 _INV_SOFTPLUS_1 = math.log(math.e - 1.0)
 STALL_TOL = 1e-8     # Newton may stop where it stalls only below this block-relative residual
-CHORD_RATE = 0.25    # modified Newton reuses its Jacobian while each iteration cuts the residual 4-fold
+CHORD_RATE = 0.5     # modified Newton reuses its Jacobian while each iteration at least halves the residual
 
 
 class Multipliers(nn.Module):
@@ -112,8 +112,9 @@ class TorchColumnRHS(nn.Module):
             one_f, one_c = torch.ones(c.shape[:-1] + (self.N - 1,), dtype=F64), torch.ones_like(c)
             return one_f, one_f, one_c
         x = self.local_inputs(c, q, T)
-        mf = self.mult(0.5 * (x[..., 1:, :] + x[..., :-1, :]))
-        mc = self.mult(x)
+        n_f = self.N - 1                                  # faces and cells through the networks at once
+        m = self.mult(torch.cat([0.5 * (x[..., 1:, :] + x[..., :-1, :]), x], dim=-2))
+        mf, mc = m[..., :n_f, :], m[..., n_f:, :]
         return mf[..., 0], mf[..., 1], mc[..., 2]
 
     def fluxes(self, y, inp):
@@ -225,12 +226,36 @@ def colored_jacobian(f, y, n_cells: int, n_var: int):
     return J
 
 
-def batch_jacobian(f, y):
-    """Per-sample Jacobians (B, n, n) of a right-hand side whose sample b depends only on y[b]: the
-    Jacobian of the batch sum, one batched backward pass for the whole batch."""
+def batch_jacobian(f, y, n_cells: int | None = None):
+    """Per-sample Jacobians (B, n, n) of a right-hand side whose sample b depends only on y[b].
+
+    With n_cells, the stencil is used: cell i of every variable depends only on cells i-1, i, i+1, so
+    the rows grouped by variable and cell mod 3 never share a column, and 3 n_var reverse passes give
+    the Jacobian exactly (9 for system A, instead of n = 96). This matters with learned multipliers in
+    the graph, where the vectorised 96-cotangent pass costs ~0.5 s at batch 8. Without n_cells: the
+    Jacobian of the batch sum by vectorised reverse mode."""
+    if n_cells is None:
+        with torch.enable_grad():
+            J = torch.autograd.functional.jacobian(lambda x: f(x).sum(0), y.detach(), vectorize=True)
+        return J.detach().permute(1, 0, 2)
+    B, n = y.shape
+    N = n_cells
+    n_var = n // N
+    idx = torch.arange(n)
+    var_of, cell_of = idx // N, idx % N
+    J = torch.zeros(B, n, n, dtype=y.dtype)
     with torch.enable_grad():
-        J = torch.autograd.functional.jacobian(lambda x: f(x).sum(0), y.detach(), vectorize=True)
-    return J.detach().permute(1, 0, 2)
+        x = y.detach().requires_grad_(True)
+        out = f(x)
+        for var in range(n_var):
+            for k in range(3):
+                seed = ((var_of == var) & (cell_of % 3 == k)).to(y.dtype).expand(B, n)
+                g, = torch.autograd.grad(out, x, seed, retain_graph=True)
+                for off in (-1, 0, 1):                  # the one row of the group touching each column
+                    r = cell_of + off
+                    ok = (r >= 0) & (r < N) & (r % 3 == k)
+                    J[:, var * N + r[ok], idx[ok]] = g[:, idx[ok]]
+    return J.detach()
 
 
 def step_jacobian(f, y):
@@ -243,7 +268,7 @@ def step_jacobian(f, y):
 
 
 def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: int = 50, substeps: int = 1,
-                        chord: bool = True):
+                        chord: bool = True, jac_cache: dict | None = None):
     """y(h) by `substeps` implicit-Euler steps of h/substeps, each solved by Newton with the
     dense Jacobian (`step_jacobian`); differentiable in y0 and the multiplier weights (see module doc).
 
@@ -257,7 +282,12 @@ def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: in
     iteration cuts the residual by CHORD_RATE or more and refreshed otherwise, and with no gradient
     needed the converged point's Jacobian (used only for the gradient correction, which changes the
     value by less than tol) is not formed. The tolerance is the same, so the answer agrees with full
-    Newton to tol; chord=False is full Newton."""
+    Newton to tol; chord=False is full Newton.
+
+    With chord, each substep starts from the previous substep's factorised Jacobian, and jac_cache (a
+    dict the caller keeps between snapshot intervals) carries it from one call to the next. It is used
+    only for the same batch and the same step sizes (to 1e-9, the rounding of stored times); a non-finite residual on a carried Jacobian
+    restarts the solve from the start state with a fresh Jacobian."""
     single = y0.dim() == 1
     if single:                                          # one trajectory: a batch of one
         y0, inp = y0.unsqueeze(0), inp.unsqueeze(0)
@@ -269,6 +299,7 @@ def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: in
     y_prev = y0
     params = list(rhs.parameters()) if hasattr(rhs, "parameters") else []
     need_grad = torch.is_grad_enabled() and (y0.requires_grad or any(q.requires_grad for q in params))
+    cache = jac_cache if jac_cache is not None else {}
     for _ in range(substeps):
         if single:                                      # any rhs taking one state (system B's too)
             f = lambda x: rhs(x[0], inp[0]).unsqueeze(0)  # noqa: E731
@@ -283,10 +314,16 @@ def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: in
                                   (hs * f(base)).reshape(B, n_var, N).abs().amax(-1, keepdim=True)).clamp(min=1e-300)
             ok = False
             prev = torch.full((B,), float("inf"), dtype=F64)
-            lu, fresh = None, False
+            carried = (chord and cache.get("B") == B and "lu" in cache     # same step sizes up to time rounding
+                       and torch.allclose(cache["hs"], hs, rtol=1e-9, atol=0.0))
+            lu, fresh, restarted = (cache["lu"] if carried else None), False, False
             for _ in range(max_iter):
                 F = y - base - hs * f(y)
                 rel = (F.reshape(B, n_var, N).abs() / scale).amax((1, 2))
+                if not fresh and not restarted and lu is not None and not bool(torch.isfinite(rel).all()):
+                    y, lu, restarted = base.clone(), None, True      # a carried Jacobian went astray
+                    prev = torch.full((B,), float("inf"), dtype=F64)
+                    continue
                 done = rel <= tol
                 if fresh:                                   # stalled at the round-off floor of this state
                     done = done | ((rel >= 0.5 * prev) & (rel <= STALL_TOL))
@@ -295,7 +332,7 @@ def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: in
                     break
                 fresh = lu is None or not chord or bool((rel > CHORD_RATE * prev).any())
                 if fresh:
-                    lu = torch.linalg.lu_factor(eye - hs.unsqueeze(-1) * batch_jacobian(f, y))
+                    lu = torch.linalg.lu_factor(eye - hs.unsqueeze(-1) * batch_jacobian(f, y, N))
                 prev = rel
                 y = y - torch.linalg.lu_solve(*lu, F.unsqueeze(-1)).squeeze(-1)
             if not ok:
@@ -306,11 +343,15 @@ def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: in
                 raise RuntimeError(f"Newton did not converge in {max_iter} iterations "
                                    f"(largest block-relative residual {worst:.3e}, tol {tol:g})")
             if not (need_grad or not chord):
+                if lu is not None:                          # converged without one: keep the cache as it is
+                    cache.update(B=B, hs=hs.clone(), lu=lu)
                 y_prev = y
                 continue
-            J = batch_jacobian(f, y)
+            J = batch_jacobian(f, y, N)
+            lu_star = torch.linalg.lu_factor(eye - hs.unsqueeze(-1) * J)
+            cache.update(B=B, hs=hs.clone(), lu=lu_star)
         F = y - y_prev - hs * f(y)
-        y_prev = y - torch.linalg.solve(eye - hs.unsqueeze(-1) * J, F.unsqueeze(-1)).squeeze(-1)
+        y_prev = y - torch.linalg.lu_solve(*lu_star, F.unsqueeze(-1)).squeeze(-1)
     return y_prev.squeeze(0) if single else y_prev
 
 

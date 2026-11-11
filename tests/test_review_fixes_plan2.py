@@ -344,9 +344,9 @@ def test_modified_newton_matches_full_newton_with_fewer_jacobians(monkeypatch):
     calls = {"n": 0}
     real = m.batch_jacobian
 
-    def counted(f, y):
+    def counted(*a, **k):
         calls["n"] += 1
-        return real(f, y)
+        return real(*a, **k)
     monkeypatch.setattr(m, "batch_jacobian", counted)
     with torch.no_grad():
         full = _rollout(rhs, y0, inp, h, 10, chord=False)
