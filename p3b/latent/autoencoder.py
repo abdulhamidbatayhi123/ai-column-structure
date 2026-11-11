@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 
-import numpy as np
 import torch
 from torch import nn
 
@@ -101,9 +100,50 @@ def cosine_lr(step: int, total: int, lr: float, lr_min: float) -> float:
     return lr_min + 0.5 * (lr - lr_min) * (1 + math.cos(math.pi * min(step, total) / total))
 
 
+BALANCE_WEIGHT = 1.0    # freeze decision 1b (author, 2026-11-12): MSE + 1 x (the gate's balance errors)^2
+
+
+def balance_errors(ds, std, phys):
+    """f(rec, idx) -> (eN, eE): the decoder gate's balance errors (PREREG 5.1) of standardised
+    reconstructions rec of the flattened snapshots idx of ds (in std.encode(ds.X).reshape(-1, n) order):
+    (N^ - N) / W_ref and (E^ - E) / (|dH| W_ref + int |wall| dt); B: eN None and (E^ - E) / (|Q_ref| +
+    int |wall loss| dt), as decoder_gate normalises them."""
+    A = ds.system == "A"
+    n_ch = 3 if A else 2
+    nc = ds.n_cells
+    T, C, S = ds.X.shape[:3]
+    W = ds.W_ref.abs().unsqueeze(-1).expand(T, C, S).reshape(-1)
+    wall = ds.wall_abs.unsqueeze(-1).expand(T, C, S).reshape(-1)
+    Et = ds.E_true.reshape(-1)
+    Nt = ds.N_true.reshape(-1) if A else None
+    denom_E = (abs(phys.dH) * W + wall) if A else (W + wall)
+
+    def f(rec, idx):
+        ch = std.decode(rec)[:, :nc * n_ch].reshape(-1, nc, n_ch)
+        eE = (phys.E(ch) - Et[idx]) / denom_E[idx]
+        eN = (phys.N(ch) - Nt[idx]) / W[idx] if A else None
+        return eN, eE
+    return f
+
+
+def fit_autoencoder(model, ds, std, phys, epochs: int = 60, seed: int = 0, weight: float = BALANCE_WEIGHT,
+                    **kw) -> dict:
+    """Every autoencoder of the study and the pilot is trained here: MSE on the standardised states plus
+    `weight` x the mean squared balance errors (balance_errors), the decoder trained for what the gate
+    checks (freeze decision 1b). weight 0 is the plain MSE training."""
+    errs = balance_errors(ds, std, phys) if weight else None
+
+    def penalty(rec, idx):
+        eN, eE = errs(rec, idx)
+        return eE.pow(2).mean() + (eN.pow(2).mean() if eN is not None else 0.0)
+    return train_autoencoder(model, std.encode(ds.X), epochs=epochs, seed=seed,
+                             penalty=penalty if weight else None, weight=weight, **kw)
+
+
 def train_autoencoder(model, X, epochs: int = 60, batch: int = 256, lr: float = 1e-3, lr_min: float = 1e-5,
-                      seed: int = 0) -> dict:
-    """MSE training on standardised state vectors X (n_samples, n). Returns {"loss": per epoch}."""
+                      seed: int = 0, penalty=None, weight: float = 0.0) -> dict:
+    """MSE training on standardised state vectors X (n_samples, n), plus weight x penalty(rec, idx) when a
+    penalty is given (idx: the batch's rows of the flattened X). Returns {"loss": per epoch}."""
     torch.manual_seed(seed)
     gen = torch.Generator().manual_seed(seed)
     X = X.reshape(-1, X.shape[-1])
@@ -114,10 +154,14 @@ def train_autoencoder(model, X, epochs: int = 60, batch: int = 256, lr: float = 
         perm = torch.randperm(X.shape[0], generator=gen)
         tot = 0.0
         for i in range(steps_per_epoch):
-            xb = X[perm[i * batch:(i + 1) * batch]]
+            idx = perm[i * batch:(i + 1) * batch]
+            xb = X[idx]
             for g in opt.param_groups:
                 g["lr"] = cosine_lr(step, total, lr, lr_min)
-            loss = ((model(xb) - xb) ** 2).mean()
+            rec = model(xb)
+            loss = ((rec - xb) ** 2).mean()
+            if penalty is not None and weight:
+                loss = loss + weight * penalty(rec, idx)
             opt.zero_grad()
             loss.backward()
             opt.step()

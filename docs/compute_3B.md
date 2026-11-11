@@ -129,11 +129,11 @@ continuation kernel and re-point the evaluation jobs to it. That is part of the 
 Kernels already run each of their commands as a separate process, so 4 runs per session is 4 commands
 in one job.
 
-**Still open: the ceiling.** It is in CPU-equivalent hours and was set to bound cost. On Kaggle CPU,
-which is free, the binding constraint is wall time (5 sessions at once). Keeping it at 700,
-redefining it (for example in session-hours), or reducing the design is the author's decision at the
-freeze. It is taken from these costs and the pilot's iteration count and h, which the pilot sets
-blind to errors.
+**The ceiling (author's decision, 2026-11-12).** It is counted on Kaggle, where all the compute runs: a
+hard ceiling of 1,300 Kaggle CPU-hours of session time, the measured need at h = 2 (about 1,160 with C+L)
+plus about 10 % (PREREG Section 11, revision R2). It was set before the pilot's h, iteration count or
+any error was known. On Kaggle CPU, which is free, the binding constraint is wall time (5 sessions at
+once).
 
 **The stall and its fix.** scipy's BDF estimates the Jacobian by finite differences. On the steep
 MOF-303 isotherm that estimate failed as the front crossed the isotherm step, so the solver
@@ -182,7 +182,8 @@ block counts toward the ceiling.
 
 ## 3. Ceiling and reduction order
 
-Hard ceiling: **700 CPU-equivalent hours**, measured as the running total. Past it, these
+Hard ceiling: **1,300 Kaggle CPU-hours** (700 CPU-equivalent hours before revision R2, 2026-11-12),
+measured as the running total. Past it, these
 are removed in order (pre-registration, Section 11), all secondary or descriptive:
 1. the degraded-data sensitivity;
 2. U-long;

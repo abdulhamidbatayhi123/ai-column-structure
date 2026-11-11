@@ -145,14 +145,14 @@ def piece_ae(data_root, key: str, seed: int, stage: dict, out, q: dict | None = 
     """The pilot autoencoder of (key, seed) at the chosen d, saved under the study's naming
     (ae_<system>_<material>_pilot_s<seed>.pt) so p3b.train.cells._build finds it; its SHA-256 is
     recorded by every piece that uses it."""
-    from p3b.latent.autoencoder import train_autoencoder
+    from p3b.latent.autoencoder import fit_autoencoder
     from p3b.latent.data import load_set
     q = q or {}
     ds = load_set(files(data_root, key, "train"))
     std = _std(ds)
     torch.manual_seed(seed)
     ae = _ae(ds, stage, key, q)
-    train_autoencoder(ae, std.encode(ds.X), epochs=q.get("ae_epochs", 60), seed=seed)
+    fit_autoencoder(ae, ds, std, runs._physics(ds), epochs=q.get("ae_epochs", 60), seed=seed)
     c = _cell("U", key, seed)
     os.makedirs(str(out), exist_ok=True)
     path = os.path.join(str(out), f"ae_{c.system}_{c.material}_{c.size}_s{seed}.pt")

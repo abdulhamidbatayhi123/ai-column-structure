@@ -129,7 +129,10 @@ def apply_reductions(cs: list, steps: list) -> list:
     return [c for c in cs if not any(_removed_by(s, c) or _removed_by_sens(s, c) for s in steps)]
 
 
-def plan_reductions(spent_h: float, remaining: list, cost_h: dict, ceiling_h: float = 700.0,
+CEILING_H = 1300.0     # Kaggle CPU-hours of session time (PREREG Section 11, revision R2, 2026-11-12)
+
+
+def plan_reductions(spent_h: float, remaining: list, cost_h: dict, ceiling_h: float = CEILING_H,
                     fixed_h: float = 0.0) -> list:
     """The reduction steps, in order, needed so that spent + fixed costs (autoencoder and H6 jobs)
     + the projected cost of the remaining cells fits under the ceiling; all seven if even that does
@@ -236,7 +239,7 @@ def gate_ae(spec: dict, data_dir: str, out_dir: str, css_cycle: int, q: dict | N
     """Train one full-data autoencoder of the spec and score the decoder gate on validation, and on long
     validation at cycles 40 to 60 when the pilot's cyclic steady state is after cycle 6 (PREREG 5.1).
     Writes gate_<name>.json and the weights; returns the json path."""
-    from p3b.latent.autoencoder import decoder_gate, make_autoencoder, train_autoencoder
+    from p3b.latent.autoencoder import decoder_gate, fit_autoencoder, make_autoencoder
     from p3b.latent.data import Standardiser, load_set
     from p3b.pilot.rules import pilot_key
     q = q or {}
@@ -247,7 +250,7 @@ def gate_ae(spec: dict, data_dir: str, out_dir: str, css_cycle: int, q: dict | N
     std = Standardiser.fit(ds.X, ds.n_cells, n_ch, n_out, features=ds.features)
     torch.manual_seed(c.seed)
     ae = make_autoencoder(spec["kind"], ds.n_cells, n_ch, n_out, int(spec["d"]), width=q.get("ae_width", 256))
-    train_autoencoder(ae, std.encode(ds.X), epochs=q.get("ae_epochs", 60), seed=c.seed)
+    fit_autoencoder(ae, ds, std, _physics(c.system, c.material, ds), epochs=q.get("ae_epochs", 60), seed=c.seed)
     os.makedirs(out_dir, exist_ok=True)
     w = os.path.join(out_dir, f"{spec['name']}.pt")
     torch.save(ae.state_dict(), w)
@@ -292,7 +295,7 @@ def _copy_session(src: str, out_dir: str, names) -> None:
 def _load_ae(cell, ae, out_dir, pilot, q, std, ds):
     """The cell's shared autoencoder: from its own autoencoder job (kernel inputs) or out_dir. A
     missing one is an error; only quick test runs may train it here."""
-    from p3b.latent.autoencoder import train_autoencoder
+    from p3b.latent.autoencoder import fit_autoencoder
     ae_file = _ae_file(cell)
     root = pilot.get("ae_input_root", "/kaggle/input")
     found = [p for p in [os.path.join(out_dir, ae_file)]
@@ -302,7 +305,8 @@ def _load_ae(cell, ae, out_dir, pilot, q, std, ds):
         return {"file": ae_file, "source": found[0], "sha256": _sha(found[0])}
     if not q or q.get("require_ae"):
         raise FileNotFoundError(f"shared autoencoder {ae_file} not found (its autoencoder job must run first)")
-    train_autoencoder(ae, std.encode(ds.X), epochs=q.get("ae_epochs", 60), seed=cell.seed)
+    fit_autoencoder(ae, ds, std, _physics(cell.system, cell.material, ds), epochs=q.get("ae_epochs", 60),
+                    seed=cell.seed)
     path = os.path.join(out_dir, ae_file)
     torch.save(ae.state_dict(), path)
     return {"file": ae_file, "source": "trained here (quick)", "sha256": _sha(path)}
@@ -484,7 +488,6 @@ def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline:
         torch.manual_seed(cell.seed)
         mult = Multipliers(n_out=3)
         if train:
-            from pathlib import Path
             ckpt = os.path.join(out_dir, job_name(cell) + "_ckpt.pt")
             if resume_from:
                 _copy_session(resume_from, out_dir, [os.path.basename(ckpt)])

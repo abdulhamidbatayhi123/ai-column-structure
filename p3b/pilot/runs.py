@@ -70,17 +70,17 @@ def css_cycles(paths) -> list:
 
 def decoder_gate_grid(train_paths, val_paths, d_grid=(16, 24, 32, 48, 64), epochs: int = 60, width: int = 256,
                       seed: int = 0, kind: str = "mlp") -> dict:
-    from p3b.latent.autoencoder import decoder_gate, make_autoencoder, train_autoencoder
+    from p3b.latent.autoencoder import decoder_gate, fit_autoencoder, make_autoencoder
     from p3b.latent.data import Standardiser, load_set
     ds, val = load_set(train_paths), load_set(val_paths)
     n_ch, n_out = (3, 2) if ds.system == "A" else (2, 1)
     std = Standardiser.fit(ds.X, ds.n_cells, n_ch, n_out, features=ds.features)
-    phys = _physics(val)
+    phys, phys_train = _physics(val), _physics(ds)
     out = {}
     for d in d_grid:
         torch.manual_seed(seed)
         ae = make_autoencoder(kind, ds.n_cells, n_ch, n_out, d, width=width)
-        train_autoencoder(ae, std.encode(ds.X), epochs=epochs, seed=seed)
+        fit_autoencoder(ae, ds, std, phys_train, epochs=epochs, seed=seed)
         out[int(d)] = decoder_gate(ae, val, std, phys)        # the metrics, not only "passed" (a risk report)
     return out
 
@@ -325,7 +325,6 @@ def cplusl_K(val_paths, material: str, n_coarse: int = 32, Ks=(1, 2, 4, 8), work
     from p3b.gates import load_meta
     from p3b.latent.data import load_set
     from p3b.solvers.c_plus_l import Multipliers
-    from p3b.solvers.coarse import run_c
     from p3b.train import cplusl
     ds = load_set(val_paths)
     phys = _physics(ds)

@@ -13,7 +13,6 @@ output as input continues it with --resume-from.
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
 import sys
@@ -48,7 +47,8 @@ def decoder_for(c, choice: dict) -> tuple:
 
 def train_ae(c, out: str, choice: dict) -> str:
     import torch
-    from p3b.latent.autoencoder import make_autoencoder, train_autoencoder
+    from p3b.latent.autoencoder import fit_autoencoder, make_autoencoder
+    from p3b.train.cells import _physics
     from p3b.latent.data import Standardiser, load_set
     files, _ = _train_files(data_dir(c), c.size, _pool_size(c, {}))
     ds = load_set(files)
@@ -57,7 +57,7 @@ def train_ae(c, out: str, choice: dict) -> str:
     torch.manual_seed(c.seed)
     kind, d = decoder_for(c, choice)
     ae = make_autoencoder(kind, ds.n_cells, n_ch, n_out, d)
-    train_autoencoder(ae, std.encode(ds.X), seed=c.seed)
+    fit_autoencoder(ae, ds, std, _physics(c.system, c.material, ds), seed=c.seed)
     path = os.path.join(out, f"ae_{c.system}_{c.material}_{c.size}_s{c.seed}.pt")
     torch.save(ae.state_dict(), path)
     return path

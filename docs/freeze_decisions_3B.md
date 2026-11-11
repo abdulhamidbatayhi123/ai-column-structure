@@ -3,6 +3,14 @@
 Updated 2026-11-10. Each item says what is decided, the evidence, the options and when it must be
 decided. Numbers are from the files named.
 
+## Decisions taken (author, 2026-11-12; "quality over everything")
+
+| item | decision | done |
+|---|---|---|
+| 1b decoder loss | (b) MSE + 1 × the gate's balance errors² for every autoencoder | `p3b.latent.autoencoder.fit_autoencoder`, `BALANCE_WEIGHT`; PREREG revision R1 |
+| 2 ceiling | counted on Kaggle: 1,300 Kaggle CPU-hours (measured need at h = 2 about 1,160 plus about 10 %) | `p3b.train.cells.CEILING_H`; PREREG Section 11, revision R2 |
+| 1 δ and h_v | (b) the physically right values, set from the primary sources: δ for the one-temperature system A, h_v(v) for B | pending the full texts (requested from the author through the YTÜ library); PREREG revision R3. The pilot data and the pilot phases are then redone. Phase 1 was stopped on 2026-11-12. |
+
 ## 1. Axial conduction δ (system A) and the exchange coefficient h_v (system B): needed before the pilot results are used
 
 **What.** PREREG Section 2 sets system A's axial conductivity `k_z = 0.10 + δ ρ_g C_pg v d_p`, with

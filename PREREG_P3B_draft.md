@@ -266,7 +266,7 @@ hyperparameters of Section 4.
 
 | item | value |
 |---|---|
-| autoencoder | MLP; encoder 386 → 256 → 256 → d, decoder d → 256 → 256 → 386 (128 cells × 3 channels + 2 outlet channels; system B: 128 × 2 + 1), SiLU; standardised channels; MSE loss; Adam, learning rate 10⁻³ with cosine decay to 10⁻⁵, batch 256 snapshots, 60 epochs |
+| autoencoder | MLP; encoder 386 → 256 → 256 → d, decoder d → 256 → 256 → 386 (128 cells × 3 channels + 2 outlet channels; system B: 128 × 2 + 1), SiLU; standardised channels; MSE loss plus 1 × the mean squared balance errors of 5.1 (normalised as there; pre-freeze revision R1, Section 12); Adam, learning rate 10⁻³ with cosine decay to 10⁻⁵, batch 256 snapshots, 60 epochs |
 | latent dimension d | the smallest in {16, 24, 32, 48, 64} that passes the decoder gate (Section 5.1) at full data, then fixed for every size and arm of that system and material. If none passes, a fixed 1-D convolutional decoder (4 layers, 32 channels) is tried on the same grid before "not testable" is declared |
 | dynamics networks | U: f_θ is an MLP (d + inputs) → 128 → 128 → 128 → d, SiLU. S: G_θ the same; A(z) an MLP d → 128 → d·d (rank d). S-L: E_θ and S_θ are MLPs d → 64 → 64 → 1. Widths of U, U+F, P and FNO are adjusted so that the trainable dynamics parameters match S's within ±5 % (counts printed in every results file) |
 | cycle inputs | log c_in, T_in, T_w, v, and the flow direction (system B), standardised |
@@ -567,10 +567,11 @@ Pilot errors by arm are never reported or used.
 
 ## 11. Budget and ceiling
 
-Compute is in `docs/compute_3B.md`: about 620 CPU-equivalent hours, run mainly on Kaggle
-(free). A hard ceiling of 700 CPU-equivalent hours applies, counted as a running total. Past
-it, the reduction order of `docs/compute_3B.md` §3 is applied in sequence. It removes only
-secondary or descriptive items, never the primary arms, seeds or test sets.
+Compute is in `docs/compute_3B.md`, measured in the pilot: about 750 CPU-hours at h = 1 and 1,160 at
+h = 2, all run on Kaggle (free CPU sessions). A hard ceiling of 1,300 Kaggle CPU-hours applies, counted
+as a running total of session time (pre-freeze revision R2, Section 12). Past it, the reduction order
+of `docs/compute_3B.md` §3 is applied in sequence. It removes only secondary or descriptive items, never
+the primary arms, seeds or test sets.
 
 ## 12. Discipline, deviations and the AI declaration
 
@@ -587,6 +588,22 @@ The program's discipline applies:
 
 Deviations after the freeze are logged with their date, reason and affected hypotheses, and
 both analyses are reported.
+
+Revisions after the pilot and before the freeze, decided by the author blind to every arm's error
+(evidence in `docs/freeze_decisions_3B.md` and `results/decoder_diag/`):
+- **R1 (2026-11-12), the autoencoder loss.** Pilot diagnostics showed that MSE training reconstructs
+  the fields within the gate but misses the balance criteria of 5.1 by 5 to 12 times (MOF-303), the
+  error systematic and phase-locked. The loss adds 1 × the mean squared balance errors, normalised as
+  in 5.1, so the decoder is trained for what the gate checks. A rule stated before the third diagnostic
+  (the largest weight in {1, 3, 10, 30} keeping MOF-303's field error at or below 0.015) selected none;
+  1 was chosen as the only tested weight that lowered the balance errors without failing the field
+  criterion. Every autoencoder (pilot, gate and study) uses this loss.
+- **R2 (2026-11-12), the ceiling.** The 700 CPU-equivalent hours did not cover the measured costs
+  (C+L, never timed before the pilot, about 108 hours alone). The ceiling is now 1,300 Kaggle
+  CPU-hours, set before h, the iterations or any error were known.
+- **R3 (pending), the axial conduction of system A and the exchange coefficient of system B.** To be
+  set from the primary sources (Yagi, Kunii and Wakao 1960; Wakao, Kaguei and Funazkri 1979;
+  Vortmeyer and Schaefer 1974) before the freeze; the pilot data and phases are then redone.
 
 AI declaration for the paper: "During the preparation of this work the author used a
 generative AI assistant (Claude, Anthropic) as a tool to assist with drafting and language

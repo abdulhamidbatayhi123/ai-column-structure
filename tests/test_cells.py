@@ -92,3 +92,11 @@ def test_one_tiny_cell_runs_end_to_end(tmp_path):
     assert res["meta"]["arm"] == "U" and res["meta"]["params"] > 0
     assert {r["arm"] for r in res["rows"]} == {"U", "U+proj"} and len(res["rows"]) == 2
     assert (tmp_path / "out" / "ae_A_MOF-303_full_s0.pt").exists()            # the shared autoencoder
+
+
+def test_the_ceiling_is_1300_kaggle_cpu_hours_by_default():
+    # PREREG Section 11, revision R2 (author, 2026-11-12)
+    import inspect
+    from p3b.train.cells import CEILING_H
+    assert CEILING_H == 1300.0
+    assert inspect.signature(plan_reductions).parameters["ceiling_h"].default == CEILING_H

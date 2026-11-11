@@ -33,7 +33,7 @@ in advance, so a negative answer is as publishable as a positive one.
 | reference timing on Kaggle | done: system A 18 to 26 CPU-s per cycle at 2048 cells, so the data-cost contingency is not applied (`docs/compute_3B.md`) |
 | pilot (data, learning rates, step size, variance, thresholds, decoder gate) | runner complete and independently reviewed: five Kaggle phases with a blinded collector (`kaggle/pilot_jobs.py`, `scripts/pilot_collect.py`); pilot data generation running on Kaggle |
 | freeze | after the pilot, before any confirmatory data |
-| confirmatory study | about 620 CPU-equivalent hours, on Kaggle CPU |
+| confirmatory study | about 750 to 1,160 CPU-hours measured in the pilot (ceiling 1,300), on Kaggle CPU |
 
 ## The design in brief
 
