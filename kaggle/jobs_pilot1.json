@@ -1,0 +1,264 @@
+{
+ "kit_slug": "abdulhamidbatayhi/p3b-reference-kit",
+ "nz": 0,
+ "jobs": [
+  {
+   "name": "p3b-pilot-ae-amof-303-s0-c21879",
+   "system": "pilot",
+   "set": "ae-A_MOF-303-s0",
+   "threads": 4,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "ae-A_MOF-303-s0",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "ae_A_MOF-303_pilot_s0.pt"
+   ]
+  },
+  {
+   "name": "p3b-pilot-ae-aal-fumarate-s0-c21879",
+   "system": "pilot",
+   "set": "ae-A_Al-fumarate-s0",
+   "threads": 4,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "ae-A_Al-fumarate-s0",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "ae_A_Al-fumarate_pilot_s0.pt"
+   ]
+  },
+  {
+   "name": "p3b-pilot-ae-b-s0-c21879",
+   "system": "pilot",
+   "set": "ae-B-s0",
+   "threads": 4,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "ae-B-s0",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "ae_B_None_pilot_s0.pt"
+   ]
+  },
+  {
+   "name": "p3b-pilot-ae-amof-303-s1-c21879",
+   "system": "pilot",
+   "set": "ae-A_MOF-303-s1",
+   "threads": 4,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "ae-A_MOF-303-s1",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "ae_A_MOF-303_pilot_s1.pt"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-u-c21879",
+   "system": "pilot",
+   "set": "lr-U",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-U",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_U.json"
+   ],
+   "depends_on": [
+    "p3b-pilot-ae-amof-303-s0-c21879"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-upf-c21879",
+   "system": "pilot",
+   "set": "lr-UpF",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-UpF",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_UpF.json"
+   ],
+   "depends_on": [
+    "p3b-pilot-ae-amof-303-s0-c21879"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-p-c21879",
+   "system": "pilot",
+   "set": "lr-P",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-P",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_P.json"
+   ],
+   "depends_on": [
+    "p3b-pilot-ae-amof-303-s0-c21879"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-s-c21879",
+   "system": "pilot",
+   "set": "lr-S",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-S",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_S.json"
+   ],
+   "depends_on": [
+    "p3b-pilot-ae-amof-303-s0-c21879"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-sl-c21879",
+   "system": "pilot",
+   "set": "lr-SL",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-SL",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_SL.json"
+   ],
+   "depends_on": [
+    "p3b-pilot-ae-amof-303-s0-c21879"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-sm-c21879",
+   "system": "pilot",
+   "set": "lr-SM",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-SM",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_SM.json"
+   ],
+   "depends_on": [
+    "p3b-pilot-ae-amof-303-s0-c21879"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-spi-c21879",
+   "system": "pilot",
+   "set": "lr-SPi",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-SPi",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_SPi.json"
+   ],
+   "depends_on": [
+    "p3b-pilot-ae-amof-303-s0-c21879"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-fno-c21879",
+   "system": "pilot",
+   "set": "lr-FNO",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-FNO",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_FNO.json"
+   ],
+   "depends_on": [
+    "p3b-pilot-ae-amof-303-s0-c21879"
+   ]
+  },
+  {
+   "name": "p3b-pilot-lr-cpl-c21879",
+   "system": "pilot",
+   "set": "lr-CpL",
+   "threads": 1,
+   "commands": [
+    [
+     "kaggle/pilot_chunk.py",
+     "--piece",
+     "lr-CpL",
+     "--out",
+     "OUT"
+    ]
+   ],
+   "expect": [
+    "lr_CpL.json"
+   ]
+  }
+ ]
+}

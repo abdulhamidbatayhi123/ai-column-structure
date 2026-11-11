@@ -128,6 +128,12 @@ blind to errors. S fails at h = 1 on the start-up interval in every test so far,
 At h = 2 the whole reduction order saves about 204 hours, which leaves about 860. On Kaggle (free, 5
 sessions, 4 runs each) 1,060 hours take about 4 to 5 days of compute.
 
+**Update 2026-11-11: C+L.** These totals carry C+L at its budgeted 1 hour per run, which was never
+timed. Measured on Kaggle after two rounds of speed-ups that keep its numerics (`results/timing_cplusl_train.json`):
+8.1 s per iteration at the pilot's K = 4, that is about 18 hours per run and about 108 hours for the
+six C+L cells. The totals rise by about 100 hours: about 750 at h = 1 and 1,160 at h = 2. The cells
+resume across Kaggle sessions, so this is time, not feasibility.
+
 **Options.**
 - (a) Keep 700 and apply the reduction order. At h = 2 it is not enough, and further cuts would reach
   the primary design.
