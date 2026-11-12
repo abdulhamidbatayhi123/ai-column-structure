@@ -87,3 +87,8 @@ def test_every_autoencoder_is_trained_through_fit_autoencoder():
         text = open(s, encoding="utf-8").read()
         assert "train_autoencoder(" not in text, s
         assert "fit_autoencoder(" in text, s
+
+
+def test_only_the_tiny_data_overrides_can_change_the_pilot_weight():
+    text = open(os.path.join(os.path.dirname(__file__), "..", "p3b", "pilot", "pieces.py"), encoding="utf-8").read()
+    assert text.count("ae_balance_weight") == 2          # read from q only; no other weight in the pilot

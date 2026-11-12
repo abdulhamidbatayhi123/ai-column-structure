@@ -137,7 +137,8 @@ def test_batched_rollout_of_a_projected_arm_equals_single_rollouts(tmp_path):
     ta = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ta)
     ta.make_data(str(tmp_path), 32, 8, 40)
-    q = {"d": 4, "ae_epochs": 30, "ae_width": 16, "width": 8, "n_windows": 1, "n_steps": 2}
+    # the toy autoencoder of this batching test stays the plain-MSE one (it tests the batching, not the loss)
+    q = {"d": 4, "ae_epochs": 30, "ae_width": 16, "width": 8, "n_windows": 1, "n_steps": 2, "ae_balance_weight": 0.0}
     key = ta.KEY
     train = load_set(pieces.files(str(tmp_path), key, "train"))
     out = tmp_path / "ae"

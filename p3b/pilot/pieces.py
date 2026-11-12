@@ -152,7 +152,8 @@ def piece_ae(data_root, key: str, seed: int, stage: dict, out, q: dict | None = 
     std = _std(ds)
     torch.manual_seed(seed)
     ae = _ae(ds, stage, key, q)
-    fit_autoencoder(ae, ds, std, runs._physics(ds), epochs=q.get("ae_epochs", 60), seed=seed)
+    fit_autoencoder(ae, ds, std, runs._physics(ds), epochs=q.get("ae_epochs", 60), seed=seed,
+                    **({"weight": q["ae_balance_weight"]} if "ae_balance_weight" in q else {}))   # tiny-data tests only
     c = _cell("U", key, seed)
     os.makedirs(str(out), exist_ok=True)
     path = os.path.join(str(out), f"ae_{c.system}_{c.material}_{c.size}_s{seed}.pt")
