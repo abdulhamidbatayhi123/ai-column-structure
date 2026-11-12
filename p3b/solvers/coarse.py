@@ -112,7 +112,8 @@ class MusclStore(ThermalStore):
     @classmethod
     def from_store(cls, st: ThermalStore) -> "MusclStore":
         p = dict(st.params, compensate=False)
-        return cls(st.N, **p)
+        p.pop("h_v_model", None)                  # its recorded name; the model itself is passed on
+        return cls(st.N, **p, h_v_model=st.h_v_model)
 
     def fluxes(self, y, inputs):
         f = super().fluxes(y, inputs)

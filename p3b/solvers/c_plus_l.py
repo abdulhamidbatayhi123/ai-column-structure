@@ -194,7 +194,7 @@ class TorchStoreRHS(nn.Module):
         g = self.rhoc * (Tf - T0_B)
         g_up = torch.cat([g_in, g[:-1]]) if v >= 0 else torch.cat([g[1:], g_in])
         conv = abs(v) / dz * (g_up - g)
-        W = self.h_v * mh * (Tf - Ts)
+        W = self.st.h_v_of(v) * mh * (Tf - Ts)
         Jf = -self.st.k_f_eff(v) * mk * (Tf[1:] - Tf[:-1]) / dz
         Js = -self.k_s * (Ts[1:] - Ts[:-1]) / dz
         Wwall = self.h_a * (Tf - T_amb)

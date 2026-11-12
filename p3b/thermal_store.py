@@ -32,16 +32,26 @@ T0 = 293.15
 
 class ThermalStore:
     def __init__(self, N, L=1.0, eps=0.38, rho_f=990.0, c_f=4180.0, rho_s=2650.0, c_s=830.0,
-                 h_v=2.0e4, k_f=1.5, k_s=0.8, h_wall=2.0, D=0.3, d_p=None, delta_ax=0.5, compensate=False):
+                 h_v=2.0e4, k_f=1.5, k_s=0.8, h_wall=2.0, D=0.3, d_p=None, delta_ax=0.5, compensate=False,
+                 h_v_model=None):
         self.N, self.L, self.dz = N, L, L / N
         self.params = dict(L=L, eps=eps, rho_f=rho_f, c_f=c_f, rho_s=rho_s, c_s=c_s, h_v=h_v, k_f=k_f, k_s=k_s,
                            h_wall=h_wall, D=D, d_p=d_p, delta_ax=delta_ax, compensate=bool(compensate))
+        if h_v_model is not None:     # recorded only when set: the constants of data made without one stay valid
+            self.params["h_v_model"] = getattr(h_v_model, "__name__", repr(h_v_model))
         self.Cf = eps * rho_f * c_f           # J/m3/K per bed volume
         self.Cs = (1 - eps) * rho_s * c_s
         self.rhoc = rho_f * c_f               # per m3 of flowing fluid
         self.h_v, self.k_f, self.k_s = h_v, k_f, k_s
         self.h_a = 4.0 * h_wall / D           # wall, W/m3/K
         self.d_p, self.delta_ax, self.compensate = d_p, delta_ax, bool(compensate)
+        self.h_v_model = h_v_model
+
+    def h_v_of(self, v):
+        """The fluid-solid exchange coefficient (W m^-3 K^-1) at superficial velocity v: the constant h_v,
+        or h_v_model(|v|) when a flow-dependent model is set (revision R3; non-negative, so the exchange
+        block stays positive semi-definite)."""
+        return self.h_v if self.h_v_model is None else float(self.h_v_model(abs(v)))
 
     def k_f_phys(self, v):
         """Fluid axial conductivity incl. flow-dependent dispersion (W/m/K)."""
@@ -73,7 +83,7 @@ class ThermalStore:
         else:
             g_up = np.concatenate((g[1:], [g_in]))
         conv = abs(v) / self.dz * (g_up - g)
-        W = self.h_v * (Tf - Ts)
+        W = self.h_v_of(v) * (Tf - Ts)
         Jf = -self.k_f_eff(v) * (Tf[1:] - Tf[:-1]) / self.dz
         Js = -self.k_s * (Ts[1:] - Ts[:-1]) / self.dz
         Wwall = self.h_a * (Tf - T_amb)
