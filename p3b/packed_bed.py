@@ -26,12 +26,12 @@ from __future__ import annotations
 
 AIR_A = {"mu": 1.8205675178515367e-05, "k": 0.025873828302933142}      # Pa s, W/m/K at 293.15 K
 WATER_B = {"mu": 0.0005957693051508003, "k": 0.6347834493539902}       # Pa s, W/m/K at 318.15 K
-# System B's rock is granite (density 2.67 g/cm3, the listed rock closest to the store's 2650 kg/m3):
-# 2.75 W/m/K at room temperature, from the diffusivity and thermal inertia of Janza (1975) as tabulated
-# by Robertson (1988), USGS Open-File Report 88-441, Table 13, p. 90 (K = I sqrt(alpha)); dense granites
-# span about 2.1 to 4.2 W/m/K (ibid., Figs. 3-4). Granite's porosity is well under 1 %, so immersion in
-# water hardly changes it.
-K_ROCK = 2.75
+# System B's rock is the registered quartzite-like solid (PREREG Section 2; density 2650 kg/m3, quartz's):
+# 4.99 W/m/K at room temperature, from the diffusivity and thermal inertia of Janza (1975) as tabulated
+# by Robertson (1988), USGS Open-File Report 88-441, Table 13, p. 90 (K = I sqrt(alpha)); dense quartzite
+# runs about 5.2 to 4.6 W/m/K from 20 to 80 C (ibid., Fig. 18, p. 38). Its porosity is under 1 %, so
+# immersion in water hardly changes it.
+K_ROCK = 4.99
 # System A's MOF pellets: no conductivity has been measured for MOF-303 in any form, nor for shaped
 # aluminium fumarate. The one measured aluminium fumarate value, 0.12 W/m/K (Gkaniatsou et al. 2021,
 # Nano Energy 87, 106224, SI Table S2, transient source), is used for both materials; shaped-MOF

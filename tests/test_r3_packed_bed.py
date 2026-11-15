@@ -102,7 +102,7 @@ def test_system_b_exchange_follows_wakao_and_jeffreson():
         assert st.h_v_of(-v) == st.h_v_of(v)          # the flow reverses between charge and discharge
         hv.append(st.h_v_of(v))
     assert all(b > a for a, b in zip(hv, hv[1:]))
-    assert 1.0e4 <= hv[0] and hv[-1] <= 2.6e4         # bracket around the old constant 2e4 (T9, Section 4)
+    assert 1.0e4 <= hv[0] and hv[-1] <= 3.5e4         # around the old constant 2e4 (quartzite, 0.5-3 mm/s)
     assert st.h_v_of(0.0) > 0 and math.isfinite(st.h_v_of(0.0))
 
 

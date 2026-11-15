@@ -112,10 +112,23 @@ Sections 3 and 4:
 - N_z = 2048.
 
 Bed: ε 0.39, ρ_p 1050 kg m⁻³, d_p 3.25 mm, L 0.10 m, D_in 0.05 m, h_w 10 W m⁻² K⁻¹. Axial
-effective conductivity `k_z = 0.10 + δ ρ_g C_pg v d_p` W m⁻¹ K⁻¹ with δ = 0.5 ⟨δ to be
-verified in the full text⟩: it grows with flow as in packed-bed practice (Yagi, Kunii and Wakao
-1960), and it is the heat analogue of D_L's `0.5 d_p u` term. Paper 1's constant 0.10 is its
-stagnant part.
+effective conductivity (revision R3, `p3b/packed_bed.py`):
+`k_z = 0.10 + 0.5 ρ_g C_pg v d_p + Φ (ρ_g C_pg v)² / (h_eff a_s)` W m⁻¹ K⁻¹.
+- 0.10 is Paper 1's constant, the stagnant part.
+- The second term is the fluid's axial dispersion, 0.5 Pr Re k_g (Wakao and Kaguei 1982).
+- The third term is the fluid-solid resistance that a one-temperature model must carry, by the
+  equivalence of Vortmeyer and Schaefer (1974) for moving fronts:
+  - a_s = 6(1−ε)/d_p;
+  - Φ = (κ/(1+κ))² with κ = (1−ε)ρ_p C_ps/(ε ρ_g C_pg), so Φ > 0.998;
+  - h from Wakao, Kaguei and Funazkri (1979), Nu = 2 + 1.1 Pr^(1/3) Re^0.6, with superficial v;
+  - the pellets' internal resistance by Jeffreson (1972), 1/h_eff = 1/h + d_p/(10 k_p), with
+    k_p = 0.12 W m⁻¹ K⁻¹. That is the one measured aluminium-fumarate value (Gkaniatsou et al.
+    2021); none exists for MOF-303, and shaped MOFs span 0.07 to 0.16.
+- Air's μ and k are taken at 293.15 K, the state Paper 1's ρ_g and C_pg describe (Lemmon and Jacobsen
+  2004; `verify/r3/properties.py`).
+
+The resulting δ_eff = (k_z − 0.10)/(ρ_g C_pg v d_p) runs from 0.77 at v = 0.03 m s⁻¹ to 1.65 at
+0.30 m s⁻¹. Its low end is Yagi, Kunii and Wakao's (1960) measured one-phase δ of 0.7 to 0.8.
 The LDF coefficient follows from the pellet by Paper 1's Glueckauf relation with the
 material's own isotherm.
 
@@ -143,8 +156,21 @@ loss to an ambient bath at 293.15 K. Charging: hot water at T_hot enters at z = 
 T_cold enters at z = L, for β α t_front. The bed starts uniform at T_cold. Bed and fluid
 properties are those of `verify/thermal_store.py` (ε 0.38, quartzite-like solid, L 1.0 m), with
 N_z = 1024 ⟨grid-convergence check in the pilot⟩. The fluid's axial conductivity includes the
-flow-dependent dispersion, `k_f = 1.5 + δ ρ_f c_f |v| d_p` with rock d_p = 5 cm
-⟨d_p to be verified against h_v⟩, and the reference uses the same hybrid scheme as system A
+flow-dependent dispersion, `k_f = 1.5 + 0.5 ρ_f c_f |v| d_p` with rock d_p = 5 cm.
+
+The fluid-rock exchange follows the flow (revision R3), `h_v(|v|) = a_s h_eff`:
+- a_s = 6(1−ε)/d_p;
+- h from Wakao, Kaguei and Funazkri (1979), the same correlation as in system A;
+- 1/h_eff = 1/h + d_p/(10 k_rock) (Jeffreson 1972), with k_rock = 4.99 W m⁻¹ K⁻¹ for quartzite
+  (Robertson 1988, USGS OFR 88-441, Table 13);
+- water's μ and k are taken at 318.15 K, the state the store's ρ_f and c_f describe (IAPWS 2008 and
+  2011).
+
+This gives h_v from 1.40 × 10⁴ to 2.87 × 10⁴ W m⁻³ K⁻¹ over v = 0.5 to 3 mm s⁻¹, where the
+constant was 2 × 10⁴. The Biot number hd_p/(2k_rock) reaches about 3.2 at the highest flow, near
+the limit of about 4 quoted for Jeffreson's correction, so the correction is approximate there.
+
+The reference uses the same hybrid scheme as system A
 (numerical conduction at most 1.9 % of the physical one at 1024 cells, `verify/clip_shares.json`).
 
 **Sampling** (scrambled Sobol, seeds fixed in `scripts/design_sets.py` before the pilot):
@@ -601,9 +627,19 @@ Revisions after the pilot and before the freeze, decided by the author blind to 
 - **R2 (2026-11-12), the ceiling.** The 700 CPU-equivalent hours did not cover the measured costs
   (C+L, never timed before the pilot, about 108 hours alone). The ceiling is now 1,300 Kaggle
   CPU-hours, set before h, the iterations or any error were known.
-- **R3 (pending), the axial conduction of system A and the exchange coefficient of system B.** To be
-  set from the primary sources (Yagi, Kunii and Wakao 1960; Wakao, Kaguei and Funazkri 1979;
-  Vortmeyer and Schaefer 1974) before the freeze; the pilot data and phases are then redone.
+- **R3 (2026-11-15), the axial conduction of system A and the exchange coefficient of system B.**
+  The registered δ = 0.5 for A is the fluid-phase value, and a constant h_v ignored the flow. Both
+  systems now use one consistent packed-bed set (Vortmeyer 1989):
+  - Wakao et al.'s (1979) h, with the 0.5 Pr Re dispersion it was derived with;
+  - Jeffreson's (1972) intraparticle correction;
+  - h_v(|v|) for B (Section 2);
+  - its Vortmeyer-Schaefer (1974) one-temperature equivalent k_z(v) for A (Section 2).
+
+  The forms were checked against open restatements of the three primary papers, which are closed access
+  (hub T9_r3_equations.md: 35 claims, 30 verified, no equation wrong). The rock and pellet
+  conductivities and the fluid properties are sourced in Section 2. The author's library copies of the
+  primary papers will be read before the freeze; any difference is logged here. The pilot data and
+  phases are redone with R3.
 
 AI declaration for the paper: "During the preparation of this work the author used a
 generative AI assistant (Claude, Anthropic) as a tool to assist with drafting and language
