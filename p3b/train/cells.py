@@ -470,8 +470,11 @@ def evaluate_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot:
 def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline: float | None = None,
                  resume_from: str | None = None):
     """C (16-128 cells) and MUSCL-C (32, 64): deterministic runs on each set's trajectories. C+L:
-    trained once (multipliers saved first), then rolled out like C. A failed run is a failure at
-    cycle 1 (capped), never a lost cell. C+L's training spans sessions like train_cell's: past
+    trained once (multipliers saved first), then rolled out like C. A run that fails in cycle k keeps
+    its cycles before k and is capped from cycle k on (PREREG 5; nothing is kept when k = 1), never
+    a lost cell; each row carries the failure's reason (failure_reason, None if it finished), and the
+    meta carries C+L's rollout report per set (failures, batch fallbacks, full-Newton retries) and its
+    training's skipped-iteration reasons. C+L's training spans sessions like train_cell's: past
     `deadline` it checkpoints and RESUME.json is returned; `resume_from` continues it."""
     from pathlib import Path
 
@@ -506,6 +509,8 @@ def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline:
             meta_extra = {"train_indices": train_idx, "train_skipped": hist["skipped"],
                           "resumed_from": hist.get("resumed_from"),
                           "train_skipped_grad": hist["skipped_grad"],
+                          "train_newton_failures": hist.get("newton_failures", []),
+                          "train_full_newton_retries": hist.get("full_newton_retries", 0),
                           "params": sum(p.numel() for p in mult.parameters()),
                           "weights": {"file": os.path.basename(mfile), "sha256": _sha(mfile)}}
         else:
@@ -522,23 +527,31 @@ def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline:
         phys = _physics(cell.system, cell.material, ds)
         nc, ns = ds.n_cells, ds.X.shape[2]
         points = [load_meta(p)["point"] for p in files]
-        by_arm = {}
+        by_arm, why = {}, {}                                      # why: (arm, trajectory) -> failure reason
         if cell.arm in ("C", "MUSCL-C"):
             for g in q.get("grids", [16, 32, 64, 128] if cell.arm == "C" else [32, 64]):
                 paths = []
                 for j, pt in enumerate(points):
                     p = os.path.join(tmp, f"{set_name}_{cell.arm}_{g}_{j}.npz")
                     res = run_c(cell.system, pt, cell.material, N_c=g, path=p, n_snap=ns, n_target=nc,
-                                muscl=cell.arm == "MUSCL-C")
-                    paths.append(p if res.ok else None)
+                                muscl=cell.arm == "MUSCL-C", keep_partial=True)
+                    paths.append(p if res.ok or res.partial else None)
+                    if not res.ok:
+                        why[(f"{cell.arm}@{g}", j)] = res.message
                 by_arm[f"{cell.arm}@{g}"] = paths
         else:
             from p3b.train.cplusl import rollout_cplusl_each
+            report = {}
             by_arm["C+L"] = rollout_cplusl_each(mult, points, cell.material, q.get("n_coarse", 32), nc, ns, pilot["K"],
-                                                [os.path.join(tmp, f"{set_name}_CL_{j}.npz") for j in range(len(points))])
+                                                [os.path.join(tmp, f"{set_name}_CL_{j}.npz") for j in range(len(points))],
+                                                report=report)
+            for j, f in report["failures"].items():
+                why[("C+L", j)] = f["reason"]
+            meta_extra.setdefault("rollout_report", {})[set_name] = report
         n_cycles = q.get("n_cycles", ds.X.shape[1])
         for r in evaluate_files(by_arm, ds, phys, n_cycles, cell.seed, pilot.get("floors"), pilot.get("tau_S")):
-            r.update(set=set_name, design_index=int(points[r["trajectory"]]["index"]))
+            r.update(set=set_name, design_index=int(points[r["trajectory"]]["index"]),
+                     failure_reason=why.get((r["arm"], r["trajectory"])))
             rows.append(r)
     meta = {"arm": cell.arm, "system": cell.system, "material": cell.material, "size": cell.size,
             "seed": cell.seed, "pilot": pilot, "sets": list(sets), **meta_extra}

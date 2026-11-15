@@ -129,9 +129,13 @@ class MusclStore(ThermalStore):
 
 
 def run_c(system: str, point: dict, material, N_c: int, path=None, n_snap: int = 200, n_target: int = 128,
-          muscl: bool = False, mapping: str = "minmod") -> TrajectoryResult:
+          muscl: bool = False, mapping: str = "minmod", keep_partial: bool = False) -> TrajectoryResult:
     """Run arm C (or MUSCL-C) on N_c cells and store it at the n_target cells of the reference,
-    mapped by the conservative minmod reconstruction (primary) or by injection (sensitivity)."""
+    mapped by the conservative minmod reconstruction (primary) or by injection (sensitivity).
+
+    With keep_partial, a run that fails in cycle k > 1 stores its cycles 1..k-1 (failed_cycle and
+    the failure message in the meta) and returns partial=True, so it is scored from cycle k on
+    (PREREG 5); without it, or when k = 1, a failed run stores nothing."""
     if n_target % N_c:
         raise ValueError("n_target must be a multiple of N_c")
     r = n_target // N_c
@@ -159,6 +163,13 @@ def run_c(system: str, point: dict, material, N_c: int, path=None, n_snap: int =
                         **_paper1_meta(system))
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
             cz.to_npz(path, meta=meta, ports_end=res.final_ports)
+        elif keep_partial and path is not None and cz.cycles:    # the cycles before the failing one
+            meta = dict(material=material, point=point, schedule=schedule, n_snap=n_snap, cpu_s=res.cpu_s,
+                        arm="MUSCL-C" if muscl else "C", N_solver=N_c, consistent=not muscl, mapping=mapping,
+                        failed_cycle=len(cz.cycles) + 1, failure_reason=res.message, **_paper1_meta(system))
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            cz.to_npz(path, meta=meta)
+            res.partial = True
         return res
     except Exception as exc:  # recorded as data, like the reference generator
         return TrajectoryResult(False, None, f"{type(exc).__name__}: {exc}", time.process_time() - t0,

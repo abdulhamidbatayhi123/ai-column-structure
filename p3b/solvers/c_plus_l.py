@@ -260,34 +260,100 @@ def batch_jacobian(f, y, n_cells: int | None = None):
 
 def step_jacobian(f, y):
     """Dense Jacobian of f at y by vectorised reverse mode (one batched backward pass), detached and
-    usable under no_grad. Newton's Jacobian: on CPU it is about 4x cheaper than `colored_jacobian`,
-    whose torch.func.vmap over jvp falls back to Python decompositions (28 against 111 ms at 32 cells,
-    system A; the two agree to round-off)."""
+    usable under no_grad. Not used by the solver, which forms its Jacobians with the stencil-coloured
+    `batch_jacobian`; kept as the exact dense reference for any right-hand side (tests). On CPU it is
+    about 4x cheaper than `colored_jacobian`, whose torch.func.vmap over jvp falls back to Python
+    decompositions (28 against 111 ms at 32 cells, system A; the two agree to round-off)."""
     with torch.enable_grad():
         return torch.autograd.functional.jacobian(f, y.detach(), vectorize=True).detach()
+
+
+class NewtonFailure(RuntimeError):
+    """An implicit-Euler step whose Newton iteration did not converge: the solver's own failure,
+    scored as the arm's failure (PREREG 5). A bug or an environment error is not one and propagates."""
+
+
+SOLVER_FAILURES = (NewtonFailure, torch.linalg.LinAlgError)   # what C+L's callers count as a failed solve
+
+
+def _newton(f, base, hs, scale, N: int, tol: float, max_iter: int, chord: bool, lu, y, conv, polish: bool):
+    """Newton's iteration for one substep of a batch, sample by sample; returns (y, conv, lu).
+
+    A sample is latched when it is accepted (at tol, or by the stall rule after a fresh-Jacobian
+    step) and frozen from then on: it leaves the refresh and restart tests, so each sample's result
+    and success are its own and the batch is accepted when every sample is latched. A sample whose
+    residual turns non-finite on a reused Jacobian restarts once from base, and the Jacobian is
+    refreshed. With `polish`, a stall-accepted sample takes one more step with the latest factorised
+    Jacobian (formed fresh at the previous iterate), which is full Newton's final correction to
+    second order. After max_iter, the samples not latched are checked once more at the strict tol."""
+    B, n = base.shape
+    n_var = n // N
+    eye = torch.eye(n, dtype=F64)
+    prev = torch.full((B,), float("inf"), dtype=F64)
+    restarted = torch.zeros(B, dtype=torch.bool)
+    fresh = False
+    for _ in range(max_iter):
+        F = y - base - hs * f(y)
+        rel = (F.reshape(B, n_var, N).abs() / scale).amax((1, 2))
+        astray = ~conv & ~restarted & ~torch.isfinite(rel)
+        if not fresh and lu is not None and bool(astray.any()):      # a reused Jacobian went astray
+            y = torch.where(astray.unsqueeze(-1), base, y)
+            prev = torch.where(astray, torch.full_like(prev, float("inf")), prev)
+            restarted, lu = restarted | astray, None
+            continue
+        at_tol = ~conv & (rel <= tol)
+        stalled = torch.zeros_like(conv)
+        if fresh:                                   # stalled at the round-off floor of this state
+            stalled = ~conv & ~at_tol & (rel >= 0.5 * prev) & (rel <= STALL_TOL)
+            if polish and bool(stalled.any()):
+                corr = torch.linalg.lu_solve(*lu, F.unsqueeze(-1)).squeeze(-1)
+                y = torch.where(stalled.unsqueeze(-1), y - corr, y)
+        conv = conv | at_tol | stalled
+        if bool(conv.all()):
+            return y, conv, lu
+        active = ~conv
+        fresh = lu is None or not chord or bool(((rel > CHORD_RATE * prev) & active).any())
+        if fresh:
+            lu = torch.linalg.lu_factor(eye - hs.unsqueeze(-1) * batch_jacobian(f, y, N))
+        prev = torch.where(active, rel, prev)
+        step = torch.linalg.lu_solve(*lu, F.unsqueeze(-1)).squeeze(-1)
+        y = torch.where(active.unsqueeze(-1), y - step, y)
+    F = y - base - hs * f(y)
+    conv = conv | (F.reshape(B, n_var, N).abs() <= tol * scale).flatten(1).all(1)
+    return y, conv, lu
 
 
 def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: int = 50, substeps: int = 1,
                         chord: bool = True, jac_cache: dict | None = None):
     """y(h) by `substeps` implicit-Euler steps of h/substeps, each solved by Newton with the
-    dense Jacobian (`step_jacobian`); differentiable in y0 and the multiplier weights (see module doc).
+    stencil-coloured Jacobian `batch_jacobian(f, y, N)`, exact when cell i of every variable depends
+    only on cells i-1, i, i+1 (true of both right-hand sides here); differentiable in y0 and the
+    multiplier weights (see module doc).
 
     Convergence is tested per variable block (n, a, u for system A; u_f, u_s for B), each against
-    the larger of its magnitude and its update h f, because the blocks differ by up to 1e13. A Newton solve that does not
-    converge raises RuntimeError: a wrong value with a wrong gradient is never returned. A solve that
-    stalls (the residual no longer halves) is accepted only below STALL_TOL, the round-off floor of
-    some states lying between 1e-12 and 1e-9, and only after an iteration with a fresh Jacobian.
+    the larger of its magnitude and its update h f, because the blocks differ by up to 1e13. A Newton
+    solve that does not converge raises NewtonFailure: a wrong value with a wrong gradient is never
+    returned. A solve that stalls (the residual no longer halves) is accepted only below STALL_TOL,
+    the round-off floor of some states lying between 1e-12 and 1e-9, and only after an iteration with
+    a fresh Jacobian. A batch is solved sample by sample (`_newton`): each sample is latched when
+    accepted and restarted on its own, so a batch succeeds exactly when every sample would alone.
 
     With chord (the default) Newton is modified: the factorised Jacobian is reused while each
-    iteration cuts the residual by CHORD_RATE or more and refreshed otherwise, and with no gradient
-    needed the converged point's Jacobian (used only for the gradient correction, which changes the
-    value by less than tol) is not formed. The tolerance is the same, so the answer agrees with full
-    Newton to tol; chord=False is full Newton.
+    iteration cuts the residual by CHORD_RATE or more and refreshed otherwise. Before a chord solve is
+    declared failed, the samples not accepted are solved again from the start state by full Newton
+    (a fresh Jacobian every iteration; counted in jac_cache["full_newton_retries"]), so the failures
+    are full Newton's. With no gradient needed the converged point's Jacobian, used by full Newton
+    for a final correction (I - hJ)^-1 F, is not formed: a solve accepted at tol returns its iterate,
+    which differs from full Newton's corrected value by at most the accepted residual (block-relative
+    tol) amplified by the norm of (I - hJ)^-1, and a stall-accepted solve takes the correction with
+    its latest factorised Jacobian, formed fresh at the previous iterate (equal to full Newton's to
+    second order). chord=False is full Newton.
 
     With chord, each substep starts from the previous substep's factorised Jacobian, and jac_cache (a
     dict the caller keeps between snapshot intervals) carries it from one call to the next. It is used
-    only for the same batch and the same step sizes (to 1e-9, the rounding of stored times); a non-finite residual on a carried Jacobian
-    restarts the solve from the start state with a fresh Jacobian."""
+    only for the same batch and the same step sizes (to 1e-9, the rounding of stored times); a
+    non-finite residual on a reused Jacobian restarts that sample from the start state with a fresh
+    Jacobian."""
     single = y0.dim() == 1
     if single:                                          # one trajectory: a batch of one
         y0, inp = y0.unsqueeze(0), inp.unsqueeze(0)
@@ -312,36 +378,27 @@ def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: in
             # bed n is ~1e-4 of the feed term, and a tolerance on |n| alone sits below round-off
             scale = torch.maximum(base.reshape(B, n_var, N).abs().amax(-1, keepdim=True),
                                   (hs * f(base)).reshape(B, n_var, N).abs().amax(-1, keepdim=True)).clamp(min=1e-300)
-            ok = False
-            prev = torch.full((B,), float("inf"), dtype=F64)
             carried = (chord and cache.get("B") == B and "lu" in cache     # same step sizes up to time rounding
                        and torch.allclose(cache["hs"], hs, rtol=1e-9, atol=0.0))
-            lu, fresh, restarted = (cache["lu"] if carried else None), False, False
-            for _ in range(max_iter):
+            polish = chord and not need_grad              # no lu_star below: correct stalled samples here
+            none = torch.zeros(B, dtype=torch.bool)
+            try:
+                y, conv, lu = _newton(f, base, hs, scale, N, tol, max_iter, chord,
+                                      cache["lu"] if carried else None, y, none, polish)
+            except torch.linalg.LinAlgError:
+                if not chord:
+                    raise
+                y, conv, lu = base.clone(), none, None      # a reused Jacobian broke: full Newton decides
+            if chord and not bool(conv.all()):            # the failures must be full Newton's, not chord's
+                cache["full_newton_retries"] = cache.get("full_newton_retries", 0) + 1
+                y, conv, lu = _newton(f, base, hs, scale, N, tol, max_iter, False, None,
+                                      torch.where(conv.unsqueeze(-1), y, base), conv, polish)
+            if not bool(conv.all()):
                 F = y - base - hs * f(y)
-                rel = (F.reshape(B, n_var, N).abs() / scale).amax((1, 2))
-                if not fresh and not restarted and lu is not None and not bool(torch.isfinite(rel).all()):
-                    y, lu, restarted = base.clone(), None, True      # a carried Jacobian went astray
-                    prev = torch.full((B,), float("inf"), dtype=F64)
-                    continue
-                done = rel <= tol
-                if fresh:                                   # stalled at the round-off floor of this state
-                    done = done | ((rel >= 0.5 * prev) & (rel <= STALL_TOL))
-                if bool(done.all()):
-                    ok = True
-                    break
-                fresh = lu is None or not chord or bool((rel > CHORD_RATE * prev).any())
-                if fresh:
-                    lu = torch.linalg.lu_factor(eye - hs.unsqueeze(-1) * batch_jacobian(f, y, N))
-                prev = rel
-                y = y - torch.linalg.lu_solve(*lu, F.unsqueeze(-1)).squeeze(-1)
-            if not ok:
-                F = y - base - hs * f(y)
-                ok = bool((F.reshape(B, n_var, N).abs() <= tol * scale).all())
-            if not ok:
-                worst = float((F.reshape(B, n_var, N).abs() / scale).max())
-                raise RuntimeError(f"Newton did not converge in {max_iter} iterations "
-                                   f"(largest block-relative residual {worst:.3e}, tol {tol:g})")
+                worst = float((F.reshape(B, n_var, N).abs() / scale).amax((1, 2))[~conv].max())
+                raise NewtonFailure(f"Newton did not converge in {max_iter} iterations "
+                                    f"(largest block-relative residual {worst:.3e}, tol {tol:g}"
+                                    f"{', full Newton retried' if chord else ''})")
             if not (need_grad or not chord):
                 if lu is not None:                          # converged without one: keep the cache as it is
                     cache.update(B=B, hs=hs.clone(), lu=lu)

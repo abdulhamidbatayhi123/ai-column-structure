@@ -81,8 +81,10 @@ worth of work at once, so 1,060 hours take about 4 to 5 days of Kaggle time plus
 
 **C+L, timed (2026-11-11).** C+L had not been timed, and it was far from its 1-hour budget. In the
 pilot's K piece it took about 146 s per trajectory-cycle at K = 1 (local, one thread), and a training run
-would have taken about 230 hours. The solver was made faster without changing its numerics (commit
-212ba17):
+would have taken about 230 hours. The solver was made faster without changing its scheme or its
+tolerances (commit 212ba17; converged values agree with full Newton to the Newton tolerance amplified by
+the conditioning of I - hJ, and since the T8 review a chord solve that fails is retried with full Newton,
+so the failures are full Newton's):
 - the Jacobian by vectorised reverse mode;
 - modified Newton;
 - trajectories and training windows integrated together in one Newton solve.

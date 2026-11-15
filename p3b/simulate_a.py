@@ -47,6 +47,7 @@ class TrajectoryResult:
     final_ports: list[float] | None = None   # the ports at the end of the last cycle
     nfev: list[int] = field(default_factory=list)          # right-hand-side calls per cycle
     cycle_cpu_s: list[float] = field(default_factory=list)  # CPU seconds per cycle
+    partial: bool = False    # a failed run whose completed cycles were stored (p3b.solvers.coarse.run_c)
 
 
 def cycle_schedule(point: dict, iso, phys) -> list[tuple[str, float, tuple[float, float, float]]]:
