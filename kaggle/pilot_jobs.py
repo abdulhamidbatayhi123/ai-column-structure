@@ -5,6 +5,8 @@ names end in the pilot revision and the first 6 hex digits of the SHA-256 of the
 under (which includes the revision), so a phase rerun after a stage change or a revision (T8 RS-4: R1
 changed the autoencoder loss, R3 the pilot data) pushes new kernels instead of reusing finished ones
 (plan 5 review I6). Generate a phase's jobs file just before queueing it; none is kept in the repository.
+A phase after 0 needs the stage file of the current revision (scripts/pilot_collect.py writes the
+revision into it) and refuses any other.
 
     python kaggle/pilot_jobs.py PHASE OUT.json [results/pilot_stage.json]
 """
@@ -16,8 +18,8 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
-from p3b.pilot.pieces import (KEYS, LR_ARMS, PILOT_REVISION, PRIMARY_KEY, TWO_SEEDS, _tag, restrict,  # noqa: E402
-                              stage_sha)
+from p3b.pilot.pieces import (KEYS, LR_ARMS, PILOT_REVISION, PRIMARY_KEY, TWO_SEEDS, _tag, load_stage,  # noqa: E402
+                              restrict, stage_sha)
 
 KIT = "abdulhamidbatayhi/p3b-reference-kit"
 
@@ -68,11 +70,17 @@ def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> di
     return {"kit_slug": kit_slug, "nz": 0, "jobs": jobs}
 
 
+def main(argv) -> None:
+    """Write phase argv[0]'s jobs file to argv[1]. Phase 0 reads no stage; a later phase needs the stage
+    file (argv[2], default results/pilot_stage.json) of the current pilot revision and refuses any
+    other, so no kernel runs under a stale stage (T8 fix review, R1-4)."""
+    phase = int(argv[0])
+    stage_path = argv[2] if len(argv) > 2 else os.path.join(ROOT, "results", "pilot_stage.json")
+    st = load_stage(stage_path, phase, required=True)
+    jobs = phase_jobs(phase, st)
+    with open(argv[1], "w") as f:
+        json.dump(jobs, f, indent=1)
+
+
 if __name__ == "__main__":
-    stage_path = sys.argv[3] if len(sys.argv) > 3 else os.path.join(ROOT, "results", "pilot_stage.json")
-    st = {}
-    if os.path.exists(stage_path):
-        with open(stage_path) as f:
-            st = json.load(f)
-    with open(sys.argv[2], "w") as f:
-        json.dump(phase_jobs(int(sys.argv[1]), st), f, indent=1)
+    main(sys.argv[1:])

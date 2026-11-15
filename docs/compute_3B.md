@@ -102,8 +102,9 @@ about 14 s:
 - Newton started from the previous interval's factorised Jacobian.
 
 Re-timed on Kaggle at 9dc6103 (`results/timing_cplusl_train.json`, same set-up): **2.7 s per iteration
-at K = 1, 8.1 s at K = 4**. The pilot set K = 4 (`results/pilot_stage.json`), so a C+L run of 8,000
-iterations takes about 18 hours, two Kaggle sessions (the cells resume across sessions). The six C+L cells
+at K = 1, 8.1 s at K = 4**. The pre-R1 pilot stage set K = 4 (its stage file has since been removed as
+stale; the rerun pilot sets K again), so a C+L run of 8,000 iterations takes about 18 hours, two Kaggle
+sessions (the cells resume across sessions). The six C+L cells
 take about 108 hours, against 6 in the pre-pilot budget. That excess enters the ceiling decision.
 
 **The speed-up (commit 638d3bc).** A profile of S's iteration showed three repeated computations:
@@ -130,10 +131,15 @@ need it. A cell still training after `--hours` (default 11) checkpoints and writ
 continues it with `--resume-from`, using the same autoencoder, to the same weights; CPU time accumulates
 across sessions (`tests/test_resume_sessions.py`). `kaggle/run_queue.py` pushes the continuation kernel
 (`<name>-r<n>`) while the RESUME.json progress advances, at most 10 times per job, and points every
-dependent job (evaluation included) at the kernel that produced the expected output; evaluation finds
-the weights under its kernel inputs and checks their SHA-256 against the training results file. A
-continuation refuses to resume when the stage, kit commit, configuration or inputs differ from the
-first session's (T8 review RS-1 to RS-5, `tests/test_t8_queue.py`).
+dependent job in the same jobs file at the kernel that produced the expected output (on a restart it
+finds that kernel among the downloaded continuations). Producers are tracked within one jobs file only,
+so the queue refuses a dependency outside it, and `kaggle/train_jobs.py`'s evaluation file carries the
+training and autoencoder jobs it depends on (finished ones are replayed, not pushed again). Evaluation
+finds the weights under its kernel inputs and checks their SHA-256 against the training results file. A
+continuation refuses to resume when the stage, kit commit, configuration, inputs or autoencoder differ
+from the first session's (T8 review RS-1 to RS-5 and its fix review, `tests/test_t8_queue.py`,
+`tests/test_t8_fix_review.py`). A download that fails (a 429, a timeout) with nothing written is
+retried at the next poll and never counted against the kernel.
 Kernels already run each of their commands as a separate process, so 4 runs per session is 4 commands
 in one job.
 

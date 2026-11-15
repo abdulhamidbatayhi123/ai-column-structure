@@ -6,7 +6,9 @@
     python scripts/pilot_collect.py final PIECES_DIR INPUTS_DIR [results/pilot_stage.json]   # then pilot_rules.py
 
 stage and final refuse any piece whose recorded data files differ from the current data/pilot (or
-P3B_PILOT_DATA when set): a piece computed on earlier pilot data is never collected (T8 RS-4).
+P3B_PILOT_DATA when set): a piece computed on earlier pilot data is never collected (T8 RS-4). The
+stage file is written with the pilot revision; stage N > 0 and final refuse a stage file of another
+revision (T8 fix review, R1-4).
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ import sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 from p3b.pilot import collect  # noqa: E402
+from p3b.pilot.pieces import load_stage  # noqa: E402
 
 DATA_ROOT = os.environ.get("P3B_PILOT_DATA", os.path.join(ROOT, "data", "pilot"))
 
@@ -28,10 +31,8 @@ def main(argv):
     elif cmd == "stage":
         n, pieces_dir = int(argv[1]), argv[2]
         path = argv[3] if len(argv) > 3 else os.path.join(ROOT, "results", "pilot_stage.json")
-        prev = {}
-        if n > 0 and os.path.exists(path):
-            with open(path) as f:
-                prev = json.load(f)
+        # after phase n > 0 the previous stage must be of the current pilot revision (T8 fix review, R1-4)
+        prev = load_stage(path, n, required=True)
         s = collect.stage(n, pieces_dir, prev, data_root=DATA_ROOT)
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w") as f:
@@ -43,8 +44,7 @@ def main(argv):
             print(p.name)
     elif cmd == "final":
         path = argv[3] if len(argv) > 3 else os.path.join(ROOT, "results", "pilot_stage.json")
-        with open(path) as f:
-            st = json.load(f)
+        st = load_stage(path, 4, required=True)
         for p in collect.final(argv[1], argv[2], st, data_root=DATA_ROOT):
             print(os.path.basename(p))
     else:

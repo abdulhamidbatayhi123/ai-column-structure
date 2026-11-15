@@ -9,7 +9,8 @@
   the current ones (or are gone) is refused too (T8 RS-4: regenerated pilot data);
 - stage: after phase n, the chosen values the next phase needs (d, K, tau_S; lr; iterations;
   h_steps), by the rule functions of p3b.pilot.rules; chosen values only, and the values of later
-  phases are dropped (review M2);
+  phases are dropped (review M2); tagged with PILOT_REVISION, without which kaggle/pilot_jobs.py and
+  kaggle/pilot_chunk.py refuse the file (T8 fix review, R1-4);
 - final: the ten input files of scripts/pilot_rules.py from the pieces.
 """
 from __future__ import annotations
@@ -21,7 +22,7 @@ import shutil
 from pathlib import Path
 
 from p3b.pilot import rules, runs
-from p3b.pilot.pieces import KEYS, LR_ARMS, PRIMARY_KEY, TWO_SEEDS, _tag, restrict, stage_sha  # noqa: F401
+from p3b.pilot.pieces import KEYS, LR_ARMS, PILOT_REVISION, PRIMARY_KEY, TWO_SEEDS, _tag, restrict, stage_sha  # noqa: F401
 
 SPLIT_TRAIN = 6                                   # A_replication and B: indices 0-5 train, 6-7 validation
 _DESIGN_TO_KEY = {"A_primary": rules.pilot_key("A", "MOF-303"), "A_replication": rules.pilot_key("A", "Al-fumarate"),
@@ -157,6 +158,7 @@ def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS), da
             raise RuntimeError(f"no admissible h for {missing}: the pilot stops here")
     else:
         raise ValueError(f"stage {n}")
+    s["_revision"] = PILOT_REVISION     # pilot_jobs.py and pilot_chunk.py refuse a stage file of another revision
     return s
 
 

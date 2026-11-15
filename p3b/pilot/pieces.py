@@ -56,6 +56,36 @@ def stage_sha(stage: dict) -> str:
     return hashlib.sha256(json.dumps(chosen, sort_keys=True).encode()).hexdigest()
 
 
+def for_phase(stage: dict, phase: int) -> dict:
+    """The stage handed to a phase-`phase` piece: the chosen values of earlier phases only (restrict),
+    with any runtime settings (ae_input_root) kept; a phase-0 piece gets no chosen values whatever stage
+    file the kit carries, so it records stage_sha({}) (T8 fix review, R1-4)."""
+    phase_keys = {k for p in PHASE_KEYS for k in p}
+    runtime = {k: v for k, v in (stage or {}).items() if k not in phase_keys and k != "_revision"}
+    return {**runtime, **restrict(stage, phase)}
+
+
+def load_stage(path, phase: int, required: bool = False) -> dict:
+    """The stage file at `path` for a phase-`phase` job. Phase 0 runs under no chosen values, so its
+    file is not read. For later phases the file must carry the current PILOT_REVISION (written by
+    p3b.pilot.collect.stage): a stage of an earlier revision (for example the pre-R1/pre-R3 d and tau_S)
+    is refused, never run under. A missing file gives {} unless `required`."""
+    if phase == 0:
+        return {}
+    if not os.path.exists(str(path)):
+        if required:
+            raise FileNotFoundError(f"no stage file {path}: phase {phase} runs under the stage collected after "
+                                    f"phase {phase - 1} (scripts/pilot_collect.py stage {phase - 1})")
+        return {}
+    with open(str(path)) as f:
+        stage = json.load(f)
+    if stage.get("_revision") != PILOT_REVISION:
+        raise RuntimeError(f"stage file {path} is of pilot revision {stage.get('_revision')!r}, not "
+                           f"{PILOT_REVISION!r}: recollect it (scripts/pilot_collect.py stage N) from pieces of "
+                           f"the current revision")
+    return stage
+
+
 def _sha_file(path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -248,6 +278,38 @@ def _session_in(resume_from, out, prefix: str, fingerprint: dict):
         return json.load(f)
 
 
+def _prev_autoencoders(resume_from, prefix: str):
+    """The autoencoders ({file: SHA-256}) the earlier session of a resumed piece recorded in the
+    RESUME.json beside its <prefix>_state.json; None for a first session."""
+    if not resume_from:
+        return None
+    states = glob.glob(os.path.join(str(resume_from), "**", f"{prefix}_state.json"), recursive=True)
+    if len(states) != 1:
+        raise FileNotFoundError(f"{len(states)} {prefix}_state.json under {resume_from} (expected one)")
+    with open(os.path.join(os.path.dirname(states[0]), "RESUME.json")) as f:
+        return json.load(f).get("autoencoders") or {}
+
+
+def _same_autoencoders(prev, used: dict) -> None:
+    """A continuation must use the earlier sessions' autoencoders (T8 fix review, RS-5): the file found
+    under the inputs is re-read every session, so a rebuilt kit or a re-pushed autoencoder job would
+    otherwise resume the checkpoint under another encoder."""
+    if prev is None:
+        return
+    now = (used or {}).get("autoencoders", {})
+    diff = sorted(f for f in set(prev) & set(now) if prev[f] != now[f])
+    if diff:
+        raise RuntimeError(f"autoencoder {diff[0]} has SHA-256 {now[diff[0]][:12]}, the earlier session used "
+                           f"{prev[diff[0]][:12]}: the run fingerprint differs; start the job afresh")
+
+
+def _arm_checked(prev, arm: str, key: str, seed: int, stage: dict, ds, out, q, used: dict):
+    """make_arm, then the check that its autoencoder is the earlier sessions' one."""
+    built = make_arm(arm, key, seed, stage, ds, out, q, used)
+    _same_autoencoders(prev, used)
+    return built
+
+
 def _resume_json(out, piece: str, stopped_at: int, fingerprint: dict, progress: list, **extra) -> str:
     """RESUME.json of a session that ran out of time (run_queue continues the job). `progress` must grow
     from session to session: run_queue stops a chain whose progress does not (T8 RS-1)."""
@@ -258,14 +320,18 @@ def _resume_json(out, piece: str, stopped_at: int, fingerprint: dict, progress: 
     return path
 
 
-def _session_out(out, prefix: str, piece: str, res: dict, fingerprint: dict) -> str:
+def _session_out(out, prefix: str, piece: str, res: dict, fingerprint: dict, prev_aes=None,
+                 used: dict | None = None) -> str:
     """A session that ran out of time: its state and RESUME.json. A sweep's progress is (rates finished,
-    iteration of the running rate), since the iteration restarts with every rate."""
+    iteration of the running rate), since the iteration restarts with every rate. The autoencoders of
+    this and the earlier sessions are recorded for the next session's check."""
     with open(os.path.join(str(out), f"{prefix}_state.json"), "w") as f:
         json.dump(res["state"], f)
     st = res["state"]
     progress = ([len(st["done"])] if isinstance(st, dict) and "done" in st else []) + [int(res["stopped_at"])]
-    return _resume_json(out, piece, res["stopped_at"], fingerprint, progress, state=f"{prefix}_state.json")
+    aes = {**(prev_aes or {}), **((used or {}).get("autoencoders") or {})}
+    return _resume_json(out, piece, res["stopped_at"], fingerprint, progress, state=f"{prefix}_state.json",
+                        autoencoders=aes)
 
 
 def piece_lr(arm: str, data_root, stage: dict, out, q: dict | None = None, deadline: float | None = None,
@@ -280,16 +346,17 @@ def piece_lr(arm: str, data_root, stage: dict, out, q: dict | None = None, deadl
     prefix = f"lr_{_tag(arm)}"
     fp = _fingerprint(f"lr-{_tag(arm)}", stage, q, used)
     state = _session_in(resume_from, out, prefix, fp)
+    prev = _prev_autoencoders(resume_from, prefix)
     if arm == "C+L":
         res = runs.cplusl_lr_sweep(ds, val, KEYS[PRIMARY_KEY][1], int(stage["K"][PRIMARY_KEY]), rates, its,
                                    n_coarse=q.get("n_coarse", 32), n_windows=nw, n_steps=ns,
                                    checkpoint_dir=str(out), deadline=deadline, state=state)
     else:                       # checkpoints lr_<tag>_<lr>_ckpt.pt, which _session_in copies (T8 RS-1)
-        res = runs.lr_sweep(lambda: make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, rates, its,
-                            h_steps=1, seed=0, n_windows=nw, n_steps=ns, checkpoint_dir=str(out),
+        res = runs.lr_sweep(lambda: _arm_checked(prev, arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, rates,
+                            its, h_steps=1, seed=0, n_windows=nw, n_steps=ns, checkpoint_dir=str(out),
                             deadline=deadline, state=state, tag=_tag(arm))
     if "stopped_at" in res:
-        return _session_out(out, prefix, f"lr-{_tag(arm)}", res, fp)
+        return _session_out(out, prefix, f"lr-{_tag(arm)}", res, fp, prev, used)
     return _write(out, f"lr_{_tag(arm)}.json", {str(k): v for k, v in res.items()}, stage, q, used, seeds=[0])
 
 
@@ -333,11 +400,12 @@ def piece_curve(arm: str, data_root, stage: dict, out, q: dict | None = None, de
     else:
         prefix = f"curve_{_tag(arm)}"
         state = _session_in(resume_from, out, prefix, fp)
-        curve = runs.train_curve(make_arm(arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, lr, its, every,
-                                 1, 0, nw, ns, checkpoint=os.path.join(str(out), f"{prefix}_ckpt.pt"),
+        prev = _prev_autoencoders(resume_from, prefix)
+        curve = runs.train_curve(_arm_checked(prev, arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, lr, its,
+                                 every, 1, 0, nw, ns, checkpoint=os.path.join(str(out), f"{prefix}_ckpt.pt"),
                                  deadline=deadline, state=state)
         if isinstance(curve, dict):
-            return _session_out(out, prefix, f"curve-{_tag(arm)}", curve, fp)
+            return _session_out(out, prefix, f"curve-{_tag(arm)}", curve, fp, prev, used)
     return _write(out, f"curve_{_tag(arm)}.json", [list(x) for x in curve], stage, q, used, seeds=[0])
 
 
@@ -373,14 +441,15 @@ def piece_s(key: str, data_root, stage: dict, out, q: dict | None = None, deadli
     prefix = f"s_{key}"
     fp = _fingerprint(f"s-{key}", stage, q, used)
     ckpt = _train_in_sessions(out, prefix, resume_from, fp)
-    arm = make_arm("S", key, 0, stage, ds, out, q, used)
+    prev = _prev_autoencoders(resume_from, prefix)
+    arm = _arm_checked(prev, "S", key, 0, stage, ds, out, q, used)
     its = int(q.get("iterations", stage["iterations"]))
     hist = trainer.train(arm, ds, trainer.TrainConfig(lr=stage["lr"]["S"], iterations=its, seed=0, h_steps=1,
                                                       n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20),
                                                       checkpoint=ckpt, deadline=deadline))
     if "stopped_at" in hist:                             # the session ends; a later one resumes
         it = int(hist["stopped_at"])
-        return _session_out(out, prefix, f"s-{key}", {"stopped_at": it, "state": {"it": it}}, fp)
+        return _session_out(out, prefix, f"s-{key}", {"stopped_at": it, "state": {"it": it}}, fp, prev, used)
     if runs.too_many_skipped(hist, its):
         raise RuntimeError(f"S on {key}: more than 5 % of its training iterations were skipped; no h check")
     hc = runs.h_check(arm, val, float(stage["tau_S"][key]), steps=q.get("h_steps_grid", (1, 2, 4)))
@@ -426,12 +495,13 @@ def piece_two(arm: str, seed: int, data_root, stage: dict, out, q: dict | None =
     piece = f"pcq-s{seed}" if quarter else f"two-{_tag(arm)}-s{seed}"
     fp = _fingerprint(piece, stage, q, used)
     ckpt = _train_in_sessions(out, prefix, resume_from, fp)
-    res = runs.two_seed_rows(lambda: make_arm(arm, PRIMARY_KEY, seed, stage, ds, out, q, used), ds, val,
+    prev = _prev_autoencoders(resume_from, prefix)
+    res = runs.two_seed_rows(lambda: _arm_checked(prev, arm, PRIMARY_KEY, seed, stage, ds, out, q, used), ds, val,
                              stage["lr"][arm], its, int(stage["h_steps"][PRIMARY_KEY]), seeds=(seed,),
                              n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20), checkpoint=ckpt,
                              deadline=deadline)
     if isinstance(res, dict):                            # the session ends; a later one resumes
         it = int(res["stopped_at"])
-        return _session_out(out, prefix, piece, {"stopped_at": it, "state": {"it": it}}, fp)
+        return _session_out(out, prefix, piece, {"stopped_at": it, "state": {"it": it}}, fp, prev, used)
     rows, train = res
     return _write(out, f"{prefix}.json", {"rows": rows[seed], "train": train[seed]}, stage, q, used, seeds=[seed])

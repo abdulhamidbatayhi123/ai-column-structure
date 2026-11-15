@@ -3,8 +3,9 @@
     data-<key> | cplk-<key> | ae-<key>-s<seed> | lr-<arm> | curve-<arm> | s-<key> | wall | two-<arm>-s<seed> | pcq-s<seed>
 
 Data: the kit's data/pilot/<key>/{train,validation}; chosen values of earlier phases: the kit's
-results/pilot_stage.json (scripts/pilot_collect.py stage N). Outputs go to --out. It prints the piece
-file's name, never a loss (blinding).
+results/pilot_stage.json (scripts/pilot_collect.py stage N), which must carry the current pilot
+revision; each piece gets only the values of the phases before its own. Outputs go to --out. It
+prints the piece file's name, never a loss (blinding).
 
     python kaggle/pilot_chunk.py --piece lr-S --out OUT
 """
@@ -24,9 +25,21 @@ if os.path.isdir(os.path.join(ROOT, "paper1")):            # inside the kit
 from p3b.pilot import pieces  # noqa: E402
 
 ARMS = {pieces._tag(a): a for a in pieces.LR_ARMS}
+# the phase of each piece kind (kaggle/pilot_jobs.py), whose stage the piece runs under
+PHASE = {"data": 0, "cplk": 0, "ae": 1, "lr": 1, "curve": 2, "s": 3, "wall": 3, "two": 4, "pcq": 4}
+
+
+def phase_of(name: str) -> int:
+    kind = name.partition("-")[0]
+    if kind not in PHASE:
+        raise ValueError(f"unknown piece {name!r}")
+    return PHASE[kind]
 
 
 def run_piece(name: str, data: str, stage: dict, out: str, q: dict, deadline=None, resume_from=None) -> str:
+    """Run piece `name` under the stage of its own phase (pieces.for_phase): whatever stage file the kit
+    carries, a piece records the stage hash the collector expects for its phase (T8 fix review, R1-4)."""
+    stage = pieces.for_phase(stage, phase_of(name))
     kind, _, rest = name.partition("-")
     if kind == "data":
         return pieces.piece_data(data, rest, out, q, stage)
@@ -66,10 +79,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     import time
     deadline = time.monotonic() + a.hours * 3600
-    stage = {}
-    if os.path.exists(a.stage):
-        with open(a.stage) as f:
-            stage = json.load(f)
+    # phase 0 reads no stage; later phases refuse a stage file of another pilot revision (R1-4)
+    stage = pieces.load_stage(a.stage, phase_of(a.piece))
     q = json.loads(a.quick) if a.quick else {}
     if not os.path.isdir(a.data):
         raise SystemExit(f"no pilot data at {a.data}: stage it with scripts/pilot_collect.py data and rebuild the kit")

@@ -16,7 +16,11 @@ Rules carried from Paper 2:
     progress advances and at most MAX_CONTINUATIONS times; a chain that stops advancing, and a
     finished kernel with neither its expected output nor a usable RESUME.json, is logged once as
     "needs attention" and left alone; when nothing else can run the queue ends with QUEUE_STOPPED;
+  * a download that fails (429, server error, timeout) with nothing written is retried at the next
+    poll and never counted against the kernel;
   * a dependent kernel mounts the kernel that produced its dependency's output (the last continuation);
+    producers are tracked within one jobs file only, so a dependency outside the file is refused, and
+    on a restart a finished job's producer is found among its downloaded continuations;
   * no credentials in the repository: the kaggle CLI reads the user's own ~/.kaggle/kaggle.json.
 The kaggle CLI is found on PATH, or through the KAGGLE_CLI environment variable.
 """
@@ -126,6 +130,11 @@ def write_kernels(spec: dict) -> list[dict]:
     """Chunk jobs: one kernel per chunk, split over the 4 CPU cores of a Kaggle session. Command jobs
     ({"name", "commands", "expect"}): one kernel running each command as its own process; arguments
     starting with OUT/ point into the kernel's output directory."""
+    names = {j["name"] for j in spec["jobs"] if "name" in j}
+    outside = sorted({d for j in spec["jobs"] for d in j.get("depends_on", ()) if d not in names})
+    if outside:                     # the queue tracks producers only within one file: such a job would never run
+        raise ValueError(f"jobs depend on {', '.join(outside)}, which are not in this jobs file; queue them "
+                         f"together (kaggle/train_jobs.py evaluation_jobs carries its training jobs)")
     kernels = []
     for job in spec["jobs"]:
         if "commands" in job:
@@ -210,6 +219,12 @@ def resume_progress(out: str):
     return None
 
 
+def download_failed(text: str) -> bool:
+    """Whether a `kernels output` call reported a failure (a 429 storm, a server error, a timeout): such a
+    poll says nothing about the kernel's output and is not counted against it."""
+    return bool(re.search(r"\b(429|5\d\d)\b|too many requests|error|timed out|timeout", text, re.I))
+
+
 def log(msg: str) -> None:
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}"
     print(line, flush=True)
@@ -223,7 +238,10 @@ def main(jobs_file: str) -> None:
     exe = kaggle_cli()
 
     def run(*a):
-        r = subprocess.run([exe, *a], capture_output=True, text=True, timeout=600)
+        try:
+            r = subprocess.run([exe, *a], capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:          # UNKNOWN for a poll, a failure for a download: retried
+            return "timed out"
         return (r.stdout + r.stderr).strip()
 
     pushed = set(re.findall(r"^\S+ \S+ (\S+) pushed$", open(REG).read(), re.M)) if os.path.exists(REG) else set()
@@ -244,8 +262,18 @@ def main(jobs_file: str) -> None:
         d = out_dir(k)
         return k.get("resumable") and os.path.isdir(d) and any("RESUME.json" in fs for _, _, fs in os.walk(d))
 
-    done = {k["base"] for k in kernels if is_done(k)}         # logical jobs (a continuation keeps its base)
-    producer = {b: b for b in done}       # logical job -> the kernel whose output holds its expected files
+    def replay(k):
+        """The kernel of logical job k whose earlier download holds its expected files: k itself or, for a
+        resumable job, its last continuation (<base>-r<n>); None when the job has not finished."""
+        for n in (range(MAX_CONTINUATIONS, 0, -1) if k.get("resumable") else ()):
+            c = {**k, "name": f"{k['base']}-r{n}"}
+            if is_done(c):
+                return c["name"]
+        return k["name"] if is_done(k) else None
+
+    # logical job -> the kernel whose output holds its expected files (a continuation keeps its base)
+    producer = {k["base"]: p for k in kernels for p in [replay(k)] if p}
+    done = set(producer)
     attention = set()                     # kernels left for a person to look at (logged once)
     misses = {}                           # COMPLETE polls of a kernel that left nothing usable
 
@@ -280,7 +308,11 @@ def main(jobs_file: str) -> None:
                 continue
             if s == "COMPLETE":
                 os.makedirs(out_dir(k), exist_ok=True)
-                run("kernels", "output", f"{OWNER}/{k['name']}", "-p", out_dir(k))
+                got = run("kernels", "output", f"{OWNER}/{k['name']}", "-p", out_dir(k))
+                empty = not any(fs for _, _, fs in os.walk(out_dir(k)))
+                if empty and download_failed(got):         # nothing learnt about the output: poll again
+                    print(f"{k['name']}: download failed ({got[-120:]}), retried at the next poll", flush=True)
+                    continue
                 if is_done(k):
                     done.add(k["base"])
                     producer[k["base"]] = k["name"]
@@ -298,7 +330,7 @@ def main(jobs_file: str) -> None:
                         log(f"{k['name']} ended with RESUME.json: continues as {kernels[i]['name']}")
                 else:                                       # nothing to collect and nothing to continue
                     misses[k["name"]] = misses.get(k["name"], 0) + 1
-                    if misses[k["name"]] >= 2:              # one more poll first: a download can fail transiently
+                    if misses[k["name"]] >= 2:              # one more poll first: a download can be incomplete
                         flag(k, "is COMPLETE without its expected output or a usable RESUME.json")
             elif s in ("ERROR", "CANCEL_ACKNOWLEDGED"):
                 log(f"{k['name']} status {s}: needs attention")
