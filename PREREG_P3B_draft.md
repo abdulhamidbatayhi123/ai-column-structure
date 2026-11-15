@@ -637,9 +637,16 @@ Revisions after the pilot and before the freeze, decided by the author blind to 
 
   The forms were checked against open restatements of the three primary papers, which are closed access
   (hub T9_r3_equations.md: 35 claims, 30 verified, no equation wrong). The rock and pellet
-  conductivities and the fluid properties are sourced in Section 2. The author's library copies of the
-  primary papers will be read before the freeze; any difference is logged here. The pilot data and
-  phases are redone with R3.
+  conductivities and the fluid properties are sourced in Section 2. The primary papers could not be
+  obtained (the author's library has no access), so each form rests on open restatements that agree
+  with each other:
+  - Esence et al. 2017 for Vortmeyer-Schaefer;
+  - Allen 2010 and 2014 and ANL/NSE-21/24 for Wakao et al. 1979 and Jeffreson;
+  - Romero-Limones et al. 2023, Fiers 2009 and Elsari and Hughes 2002 for Yagi et al. 1960.
+
+  The paper cites the restatement beside each primary. One point stays open: whether Wakao et al.'s fit
+  covered liquids (one restatement gives 0.7 < Pr < 1, and B's water has Pr ≈ 3.9). B's h_v is therefore
+  an extrapolation in Pr, and the paper states this. The pilot data and phases are redone with R3.
 
 AI declaration for the paper: "During the preparation of this work the author used a
 generative AI assistant (Claude, Anthropic) as a tool to assist with drafting and language
