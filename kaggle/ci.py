@@ -95,9 +95,15 @@ def _cli(*args, tries: int = 6) -> str:
     return out
 
 
-def push(commit: str, args: list) -> str:
+def push(commit: str, args: list, wait: int = 300) -> str:
+    """Push the kernel, waiting while Kaggle's CPU sessions are all taken (other projects share them)."""
     d = write_kernel(commit, args, os.path.join(HERE, "build", "ci"))
-    print(_cli("kernels", "push", "-p", d).strip().splitlines()[-1])
+    while True:
+        out = _cli("kernels", "push", "-p", d)
+        if "Maximum batch CPU session count" not in out:
+            break
+        time.sleep(wait)
+    print((out.strip().splitlines() or [""])[-1])
     return os.path.basename(d)
 
 

@@ -29,6 +29,18 @@ def test_the_kernel_clones_the_commit_and_paper1_and_runs_the_given_tests(tmp_pa
     assert script.index("pip freeze") < script.index("-m pytest")   # versions first in pytest.log
 
 
+def test_push_waits_for_a_free_kaggle_slot(tmp_path, monkeypatch):
+    ci = _ci()
+    replies = iter(["Kernel push error: Maximum batch CPU session count of 5 reached."] * 2
+                   + ["Kernel version 1 successfully pushed."])
+    calls = []
+    monkeypatch.setattr(ci, "_cli", lambda *a, **k: (calls.append(a), next(replies))[1])
+    monkeypatch.setattr(ci.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ci, "HERE", str(tmp_path))
+    assert ci.push("abcdef0123", []) == "p3b-ci-abcdef0-full"
+    assert len(calls) == 3 and all(c[0] == "kernels" and c[1] == "push" for c in calls)
+
+
 def test_the_full_suite_and_a_subset_get_different_kernel_names(tmp_path):
     ci = _ci()
     full = json.load(open(os.path.join(ci.write_kernel("abcdef0123", [], str(tmp_path / "a")), "kernel-metadata.json")))
