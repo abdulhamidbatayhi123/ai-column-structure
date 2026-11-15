@@ -494,8 +494,11 @@ def cplusl_curve(ds, val, material: str, lr: float, iterations: int, every: int,
     mult = Multipliers(n_out=3)
 
     def record(it, m, hist):
-        loss = float("nan") if too_many_skipped(hist, it) else cplusl.cplusl_val_loss(m, val, material, n_coarse, K)
+        st = {}                                          # the validation solves' full-Newton retries
+        loss = float("nan") if too_many_skipped(hist, it) else cplusl.cplusl_val_loss(m, val, material, n_coarse, K,
+                                                                                       stats=st)
         hist.setdefault("curve", []).append((it, loss))
+        hist["val_full_newton_retries"] = hist.get("val_full_newton_retries", 0) + st.get("full_newton_retries", 0)
     hist = cplusl.train_cplusl(mult, ds, material, n_coarse, lr, iterations, seed, n_windows=n_windows,
                                n_steps=n_steps, K=K, every=every, callback=record, checkpoint=checkpoint,
                                deadline=deadline, stop_after=stop_after)

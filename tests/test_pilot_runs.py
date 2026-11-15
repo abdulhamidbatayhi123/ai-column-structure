@@ -133,10 +133,11 @@ def test_cplusl_K_gives_one_finite_difference_per_K(pilot16):
 
 
 def test_cplusl_K_counts_a_failed_run_as_infinite(pilot_dir, monkeypatch):
+    from p3b.solvers.c_plus_l import NewtonFailure
     from p3b.train import cplusl
 
     def fail(*a, **k):
-        raise RuntimeError("Newton failed")
+        raise NewtonFailure("Newton failed")
     monkeypatch.setattr(cplusl, "rollout_cplusl_to_files", fail)
     out = runs.cplusl_K(sorted((pilot_dir / "validation").glob("*.npz")), "MOF-303", n_coarse=4, Ks=(1,))
     assert out == {1: float("inf")}

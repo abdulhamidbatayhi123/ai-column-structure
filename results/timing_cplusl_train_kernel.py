@@ -1,4 +1,4 @@
-# C+L training cost at kit 212ba17: train_cplusl (8 windows x 20 steps, the study defaults) for 20 iterations
+# C+L training cost at kit 9dc6103 (results/timing_cplusl_train.json): train_cplusl (8 windows x 20 steps, the study defaults) for 20 iterations
 # on the 32 MOF-303 pilot training trajectories at 32 cells, K = 1 and 4 (the pilot chose 4), one thread.
 import glob, json, os, sys, time
 hits = glob.glob("/kaggle/input/p3b-reference-kit/**/kaggle/generate_chunk.py", recursive=True)

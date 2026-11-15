@@ -182,13 +182,14 @@ def test_batched_validation_loss_equals_the_serial_one(paths):
 def test_a_failing_trajectory_fails_alone_and_the_others_are_stored(paths, tmp_path, monkeypatch):
     # evaluation scores a Newton failure as that trajectory's failure: a batch that fails falls back
     # to one rollout per trajectory, so the outcome is the per-trajectory one
+    from p3b.solvers.c_plus_l import NewtonFailure
     from p3b.train import cplusl
     m = Multipliers(n_out=3, constant=1.0)
     real = cplusl.rollout_cplusl_to_files
 
     def flaky(mult, points, *a, paths, **k):
         if any(pt["index"] == 1 for pt in points):
-            raise RuntimeError("Newton did not converge")
+            raise NewtonFailure("Newton did not converge")
         return real(mult, points, *a, paths=paths, **k)
     monkeypatch.setattr(cplusl, "rollout_cplusl_to_files", flaky)
     out = cplusl.rollout_cplusl_each(m, POINTS, "MOF-303", n_coarse=4, n_target=8, n_snap=20, K=8,

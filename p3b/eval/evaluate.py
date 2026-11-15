@@ -91,9 +91,12 @@ def write_results(path, rows: list, meta: dict) -> None:
 def evaluate_files(files_by_arm: dict, ds, phys, n_cycles: int, seed: int, floors: dict | None = None,
                    tau_S: float | None = None) -> list:
     """Score stored solver-arm files (C, MUSCL-C, C+L; one file per test trajectory, in the order of
-    ds) against the reference with the same metrics as `evaluate`; violations by the trapezoid on
-    the arm's own snapshots, counted when the pilot floors and tau_S are given (None otherwise); the
-    normalised residuals are kept either way."""
+    ds; None for a run that failed in cycle 1, and a file holding only cycles 1..k-1 for one that
+    failed in cycle k, capped from cycle k on as PREREG 5 says) against the reference with the same
+    metrics as `evaluate`; violations by the trapezoid on the arm's own snapshots, counted when the
+    pilot floors and tau_S are given (None otherwise); the normalised residuals are kept either way.
+    Both cover only the intervals inside the arm's own stored cycles (violations_intervals of them):
+    the reference padding a partial run is never counted, and a run with no stored cycle has None."""
     from p3b.latent.data import load_set
     A = ds.system == "A"
     n_out, n_ch = (2, 3) if A else (1, 2)
@@ -103,10 +106,11 @@ def evaluate_files(files_by_arm: dict, ds, phys, n_cycles: int, seed: int, floor
     rows = []
     for arm_name, paths in files_by_arm.items():
         for j, p in enumerate(paths):
-            if p is None:                                 # the solver failed: a failure at cycle 1
-                pred_all = torch.full_like(ds.X[j, :n_cycles], float("nan"))
-            else:
-                pred_all = load_set([p]).X[0, :n_cycles]
+            pred_all = torch.full_like(ds.X[j, :n_cycles], float("nan"))
+            if p is not None:                             # None: the solver failed in cycle 1
+                stored = load_set([p]).X[0, :n_cycles]
+                # a run that failed in cycle k stores cycles 1..k-1: NaN from cycle k, capped from there
+                pred_all[:stored.shape[0]] = stored
             ref = ds.X[j, :n_cycles]
             finite = torch.isfinite(pred_all).reshape(n_cycles, -1).all(-1)
             pred = torch.where(torch.isfinite(pred_all), pred_all, ref)
@@ -119,10 +123,15 @@ def evaluate_files(files_by_arm: dict, ds, phys, n_cycles: int, seed: int, floor
             X_flat = pred.reshape(-1, pred.shape[-1])
             t_flat = t.reshape(-1)
             res = trapezoid_residuals(X_flat, raw.reshape(X_flat.shape[0], -1), t_flat, phys, ds.system, nc)
-            cyc = torch.arange(len(res["E"])) // ns
-            dt = t_flat[1:] - t_flat[:-1]
+            # only the arm's own intervals: those inside its leading stored cycles (no splice into the
+            # reference padding a partial run, no reference interval counted as the arm's)
+            n_own = int(finite.long().cumprod(0).sum())
+            n_int = max(n_own * ns - 1, 0)
+            res = {q: r[:n_int] for q, r in res.items()}
+            cyc = torch.arange(n_int) // ns
+            dt = (t_flat[1:] - t_flat[:-1])[:n_int]
             viol = {"N": None, "E": None, "S": None}
-            if floors is not None:
+            if floors is not None and n_int > 0:
                 if A:
                     viol["N"] = int(((res["N"] / norm["feed_water"][j, cyc]).abs() > FACTOR * floors["N"]).sum())
                 viol["E"] = int(((res["E"] / norm["energy_scale"][j, cyc]).abs() > FACTOR * floors["E"]).sum())
@@ -130,6 +139,7 @@ def evaluate_files(files_by_arm: dict, ds, phys, n_cycles: int, seed: int, floor
             rows.append({"arm": arm_name, "trajectory": j, "seed": int(seed), "e": [float(x) for x in e_c],
                          "eps": [float(x) for x in eps_c], "failed_cycle": failed,
                          "violations": viol, "violations_method": "trapezoid on own snapshots",
+                         "violations_intervals": n_int,
                          "residuals_normalised": {
                              "E": [float(x) for x in (res["E"] / norm["energy_scale"][j, cyc])],
                              **({"N": [float(x) for x in (res["N"] / norm["feed_water"][j, cyc])]} if A else {}),

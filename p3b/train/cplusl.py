@@ -18,7 +18,7 @@ import torch
 
 from p3b.latent.autoencoder import cosine_lr
 from p3b.simulate_a import prewet_state, setup_a
-from p3b.solvers.c_plus_l import TorchColumnRHS, implicit_euler_step
+from p3b.solvers.c_plus_l import SOLVER_FAILURES, TorchColumnRHS, implicit_euler_step
 from p3b.solvers.coarse import map_to_target
 from p3b.store import Coarsener
 
@@ -49,6 +49,7 @@ class _Data:
         self.raw = [ds.raw_inputs[j].reshape(-1, ds.raw_inputs.shape[-1]) for j in range(len(ds.meta))]
         self.t = [ds.t[j].reshape(-1) for j in range(len(ds.meta))]
         self.flat = [y.reshape(-1, y.shape[-1]) for y in self.Y]       # (snapshots, 3 n_coarse) per trajectory
+        self.retries = 0                                # substeps re-solved by full Newton (all calls)
 
     def steps(self, picks, n_steps, K):
         """Integrate windows (trajectory j, first snapshot s) together, one batched Newton solve per
@@ -56,11 +57,14 @@ class _Data:
         rhs = TorchColumnRHS.stack([self.rhs[j] for j, _ in picks])
         y = torch.stack([self.flat[j][s] for j, s in picks])
         cache = {}                                     # Newton's Jacobian, carried between intervals
-        for k in range(n_steps):
-            inp = torch.stack([torch.as_tensor(self.raw[j][s + k, :3], dtype=F64) for j, s in picks])
-            h = torch.tensor([float(self.t[j][s + k + 1] - self.t[j][s + k]) for j, s in picks], dtype=F64)
-            y = implicit_euler_step(rhs, y, inp, h, substeps=K, jac_cache=cache)
-            yield k, y, torch.stack([self.flat[j][s + k + 1] for j, s in picks])
+        try:
+            for k in range(n_steps):
+                inp = torch.stack([torch.as_tensor(self.raw[j][s + k, :3], dtype=F64) for j, s in picks])
+                h = torch.tensor([float(self.t[j][s + k + 1] - self.t[j][s + k]) for j, s in picks], dtype=F64)
+                y = implicit_euler_step(rhs, y, inp, h, substeps=K, jac_cache=cache)
+                yield k, y, torch.stack([self.flat[j][s + k + 1] for j, s in picks])
+        finally:                                       # counted also when a solve fails
+            self.retries += cache.get("full_newton_retries", 0)
 
 
 def _loss(data: _Data, n_windows, n_steps, K, rng):
@@ -82,17 +86,26 @@ def cplusl_loss(mult, ds, material, n_coarse, n_windows, n_steps, K, rng):
 
 
 @torch.no_grad()
-def cplusl_val_loss(mult, val, material: str, n_coarse: int, K: int) -> float:
+def cplusl_val_loss(mult, val, material: str, n_coarse: int, K: int, stats: dict | None = None) -> float:
     """C+L's deterministic validation loss (the counterpart of the latent arms' one-cycle rollout
     loss): from each validation trajectory's first stored coarse state, one cycle of snapshot
-    intervals by implicit Euler, standardised MSE in its own variables; NaN if a Newton solve fails."""
+    intervals by implicit Euler, standardised MSE in its own variables; NaN if a Newton solve fails.
+    `stats` (a dict) receives full_newton_retries, counted also when a solve fails."""
     data = _Data(val, material, n_coarse, mult)
+    try:
+        return _val_loss(data, val, K)
+    finally:
+        if stats is not None:
+            stats["full_newton_retries"] = int(data.retries)
+
+
+def _val_loss(data: _Data, val, K: int) -> float:
     ns = val.X.shape[2]
     tot = torch.zeros(len(data.Y), dtype=F64)
     try:                                                 # every trajectory together, from its first state
         for _, y, target in data.steps([(j, 0) for j in range(len(data.Y))], ns - 1, K):
             tot = tot + (((y - target) / data.sd) ** 2).mean(-1)
-    except RuntimeError:                                 # Newton failure: not finished
+    except SOLVER_FAILURES:                              # a failed solve: not finished (other errors propagate)
         return float("nan")
     return float((tot / (ns - 1)).mean())
 
@@ -112,7 +125,8 @@ def train_cplusl(mult, ds, material: str, n_coarse: int, lr: float, iterations: 
     data = _Data(ds, material, n_coarse, mult)
     params = [p for p in mult.parameters() if p.requires_grad]
     opt = torch.optim.Adam(params, lr=lr)
-    hist = {"loss": [], "skipped": 0, "skipped_grad": 0}
+    # newton_failures: [iteration, reason] of every iteration skipped for a failed solve
+    hist = {"loss": [], "skipped": 0, "skipped_grad": 0, "newton_failures": [], "full_newton_retries": 0}
     it0 = 0
     if checkpoint and os.path.exists(checkpoint):
         ck = torch.load(checkpoint, weights_only=False)
@@ -144,10 +158,13 @@ def train_cplusl(mult, ds, material: str, n_coarse: int, lr: float, iterations: 
             save(it)
         for g in opt.param_groups:
             g["lr"] = cosine_lr(it, max(iterations - 1, 1), lr, lr_min)
+        r0 = data.retries
         try:
             loss = _loss(data, n_windows, n_steps, K, rng)
-        except RuntimeError:                         # Newton failure: skipped and counted, never applied
+        except SOLVER_FAILURES as exc:               # a failed solve: skipped and counted, never applied
             loss = None
+            hist["newton_failures"].append([it, f"{type(exc).__name__}: {exc}"])
+        hist["full_newton_retries"] += data.retries - r0
         if loss is None or not math.isfinite(float(loss.detach())):
             hist["skipped"] += 1
             hist["loss"].append(float("nan"))
@@ -182,9 +199,15 @@ def rollout_cplusl_to_file(mult, point: dict, material: str, n_coarse: int, n_ta
 
 @torch.no_grad()
 def rollout_cplusl_to_files(mult, points: list, material: str, n_coarse: int, n_target: int, n_snap: int,
-                            K: int, paths: list) -> None:
+                            K: int, paths: list, keep_partial: bool = False) -> dict:
     """rollout_cplusl_to_file for several trajectories of one material and cycle count, integrated
-    together (one batched Newton solve per snapshot interval); each is stored to its own path."""
+    together (one batched Newton solve per snapshot interval); each is stored to its own path.
+
+    A failed solve (NewtonFailure, LinAlgError) in cycle k propagates (carrying the full-Newton retries
+    counted before it as exc.full_newton_retries), unless keep_partial is set and
+    the batch is one trajectory: then its completed cycles 1..k-1 are stored (no file when k = 1), with
+    failed_cycle and failure_reason in the meta, so it is scored from cycle k on (PREREG 5). Returns
+    {"failed_cycle": [1-based or None per trajectory], "reason": [...], "full_newton_retries": n}."""
     n_cycles = {int(pt["n_cycles"]) for pt in points}
     if len(n_cycles) != 1:
         raise ValueError("a batch of rollouts shares one cycle count")
@@ -201,50 +224,82 @@ def rollout_cplusl_to_files(mult, points: list, material: str, n_coarse: int, n_
     B = len(points)
     t_abs = np.zeros(B)
     cache = {}                                         # Newton's Jacobian, carried between intervals
+    failed = None                                      # (1-based cycle, reason) of a kept partial run
     for k in range(n_cycles.pop()):
         ys, ts = [], []
-        for ph in range(len(setups[0][1])):
-            durs = np.array([sch[ph][1] for _, sch in setups], dtype=float)
-            h = durs / half
-            inp = torch.tensor([sch[ph][2] for _, sch in setups], dtype=F64)
-            for i in range(half):
-                ys.append(y.numpy().copy())
-                ts.append(t_abs + i * h)
-                y = implicit_euler_step(rhs, y, inp, torch.tensor(h, dtype=F64), substeps=K, jac_cache=cache)
-            t_abs = t_abs + durs
+        try:
+            for ph in range(len(setups[0][1])):
+                durs = np.array([sch[ph][1] for _, sch in setups], dtype=float)
+                h = durs / half
+                inp = torch.tensor([sch[ph][2] for _, sch in setups], dtype=F64)
+                for i in range(half):
+                    ys.append(y.numpy().copy())
+                    ts.append(t_abs + i * h)
+                    y = implicit_euler_step(rhs, y, inp, torch.tensor(h, dtype=F64), substeps=K, jac_cache=cache)
+                t_abs = t_abs + durs
+        except SOLVER_FAILURES as exc:
+            if not (keep_partial and B == 1):          # a batch: the caller reruns each trajectory alone
+                exc.full_newton_retries = int(cache.get("full_newton_retries", 0))   # kept for the report
+                raise
+            failed = (k + 1, f"{type(exc).__name__}: {exc}")
+            break
         Y, T = np.stack(ys, axis=1), np.stack(ts, axis=1)                     # (B, snaps, ...)
         for b, cz in enumerate(czs):
             aug = np.concatenate([Y[b], np.zeros((Y.shape[1], n_coarse))], axis=1)   # no wall-heat states
             cz.add_cycle(k, T[b], map_to_target(aug, 3, n_coarse, n_target // n_coarse), np.zeros((Y.shape[1], 7)))
     for cz, (_, sch), pt, path in zip(czs, setups, points, paths):
-        cz.to_npz(path, meta=dict(arm="C+L", point=pt, material=material, schedule=sch, n_snap=n_snap,
-                                  N_solver=n_coarse, substeps=K))
+        meta = dict(arm="C+L", point=pt, material=material, schedule=sch, n_snap=n_snap, N_solver=n_coarse,
+                    substeps=K)
+        if failed is None:
+            cz.to_npz(path, meta=meta)
+        elif cz.cycles:                                # the cycles before the failing one
+            cz.to_npz(path, meta=dict(meta, failed_cycle=failed[0], failure_reason=failed[1]))
+    return {"failed_cycle": [None if failed is None else failed[0]] * B,
+            "reason": [None if failed is None else failed[1]] * B,
+            "full_newton_retries": int(cache.get("full_newton_retries", 0))}
 
 
 def rollout_cplusl_each(mult, points: list, material: str, n_coarse: int, n_target: int, n_snap: int,
-                        K: int, paths: list) -> list:
-    """Evaluation rollouts: the paths written, None where a trajectory's Newton solve failed. The
-    trajectories are integrated together; if the batch fails, each is integrated alone, so a failure
-    is that trajectory's own and the others are stored as before batching."""
+                        K: int, paths: list, report: dict | None = None) -> list:
+    """Evaluation rollouts: per trajectory the path written, None where its solve failed in cycle 1.
+    The trajectories are integrated together; if the batch fails, each is integrated alone, so a
+    failure is that trajectory's own and the others are stored as before batching. A trajectory that
+    fails in cycle k > 1 keeps cycles 1..k-1 in its file and is scored from cycle k on (PREREG 5).
+
+    `report` (a dict) receives batch_fallback [{trajectories, reason}], failures {j: {failed_cycle,
+    reason}} and full_newton_retries (of every attempt, the failed batch attempts included). Only failed
+    solves are caught; any other error propagates."""
     from p3b.train import cplusl as _self                # the module attribute (patchable in tests)
+    rep = report if report is not None else {}
+    rep.setdefault("batch_fallback", [])
+    rep.setdefault("failures", {})
+    rep.setdefault("full_newton_retries", 0)
     out = [None] * len(points)
     groups = {}
     for j, pt in enumerate(points):                      # one batch per cycle count
         groups.setdefault(int(pt["n_cycles"]), []).append(j)
     for idx in groups.values():
         try:
-            _self.rollout_cplusl_to_files(mult, [points[j] for j in idx], material, n_coarse, n_target, n_snap, K,
-                                          paths=[paths[j] for j in idx])
+            runs = [(idx, _self.rollout_cplusl_to_files(mult, [points[j] for j in idx], material, n_coarse,
+                                                        n_target, n_snap, K, paths=[paths[j] for j in idx],
+                                                        keep_partial=True))]
+        except SOLVER_FAILURES as exc:
+            rep["batch_fallback"].append({"trajectories": list(idx), "reason": f"{type(exc).__name__}: {exc}"})
+            rep["full_newton_retries"] += int(getattr(exc, "full_newton_retries", 0))   # of the failed attempt
+            runs = []
             for j in idx:
-                out[j] = paths[j]
-            continue
-        except RuntimeError:
-            pass
-        for j in idx:
-            try:
-                _self.rollout_cplusl_to_files(mult, [points[j]], material, n_coarse, n_target, n_snap, K,
-                                              paths=[paths[j]])
-                out[j] = paths[j]
-            except RuntimeError:                         # Newton failure: a failure at cycle 1
-                pass
+                try:
+                    runs.append(([j], _self.rollout_cplusl_to_files(mult, [points[j]], material, n_coarse, n_target,
+                                                                    n_snap, K, paths=[paths[j]], keep_partial=True)))
+                except SOLVER_FAILURES as exc1:          # failed before a cycle was kept: cycle 1
+                    runs.append(([j], {"failed_cycle": [1], "reason": [f"{type(exc1).__name__}: {exc1}"],
+                                       "full_newton_retries": int(getattr(exc1, "full_newton_retries", 0))}))
+        for js, info in runs:
+            info = info or {}
+            rep["full_newton_retries"] += int(info.get("full_newton_retries", 0))
+            for j, fc, why in zip(js, info.get("failed_cycle", [None] * len(js)), info.get("reason", [None] * len(js))):
+                if fc is None or fc > 1:
+                    out[j] = paths[j]
+                if fc is not None:
+                    rep["failures"][j] = {"failed_cycle": int(fc), "reason": why}
     return out
