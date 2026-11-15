@@ -52,14 +52,14 @@ def test_pilot_dry_run_end_to_end(gen, tmp_path):
 
     run(f"data-{KEY}", {})
     run(f"cplk-{KEY}", {})
-    noise = collect.load_piece(pieces, f"data_{KEY}.json", {})["reference_noise"]
+    noise = collect.load_piece(pieces, f"data_{KEY}.json", {}, data_root=data)["reference_noise"]   # T8 RS-4
     stage = {"d": {KEY: 8}, "K": {KEY: 1}, "tau_S": {KEY: rules.tau_S_from(noise["ref_production"])},
              "ae_input_root": str(pieces)}
     for s in TWO_SEEDS:
         run(f"ae-{KEY}-s{s}", stage)
     for a in LR_ARMS:
         run(f"lr-{_tag(a)}", stage)
-    stage = {**collect.stage(1, pieces, stage, keys=(KEY,)), "ae_input_root": str(pieces)}   # the real rule
+    stage = {**collect.stage(1, pieces, stage, keys=(KEY,), data_root=data), "ae_input_root": str(pieces)}   # the real rule
     for a in LR_ARMS:
         run(f"curve-{_tag(a)}", stage)
     stage["iterations"] = 2
@@ -72,7 +72,7 @@ def test_pilot_dry_run_end_to_end(gen, tmp_path):
     for s in TWO_SEEDS:
         run(f"pcq-s{s}", stage)
 
-    paths = collect.final(pieces, inputs, stage, keys=(KEY,), hyp_stat=STAT, draws=200)
+    paths = collect.final(pieces, inputs, stage, keys=(KEY,), hyp_stat=STAT, draws=200, data_root=data)
     assert len(paths) == 11                     # ten Section 10 inputs + decoder_gate_conv.json (PREREG 4)
     pr = _load("scripts/pilot_rules.py", "pilot_rules")
     out = pr.main(str(inputs), str(tmp_path / "pilot_values.json"))

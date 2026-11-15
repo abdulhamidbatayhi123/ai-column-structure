@@ -56,7 +56,7 @@ def test_stage_values_are_chosen_values_only(tmp_path):
     """Blinding: no loss or error enters a stage file."""
     _phase0(tmp_path)
     s = collect.stage(0, tmp_path, keys=(KEY,))
-    assert set(s) == {"d", "decoder", "K", "tau_S"}
+    assert set(s) == {"d", "decoder", "K", "tau_S", "_revision"}      # T8 fix review: the revision tag
 
 
 def test_phase_jobs_cover_every_piece_once():

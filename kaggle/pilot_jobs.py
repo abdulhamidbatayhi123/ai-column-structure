@@ -1,8 +1,12 @@
 """The pilot's Kaggle jobs by phase (Plan 5 Task 6; the table in docs/superpowers/plans/
 2026-11-09-p3b-pilot-runner.md). Each phase is its own jobs file for kaggle/run_queue.py; the kit is
 rebuilt with results/pilot_stage.json between phases (scripts/pilot_collect.py stage N). Kernel
-names end in the first 6 hex digits of the SHA-256 of the stage the phase runs under, so a phase
-rerun after a stage change pushes new kernels instead of reusing finished ones (plan 5 review I6).
+names end in the pilot revision and the first 6 hex digits of the SHA-256 of the stage the phase runs
+under (which includes the revision), so a phase rerun after a stage change or a revision (T8 RS-4: R1
+changed the autoencoder loss, R3 the pilot data) pushes new kernels instead of reusing finished ones
+(plan 5 review I6). Generate a phase's jobs file just before queueing it; none is kept in the repository.
+A phase after 0 needs the stage file of the current revision (scripts/pilot_collect.py writes the
+revision into it) and refuses any other.
 
     python kaggle/pilot_jobs.py PHASE OUT.json [results/pilot_stage.json]
 """
@@ -14,7 +18,8 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
-from p3b.pilot.pieces import KEYS, LR_ARMS, PRIMARY_KEY, TWO_SEEDS, _tag, restrict, stage_sha  # noqa: E402
+from p3b.pilot.pieces import (KEYS, LR_ARMS, PILOT_REVISION, PRIMARY_KEY, TWO_SEEDS, _tag, load_stage,  # noqa: E402
+                              restrict, stage_sha)
 
 KIT = "abdulhamidbatayhi/p3b-reference-kit"
 
@@ -40,7 +45,7 @@ def _ae(key: str, seed: int, suffix: str) -> dict:
 
 
 def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> dict:
-    x = stage_sha(restrict(stage or {}, phase))[:6]
+    x = f"{PILOT_REVISION}-{stage_sha(restrict(stage or {}, phase))[:6]}"
     jobs = []
     if phase == 0:
         jobs += [_job(f"data-{k}", f"data_{k}.json", x) for k in KEYS]
@@ -59,16 +64,23 @@ def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> di
         jobs += [_job(f"pcq-s{s}", f"rows_Uq_s{s}.json", x) for s in TWO_SEEDS]
     else:
         raise ValueError(f"phase {phase}")
-    for j in jobs:          # the sweeps span sessions (structured arms at the pilot d, C+L): run_queue continues them
-        j["resumable"] = j["set"].startswith(("lr-", "curve-"))
+    for j in jobs:          # the sweeps and the S and two-seed runs span sessions (structured arms at the pilot d,
+        # C+L; T8 RS-8): run_queue continues them
+        j["resumable"] = j["set"].startswith(("lr-", "curve-", "s-", "two-", "pcq-"))
     return {"kit_slug": kit_slug, "nz": 0, "jobs": jobs}
 
 
+def main(argv) -> None:
+    """Write phase argv[0]'s jobs file to argv[1]. Phase 0 reads no stage; a later phase needs the stage
+    file (argv[2], default results/pilot_stage.json) of the current pilot revision and refuses any
+    other, so no kernel runs under a stale stage (T8 fix review, R1-4)."""
+    phase = int(argv[0])
+    stage_path = argv[2] if len(argv) > 2 else os.path.join(ROOT, "results", "pilot_stage.json")
+    st = load_stage(stage_path, phase, required=True)
+    jobs = phase_jobs(phase, st)
+    with open(argv[1], "w") as f:
+        json.dump(jobs, f, indent=1)
+
+
 if __name__ == "__main__":
-    stage_path = sys.argv[3] if len(sys.argv) > 3 else os.path.join(ROOT, "results", "pilot_stage.json")
-    st = {}
-    if os.path.exists(stage_path):
-        with open(stage_path) as f:
-            st = json.load(f)
-    with open(sys.argv[2], "w") as f:
-        json.dump(phase_jobs(int(sys.argv[1]), st), f, indent=1)
+    main(sys.argv[1:])

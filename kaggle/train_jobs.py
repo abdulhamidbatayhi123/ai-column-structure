@@ -53,8 +53,10 @@ def gate_jobs(cs, kind: str = "mlp", keys=None, kit_slug: str = KIT) -> dict:
 def evaluation_jobs(cs, sets=GATED_SETS, kit_slug: str = KIT) -> dict:
     """The second phase, built only after H3a passed (results/h3a_gate.json in the kit): one job per
     cell and test set, depending on the cell's training job (its weights) and, for latent arms, its
-    autoencoder job."""
-    jobs = []
+    autoencoder job. The file carries those training and autoencoder jobs too (build_jobs): run_queue
+    tracks producers within one jobs file only, and replays the finished ones from their downloads (the
+    last continuation of a resumed cell) without pushing them again (T8 fix review)."""
+    jobs = list(build_jobs(cs, kit_slug)["jobs"])
     for c in cs:
         for set_name in sets:
             n = f"{job_name(c)}-{set_name.replace('_', '')}"

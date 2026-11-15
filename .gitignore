@@ -16,3 +16,5 @@ results/pilot_ae/
 kaggle/build/
 kaggle/*.log
 kaggle/registry.txt
+# pilot phase jobs files: generated just before queueing (kaggle/pilot_jobs.py), never reused (T8 RS-4, RS-7)
+kaggle/jobs_pilot[0-9].json

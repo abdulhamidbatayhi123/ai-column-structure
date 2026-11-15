@@ -12,6 +12,15 @@ Rules carried from Paper 2:
   * only an explicit "not found" counts as absent; every other poll result is UNKNOWN and retried
     later (a 429 storm once made a queue resubmit finished kernels);
   * every push is logged in kaggle/registry.txt and never repeated;
+  * a resumable job that ends with RESUME.json is continued (<name>-r<n>) only while its RESUME.json
+    progress advances and at most MAX_CONTINUATIONS times; a chain that stops advancing, and a
+    finished kernel with neither its expected output nor a usable RESUME.json, is logged once as
+    "needs attention" and left alone; when nothing else can run the queue ends with QUEUE_STOPPED;
+  * a download that fails (429, server error, timeout) with nothing written is retried at the next
+    poll and never counted against the kernel;
+  * a dependent kernel mounts the kernel that produced its dependency's output (the last continuation);
+    producers are tracked within one jobs file only, so a dependency outside the file is refused, and
+    on a restart a finished job's producer is found among its downloaded continuations;
   * no credentials in the repository: the kaggle CLI reads the user's own ~/.kaggle/kaggle.json.
 The kaggle CLI is found on PATH, or through the KAGGLE_CLI environment variable.
 """
@@ -38,6 +47,9 @@ BUILD = os.path.join(HERE, "build")
 REG = os.path.join(HERE, "registry.txt")
 OWNER = "abdulhamidbatayhi"
 MAX_RUNNING = 5
+# continuations of one job before a person looks (T8 RS-1): the C+L curve needs about four sessions and a
+# confirmatory cell two or three, so ten means a chain that is not progressing as planned
+MAX_CONTINUATIONS = 10
 
 RUN_PY = r'''import glob, os, subprocess, sys
 # the kit is used read-only where Kaggle mounts it; nothing of it is copied into the outputs
@@ -118,6 +130,11 @@ def write_kernels(spec: dict) -> list[dict]:
     """Chunk jobs: one kernel per chunk, split over the 4 CPU cores of a Kaggle session. Command jobs
     ({"name", "commands", "expect"}): one kernel running each command as its own process; arguments
     starting with OUT/ point into the kernel's output directory."""
+    names = {j["name"] for j in spec["jobs"] if "name" in j}
+    outside = sorted({d for j in spec["jobs"] for d in j.get("depends_on", ()) if d not in names})
+    if outside:                     # the queue tracks producers only within one file: such a job would never run
+        raise ValueError(f"jobs depend on {', '.join(outside)}, which are not in this jobs file; queue them "
+                         f"together (kaggle/train_jobs.py evaluation_jobs carries its training jobs)")
     kernels = []
     for job in spec["jobs"]:
         if "commands" in job:
@@ -157,7 +174,20 @@ def write_kernels(spec: dict) -> list[dict]:
     return kernels
 
 
-def continuation(k: dict, kit_slug: str) -> dict:
+def sources(k: dict, producer: dict | None = None) -> list:
+    """The kernels whose outputs k mounts: for each dependency the kernel that produced its expected
+    output (its last continuation, T8 RS-3), and for a continuation the session it continues."""
+    producer = producer or {}
+    return [producer.get(d, d) for d in k.get("depends_on", ())] + ([k["prev"]] if k.get("prev") else [])
+
+
+def point_sources(k: dict, kit_slug: str, producer: dict) -> None:
+    """Rewrite a command kernel's metadata just before its push, with the sources known by then."""
+    with open(os.path.join(k["dir"], "kernel-metadata.json"), "w") as f:
+        json.dump(_metadata(k["name"], kit_slug, sources(k, producer)), f, indent=1)
+
+
+def continuation(k: dict, kit_slug: str, producer: dict | None = None) -> dict:
     """The next session of a resumable command job whose kernel ended with RESUME.json: kernel
     <base>-r<n>, the same commands with --resume-from /kaggle/input, the previous session's output
     attached (with the job's own inputs). The job stays the same logical job (k["base"])."""
@@ -168,9 +198,31 @@ def continuation(k: dict, kit_slug: str) -> dict:
     cmds = [list(c) + ["--resume-from", "/kaggle/input"] for c in k["commands"]]
     with open(os.path.join(d, "run.py"), "w") as f:
         f.write(RUN_CMDS_PY.format(cmds=cmds, kit_name=k["kit_name"], threads=k.get("threads", 1)))
-    with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
-        json.dump(_metadata(name, kit_slug, list(k.get("depends_on", ())) + [k["name"]]), f, indent=1)
-    return {**k, "name": name, "dir": d, "r": n}
+    nk = {**k, "name": name, "dir": d, "r": n, "prev": k["name"]}
+    point_sources(nk, kit_slug, producer or {})
+    return nk
+
+
+def resume_progress(out: str):
+    """The progress recorded in the RESUME.json under a downloaded output (a list compared in order),
+    None when it records none."""
+    for root, _, fs in os.walk(out):
+        if "RESUME.json" in fs:
+            try:
+                with open(os.path.join(root, "RESUME.json")) as f:
+                    info = json.load(f)
+            except (OSError, ValueError):
+                return None
+            if "progress" in info:
+                return [int(x) for x in info["progress"]]
+            return [int(info["stopped_at"])] if "stopped_at" in info else None
+    return None
+
+
+def download_failed(text: str) -> bool:
+    """Whether a `kernels output` call reported a failure (a 429 storm, a server error, a timeout): such a
+    poll says nothing about the kernel's output and is not counted against it."""
+    return bool(re.search(r"\b(429|5\d\d)\b|too many requests|error|timed out|timeout", text, re.I))
 
 
 def log(msg: str) -> None:
@@ -186,7 +238,10 @@ def main(jobs_file: str) -> None:
     exe = kaggle_cli()
 
     def run(*a):
-        r = subprocess.run([exe, *a], capture_output=True, text=True, timeout=600)
+        try:
+            r = subprocess.run([exe, *a], capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:          # UNKNOWN for a poll, a failure for a download: retried
+            return "timed out"
         return (r.stdout + r.stderr).strip()
 
     pushed = set(re.findall(r"^\S+ \S+ (\S+) pushed$", open(REG).read(), re.M)) if os.path.exists(REG) else set()
@@ -207,10 +262,45 @@ def main(jobs_file: str) -> None:
         d = out_dir(k)
         return k.get("resumable") and os.path.isdir(d) and any("RESUME.json" in fs for _, _, fs in os.walk(d))
 
-    done = {k["base"] for k in kernels if is_done(k)}         # logical jobs (a continuation keeps its base)
+    def replay(k):
+        """The kernel of logical job k whose earlier download holds its expected files: k itself or, for a
+        resumable job, its last continuation (<base>-r<n>); None when the job has not finished."""
+        for n in (range(MAX_CONTINUATIONS, 0, -1) if k.get("resumable") else ()):
+            c = {**k, "name": f"{k['base']}-r{n}"}
+            if is_done(c):
+                return c["name"]
+        return k["name"] if is_done(k) else None
+
+    # logical job -> the kernel whose output holds its expected files (a continuation keeps its base)
+    producer = {k["base"]: p for k in kernels for p in [replay(k)] if p}
+    done = set(producer)
+    attention = set()                     # kernels left for a person to look at (logged once)
+    misses = {}                           # COMPLETE polls of a kernel that left nothing usable
+
+    def flag(k, why):
+        if k["name"] not in attention:
+            attention.add(k["name"])
+            log(f"{k['name']} {why}: needs attention")
+
+    def stuck() -> set:
+        """Logical jobs that cannot finish without a person: flagged ones and those depending on them."""
+        out = {k["base"] for k in kernels if k["name"] in attention}
+        grew = True
+        while grew:
+            grew = False
+            for k in kernels:
+                if k["base"] not in out and any(d in out for d in k.get("depends_on", ())):
+                    out.add(k["base"])
+                    grew = True
+        return out
+
     while len(done) < len(kernels):
+        blocked = stuck()
+        if all(k["base"] in done or k["base"] in blocked for k in kernels):
+            log(f"QUEUE_STOPPED: {', '.join(sorted(attention))} need attention")
+            return
         status = {k["name"]: parse_status(run("kernels", "status", f"{OWNER}/{k['name']}"))
-                  for k in kernels if k["base"] not in done}
+                  for k in kernels if k["base"] not in done and k["name"] not in attention}
         busy = sum(s in ("RUNNING", "QUEUED") for s in status.values())
         for i, k in enumerate(kernels):
             s = status.get(k["name"])
@@ -218,16 +308,35 @@ def main(jobs_file: str) -> None:
                 continue
             if s == "COMPLETE":
                 os.makedirs(out_dir(k), exist_ok=True)
-                run("kernels", "output", f"{OWNER}/{k['name']}", "-p", out_dir(k))
+                got = run("kernels", "output", f"{OWNER}/{k['name']}", "-p", out_dir(k))
+                empty = not any(fs for _, _, fs in os.walk(out_dir(k)))
+                if empty and download_failed(got):         # nothing learnt about the output: poll again
+                    print(f"{k['name']}: download failed ({got[-120:]}), retried at the next poll", flush=True)
+                    continue
                 if is_done(k):
                     done.add(k["base"])
+                    producer[k["base"]] = k["name"]
                     log(f"{k['name']} output downloaded")
                 elif resumed(k):                            # the session ended; the next one resumes
-                    kernels[i] = continuation(k, spec["kit_slug"])
-                    log(f"{k['name']} ended with RESUME.json: continues as {kernels[i]['name']}")
+                    progress = resume_progress(out_dir(k))
+                    if progress is not None and k.get("progress") is not None and not progress > k["progress"]:
+                        flag(k, f"ended with RESUME.json at {progress}, no further than the session before "
+                                f"({k['progress']})")
+                    elif k.get("r", 0) >= MAX_CONTINUATIONS:
+                        flag(k, f"ended with RESUME.json after {k.get('r', 0) + 1} sessions "
+                                f"(cap {MAX_CONTINUATIONS} continuations)")
+                    else:
+                        kernels[i] = {**continuation(k, spec["kit_slug"], producer), "progress": progress}
+                        log(f"{k['name']} ended with RESUME.json: continues as {kernels[i]['name']}")
+                else:                                       # nothing to collect and nothing to continue
+                    misses[k["name"]] = misses.get(k["name"], 0) + 1
+                    if misses[k["name"]] >= 2:              # one more poll first: a download can be incomplete
+                        flag(k, "is COMPLETE without its expected output or a usable RESUME.json")
             elif s in ("ERROR", "CANCEL_ACKNOWLEDGED"):
                 log(f"{k['name']} status {s}: needs attention")
             elif s == "ABSENT" and k["name"] not in pushed and busy < MAX_RUNNING and ready(k, done):
+                if "commands" in k:                         # mount the dependencies' final kernels (T8 RS-3)
+                    point_sources(k, spec["kit_slug"], producer)
                 out = run("kernels", "push", "-p", k["dir"])
                 if "successfully pushed" in out.lower():
                     pushed.add(k["name"])
