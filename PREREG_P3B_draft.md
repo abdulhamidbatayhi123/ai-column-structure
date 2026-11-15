@@ -104,7 +104,8 @@ Sections 3 and 4:
 - convection by the hybrid scheme (Spalding 1972; Patankar 1980): first-order upwind plus the
   physical dispersion and conduction lowered, per face, by the upwind truncation term and
   clipped at zero (the same rule as arm C). At N_z = 2048 the clip never bites
-  (`verify/clip_shares.json`: numerical conduction at most 1.3 % of the physical one), so the
+  (`verify/clip_shares.json`, recomputed under R3: numerical dispersion at most 1.5 % of the
+  physical one and numerical conduction at most 0.6 %), so the
   reference is central differencing with the physical coefficients, and it keeps the
   consistency proof because it is written as upwind plus non-negative diffusion;
 - exact discrete-gradient Fick dispersion;
@@ -259,8 +260,10 @@ hyperparameters of Section 4.
   - per face, `k_z,eff = max(0, k_z − (ρ_g C_pg + c̄ c_w) v Δz/2)`, with c̄ the face mean;
   - system B: `k_f,eff = max(0, k_f − ρ_f c_f |v| Δz/2)`.
 
-  With the flow-dependent k_z and k_f, the clip bites only at 16 cells, in both systems
-  (`verify/clip_shares.json`). That grid stays over-diffusive by construction, which the paper
+  With the flow-dependent coefficients, the clip bites only at 16 cells
+  (`verify/clip_shares.json`, recomputed under R3): in system A's mass equation over the whole
+  velocity box, and in system B's thermal one. Under R3, system A's k_z exceeds the upwind conduction
+  even at 16 cells, so its thermal clip no longer bites. That grid stays over-diffusive by construction, which the paper
   states. From 32 cells up the compensation is complete over the whole velocity box.
   Integration tolerances (rtol 10⁻⁶, atol 10⁻¹⁰) are the same for C's accuracy and its timing,
   because the compensation assumes the semi-discrete scheme. C's fields are mapped to the 128

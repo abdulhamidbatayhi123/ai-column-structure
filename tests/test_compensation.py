@@ -47,7 +47,9 @@ def test_hybrid_coefficients_per_face():
         assert f["epsD_eff"] == pytest.approx(max(0.0, col.eps * p.D_L - p.v * dz / 2), rel=1e-15)
         cbar = 0.5 * (f["c"][1:] + f["c"][:-1])
         np.testing.assert_allclose(f["k_eff"], np.maximum(0.0, p.k_z - (col.rhoC + cbar * C_W) * p.v * dz / 2), rtol=1e-15)
-    assert np.all(column(16, v=0.30).fluxes(random_state(column(16), rng), (C_IN, T_ADS, T_ADS))["k_eff"] == 0.0)
+    # Under R3 the physical k_z (about 2 W/m/K at 0.30 m/s) exceeds the upwind conduction even at 16 cells,
+    # so the thermal clip no longer bites there (it did with the old delta = 0.5)
+    assert np.all(column(16, v=0.30).fluxes(random_state(column(16), rng), (C_IN, T_ADS, T_ADS))["k_eff"] > 0.0)
 
 
 def test_unclipped_hybrid_energy_convection_is_central():

@@ -158,8 +158,11 @@ def test_batched_rollout_of_a_projected_arm_equals_single_rollouts(tmp_path):
     for j, r in zip([0, 1], batch):
         a = rollout(u_proj, train, j, n_cycles=2, h_steps=2, track=True)
         assert torch.allclose(r.X[0, 0], a.X[0, 0], rtol=1e-12, atol=0)
-        assert r.failed_cycle == a.failed_cycle is None
-        assert set(r.flags) == set(a.flags) and "projection_rank_deficient" in r.flags
+        # batched and single runs end the same way: both finish, or both fail in the same cycle (whether this
+        # toy finishes depends on the generated data, which R3 changed; the batching property does not)
+        assert r.failed_cycle == a.failed_cycle
+        assert set(r.flags) == set(a.flags)
+        assert a.failed_cycle is not None or "projection_rank_deficient" in r.flags
         assert set(r.residuals) == set(a.residuals) == {"N", "E", "S"}
 
 

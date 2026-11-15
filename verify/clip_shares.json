@@ -1,61 +1,61 @@
 {
- "commit": "5c91f87ee66df3b8ce7154fda0553d55c4419064-dirty",
+ "commit": "e5346d9ab0d904e37f7fd603e1aec08408cbfd44-dirty",
  "K_E0": 0.1,
  "DELTA_AX": 0.5,
  "A": [
   {
    "N": 16,
-   "thermal_clip_share": 0.9196593854128101,
-   "thermal_max_ratio": 1.702362859794758,
+   "thermal_clip_share": 0.0,
+   "thermal_max_ratio": 0.7453744457898656,
    "mass_clip_share": 1.0,
    "mass_max_ratio": 1.8965255651646187
   },
   {
    "N": 32,
    "thermal_clip_share": 0.0,
-   "thermal_max_ratio": 0.851181429897379,
+   "thermal_max_ratio": 0.3726872228949328,
    "mass_clip_share": 0.0,
    "mass_max_ratio": 0.9482627825823093
   },
   {
    "N": 64,
    "thermal_clip_share": 0.0,
-   "thermal_max_ratio": 0.4255907149486895,
+   "thermal_max_ratio": 0.1863436114474664,
    "mass_clip_share": 0.0,
    "mass_max_ratio": 0.47413139129115467
   },
   {
    "N": 128,
    "thermal_clip_share": 0.0,
-   "thermal_max_ratio": 0.21279535747434475,
+   "thermal_max_ratio": 0.0931718057237332,
    "mass_clip_share": 0.0,
    "mass_max_ratio": 0.23706569564557733
   },
   {
    "N": 256,
    "thermal_clip_share": 0.0,
-   "thermal_max_ratio": 0.10639767873717237,
+   "thermal_max_ratio": 0.0465859028618666,
    "mass_clip_share": 0.0,
    "mass_max_ratio": 0.11853284782278867
   },
   {
    "N": 512,
    "thermal_clip_share": 0.0,
-   "thermal_max_ratio": 0.05319883936858619,
+   "thermal_max_ratio": 0.0232929514309333,
    "mass_clip_share": 0.0,
    "mass_max_ratio": 0.059266423911394334
   },
   {
    "N": 1024,
    "thermal_clip_share": 0.0,
-   "thermal_max_ratio": 0.026599419684293094,
+   "thermal_max_ratio": 0.01164647571546665,
    "mass_clip_share": 0.0,
    "mass_max_ratio": 0.029633211955697167
   },
   {
    "N": 2048,
    "thermal_clip_share": 0.0,
-   "thermal_max_ratio": 0.013299709842146547,
+   "thermal_max_ratio": 0.005823237857733325,
    "mass_clip_share": 0.0,
    "mass_max_ratio": 0.014816605977848583
   }
