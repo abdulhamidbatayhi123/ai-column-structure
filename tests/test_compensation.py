@@ -30,9 +30,11 @@ def random_state(col, rng):
 
 
 def test_bed_axial_conductivity_is_flow_dependent():
+    # R3: the fluid dispersion plus the Vortmeyer-Schaefer interphase term (exact form in test_r3_packed_bed)
     for v in (0.03, 0.30):
         p = m.bed_physics(v, T_ADS)
-        assert p.k_z == pytest.approx(m.K_E0 + m.DELTA_AX * p.rho_g * p.C_pg * v * p.d_p, rel=1e-15)
+        assert p.k_z > m.K_E0 + m.DELTA_AX * p.rho_g * p.C_pg * v * p.d_p
+    assert m.bed_physics(0.30, T_ADS).k_z > m.bed_physics(0.03, T_ADS).k_z
     assert m.K_E0 == 0.10 and m.DELTA_AX == 0.5
 
 

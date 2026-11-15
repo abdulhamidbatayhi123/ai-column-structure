@@ -1,0 +1,35 @@
+{
+ "coolprop_version": "8.0.0",
+ "states": {
+  "air_A": {
+   "fluid": "Air",
+   "T_K": 293.15,
+   "P_Pa": 101325.0,
+   "rho_kg_m3": 1.2045751824931505,
+   "cp_J_kgK": 1006.1440320870352,
+   "mu_Pa_s": 1.8205675178515367e-05,
+   "k_W_mK": 0.025873828302933142,
+   "Pr": 0.7079559783931074,
+   "bibtex": {
+    "EOS": "Lemmon-JPCRD-2000",
+    "VISCOSITY": "Lemmon-IJT-2004",
+    "CONDUCTIVITY": "Lemmon-IJT-2004"
+   }
+  },
+  "water_B": {
+   "fluid": "Water",
+   "T_K": 318.15,
+   "P_Pa": 101325.0,
+   "rho_kg_m3": 990.2128978636467,
+   "cp_J_kgK": 4180.141940156548,
+   "mu_Pa_s": 0.0005957693051508003,
+   "k_W_mK": 0.6347834493539902,
+   "Pr": 3.9232280892849816,
+   "bibtex": {
+    "EOS": "Wagner-JPCRD-2002",
+    "VISCOSITY": "Huber-JPCRD-2009",
+    "CONDUCTIVITY": "Huber-JPCRD-2012"
+   }
+  }
+ }
+}
