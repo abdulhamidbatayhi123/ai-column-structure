@@ -73,7 +73,10 @@ def parse_status(text: str) -> str:
 
 
 def kernel_name(job: dict, chunk: int) -> str:
-    return f"p3b-ref-{job['system']}-{job['set']}-{chunk}-of-{job['of']}".lower().replace("_", "-")
+    """The chunk kernel's name; a job's optional "tag" (for example "r3", a regeneration after a constants
+    revision) makes new kernels instead of reusing finished ones."""
+    tag = f"-{job['tag']}" if job.get("tag") else ""
+    return f"p3b-ref-{job['system']}-{job['set']}-{chunk}-of-{job['of']}{tag}".lower().replace("_", "-")
 
 
 RUN_CMDS_PY = r'''import glob, os, subprocess, sys

@@ -99,3 +99,10 @@ def test_the_cplusl_curve_and_the_study_cells_are_resumable_jobs():
     cell_jobs = [j for j in jobs if j["commands"][0][1] == "--cell"]
     assert cell_jobs and all(j.get("resumable") for j in cell_jobs)
     assert not any(j.get("resumable") for j in jobs if j["commands"][0][1] == "--ae")
+
+
+def test_a_tag_gives_regenerated_chunk_jobs_new_kernel_names(rq):
+    # regenerating a set after a constants revision must not reuse finished kernels (or the registry)
+    base = {"system": "A_primary", "set": "pilot_train", "of": 2}
+    assert rq.kernel_name(base, 0) == "p3b-ref-a-primary-pilot-train-0-of-2"
+    assert rq.kernel_name(dict(base, tag="r3"), 0) == "p3b-ref-a-primary-pilot-train-0-of-2-r3"

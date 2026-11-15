@@ -1,0 +1,32 @@
+{
+ "kit_slug": "abdulhamidbatayhi/p3b-reference-kit",
+ "nz": 2048,
+ "_note": "Pilot sets regenerated after revision R3 (delta for system A, h_v(v) for system B; PREREG Section 12). Same sets and grids as kaggle/jobs_pilot.json of plan 4 (N_z 2048 for A, 1024 for B); tag r3 gives new kernels. Run only after R3 is committed and the kit rebuilt.",
+ "jobs": [
+  {
+   "system": "A_primary",
+   "set": "pilot_train",
+   "of": 2,
+   "tag": "r3"
+  },
+  {
+   "system": "A_primary",
+   "set": "pilot_val",
+   "of": 4,
+   "tag": "r3"
+  },
+  {
+   "system": "A_replication",
+   "set": "pilot",
+   "of": 2,
+   "tag": "r3"
+  },
+  {
+   "system": "B",
+   "set": "pilot",
+   "of": 1,
+   "nz": 1024,
+   "tag": "r3"
+  }
+ ]
+}
