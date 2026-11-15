@@ -86,11 +86,20 @@ def cplusl_loss(mult, ds, material, n_coarse, n_windows, n_steps, K, rng):
 
 
 @torch.no_grad()
-def cplusl_val_loss(mult, val, material: str, n_coarse: int, K: int) -> float:
+def cplusl_val_loss(mult, val, material: str, n_coarse: int, K: int, stats: dict | None = None) -> float:
     """C+L's deterministic validation loss (the counterpart of the latent arms' one-cycle rollout
     loss): from each validation trajectory's first stored coarse state, one cycle of snapshot
-    intervals by implicit Euler, standardised MSE in its own variables; NaN if a Newton solve fails."""
+    intervals by implicit Euler, standardised MSE in its own variables; NaN if a Newton solve fails.
+    `stats` (a dict) receives full_newton_retries, counted also when a solve fails."""
     data = _Data(val, material, n_coarse, mult)
+    try:
+        return _val_loss(data, val, K)
+    finally:
+        if stats is not None:
+            stats["full_newton_retries"] = int(data.retries)
+
+
+def _val_loss(data: _Data, val, K: int) -> float:
     ns = val.X.shape[2]
     tot = torch.zeros(len(data.Y), dtype=F64)
     try:                                                 # every trajectory together, from its first state
@@ -194,7 +203,8 @@ def rollout_cplusl_to_files(mult, points: list, material: str, n_coarse: int, n_
     """rollout_cplusl_to_file for several trajectories of one material and cycle count, integrated
     together (one batched Newton solve per snapshot interval); each is stored to its own path.
 
-    A failed solve (NewtonFailure, LinAlgError) in cycle k propagates, unless keep_partial is set and
+    A failed solve (NewtonFailure, LinAlgError) in cycle k propagates (carrying the full-Newton retries
+    counted before it as exc.full_newton_retries), unless keep_partial is set and
     the batch is one trajectory: then its completed cycles 1..k-1 are stored (no file when k = 1), with
     failed_cycle and failure_reason in the meta, so it is scored from cycle k on (PREREG 5). Returns
     {"failed_cycle": [1-based or None per trajectory], "reason": [...], "full_newton_retries": n}."""
@@ -229,6 +239,7 @@ def rollout_cplusl_to_files(mult, points: list, material: str, n_coarse: int, n_
                 t_abs = t_abs + durs
         except SOLVER_FAILURES as exc:
             if not (keep_partial and B == 1):          # a batch: the caller reruns each trajectory alone
+                exc.full_newton_retries = int(cache.get("full_newton_retries", 0))   # kept for the report
                 raise
             failed = (k + 1, f"{type(exc).__name__}: {exc}")
             break
@@ -256,7 +267,8 @@ def rollout_cplusl_each(mult, points: list, material: str, n_coarse: int, n_targ
     fails in cycle k > 1 keeps cycles 1..k-1 in its file and is scored from cycle k on (PREREG 5).
 
     `report` (a dict) receives batch_fallback [{trajectories, reason}], failures {j: {failed_cycle,
-    reason}} and full_newton_retries. Only failed solves are caught; any other error propagates."""
+    reason}} and full_newton_retries (of every attempt, the failed batch attempts included). Only failed
+    solves are caught; any other error propagates."""
     from p3b.train import cplusl as _self                # the module attribute (patchable in tests)
     rep = report if report is not None else {}
     rep.setdefault("batch_fallback", [])
@@ -273,13 +285,15 @@ def rollout_cplusl_each(mult, points: list, material: str, n_coarse: int, n_targ
                                                         keep_partial=True))]
         except SOLVER_FAILURES as exc:
             rep["batch_fallback"].append({"trajectories": list(idx), "reason": f"{type(exc).__name__}: {exc}"})
+            rep["full_newton_retries"] += int(getattr(exc, "full_newton_retries", 0))   # of the failed attempt
             runs = []
             for j in idx:
                 try:
                     runs.append(([j], _self.rollout_cplusl_to_files(mult, [points[j]], material, n_coarse, n_target,
                                                                     n_snap, K, paths=[paths[j]], keep_partial=True)))
                 except SOLVER_FAILURES as exc1:          # failed before a cycle was kept: cycle 1
-                    runs.append(([j], {"failed_cycle": [1], "reason": [f"{type(exc1).__name__}: {exc1}"]}))
+                    runs.append(([j], {"failed_cycle": [1], "reason": [f"{type(exc1).__name__}: {exc1}"],
+                                       "full_newton_retries": int(getattr(exc1, "full_newton_retries", 0))}))
         for js, info in runs:
             info = info or {}
             rep["full_newton_retries"] += int(info.get("full_newton_retries", 0))

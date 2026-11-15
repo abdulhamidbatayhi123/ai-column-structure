@@ -280,10 +280,13 @@ def _newton(f, base, hs, scale, N: int, tol: float, max_iter: int, chord: bool, 
     """Newton's iteration for one substep of a batch, sample by sample; returns (y, conv, lu).
 
     A sample is latched when it is accepted (at tol, or by the stall rule after a fresh-Jacobian
-    step) and frozen from then on: it leaves the refresh and restart tests, so each sample's result
-    and success are its own and the batch is accepted when every sample is latched. A sample whose
-    residual turns non-finite on a reused Jacobian restarts once from base, and the Jacobian is
-    refreshed. With `polish`, a stall-accepted sample takes one more step with the latest factorised
+    step) and frozen from then on: it leaves the refresh and restart tests, and the batch is accepted
+    when every sample is latched. The max_iter budget and the refresh decision are still shared (a
+    restart iteration skips the step for every active sample), so with chord a sample's path can
+    differ from its path alone; implicit_euler_step retries the samples not latched by full Newton
+    from base, so batch and single runs can differ in outcome only on states where full Newton
+    fails. A sample whose residual turns non-finite on a reused Jacobian restarts once from base,
+    and the Jacobian is refreshed. With `polish`, a stall-accepted sample takes one more step with the latest factorised
     Jacobian (formed fresh at the previous iterate), which is full Newton's final correction to
     second order. After max_iter, the samples not latched are checked once more at the strict tol."""
     B, n = base.shape
@@ -336,7 +339,11 @@ def implicit_euler_step(rhs, y0, inp, h: float, tol: float = 1e-10, max_iter: in
     returned. A solve that stalls (the residual no longer halves) is accepted only below STALL_TOL,
     the round-off floor of some states lying between 1e-12 and 1e-9, and only after an iteration with
     a fresh Jacobian. A batch is solved sample by sample (`_newton`): each sample is latched when
-    accepted and restarted on its own, so a batch succeeds exactly when every sample would alone.
+    accepted and restarted on its own. The iteration budget and the Jacobian refresh decision stay
+    shared, so a sample's chord path can differ from its path alone; but a sample fails only if full
+    Newton from the substep's start also fails for it (see chord below), so batch and single runs can
+    differ in outcome only on states where full Newton fails (where both succeed, their values agree
+    to the Newton tolerance).
 
     With chord (the default) Newton is modified: the factorised Jacobian is reused while each
     iteration cuts the residual by CHORD_RATE or more and refreshed otherwise. Before a chord solve is
