@@ -1,7 +1,9 @@
 """T8 review, the C+L solver and the solver arms' scoring (findings CL-1 to CL-7).
 
 CL-1: a batched Newton solve latches each sample when it is accepted and restarts each sample that
-goes astray, so a batch succeeds exactly when every sample alone does. CL-2: a solver run that fails
+goes astray on its own; the iteration budget and the refresh decision stay shared, so a sample fails
+only where full Newton from the substep's start fails, and batch and single runs can differ only on
+such states. CL-2: a solver run that fails
 in cycle k keeps its cycles before k and is capped from cycle k on (PREREG 5). CL-3: a chord solve
 that fails is retried with full Newton before the failure counts. CL-4: Newton failures are their
 own exception class, their reason is kept, and every other error propagates. CL-5: a stall-accepted
@@ -137,21 +139,40 @@ def _try(fn):
 
 @pytest.mark.parametrize("unit", [True, False])
 def test_cl1_batched_and_single_solves_agree_when_every_exit_is_by_the_stall_rule(unit):
-    # tol below round-off: every sample must leave by the stall rule; the batch must succeed exactly
-    # when every single solve does, and agree with them to the stall tolerance's level
+    # tol below round-off: every sample must leave by the stall rule. The batch shares the iteration
+    # budget and the refresh decision, so it may differ from single runs, but only on a state where
+    # full Newton fails: a batch failure needs a single full-Newton failure from the same state.
+    # With unit multipliers every solve must finish (else the test would check nothing).
     m = Multipliers(n_out=3, constant=1.0) if unit else _mult()
     rhs, Y, I, H = _batch(m)
     st = TorchColumnRHS.stack(rhs)
     with torch.no_grad():
         yb, ys = Y, [Y[j] for j in range(3)]
         for _ in range(3):
-            yb = _try(lambda: implicit_euler_step(st, yb, I, H, tol=1e-15))
+            prev = yb
+            yb = _try(lambda: implicit_euler_step(st, prev, I, H, tol=1e-15))
             ys = [_try(lambda j=j, r=r: implicit_euler_step(r, ys[j], I[j], float(H[j]), tol=1e-15))
                   for j, r in enumerate(rhs)]
-            assert (yb is None) == any(y is None for y in ys)
+            if unit:
+                assert yb is not None and all(y is not None for y in ys)
             if yb is None:
+                full = [_try(lambda j=j, r=r: implicit_euler_step(r, prev[j], I[j], float(H[j]), tol=1e-15,
+                                                                  chord=False)) for j, r in enumerate(rhs)]
+                assert any(f is None for f in full)
+                return
+            if any(y is None for y in ys):          # a single chord solve whose full-Newton retry failed
                 return
             assert _rel(yb, torch.stack(ys)) < 1e-7
+
+
+def test_cl1_the_docstring_does_not_claim_batch_and_single_runs_are_identical():
+    # the budget (max_iter) and the refresh decision are shared across the batch: the honest claim is
+    # that batch and single runs can differ only where full Newton from the substep's start fails
+    doc = " ".join(implicit_euler_step.__doc__.split())
+    assert "succeeds exactly when every sample would alone" not in doc
+    assert "only on states where full Newton" in doc
+    ndoc = " ".join(cl._newton.__doc__.split())
+    assert "only on states where full Newton" in ndoc
 
 
 # ---- CL-3: full Newton before a failure counts -------------------------------------------------
@@ -360,6 +381,87 @@ def test_cl2_a_cplusl_cell_scores_a_cycle_3_failure_from_cycle_3_and_records_why
     assert rep["failures"]["0"]["failed_cycle"] == 3 and rep["batch_fallback"] == []
 
 
+def _score_stored(four_cycles, monkeypatch, n_stored):
+    """evaluate_files on a stored run holding cycles 1..n_stored (the reference's own, so nothing but
+    the interval count matters; None for n_stored = 0), with floors 0 and tau_S = -inf: every
+    interval counted is a violation of S, so the counts show which intervals were counted."""
+    import p3b.latent.data as data
+    from types import SimpleNamespace
+    from p3b.eval.evaluate import evaluate_files
+    from p3b.latent.physics import ColumnPhysics
+    d, pt = four_cycles
+    ds = data.load_set([d / "validation" / "t0.npz"])
+    stored = ds.X[0, :n_stored].clone()
+    monkeypatch.setattr(data, "load_set", lambda ps: SimpleNamespace(X=stored.unsqueeze(0)))
+    phys = ColumnPhysics(setup_a(pt, "MOF-303", 8)[0])
+    row, = evaluate_files({"C+L": [None if n_stored == 0 else "stored.npz"]}, ds, phys, n_cycles=4, seed=0,
+                          floors={"N": 0.0, "E": 0.0}, tau_S=float("-inf"))
+    return row, ds.X.shape[2]
+
+
+def test_cl2_a_partial_solver_row_counts_violations_only_on_its_own_cycles(four_cycles, monkeypatch):
+    # cycles 1-2 stored, 3-4 padded with the reference for e and eps only: the stored-to-reference
+    # splice and the reference's intervals are not the arm's and must not be counted
+    row, ns = _score_stored(four_cycles, monkeypatch, 2)
+    assert row["failed_cycle"] == 3
+    own = 2 * ns - 1
+    assert row["violations"]["S"] == own
+    assert row["violations"]["E"] <= own and row["violations"]["N"] <= own
+    assert all(len(v) == own for v in row["residuals_normalised"].values())
+
+
+def test_cl2_a_solver_row_failed_in_cycle_1_has_no_violation_counts(four_cycles, monkeypatch):
+    # nothing of its own to count: None (not computed), never counts over the reference
+    row, _ = _score_stored(four_cycles, monkeypatch, 0)
+    assert row["failed_cycle"] == 1
+    assert row["violations"] == {"N": None, "E": None, "S": None}
+    assert all(len(v) == 0 for v in row["residuals_normalised"].values())
+
+
+def test_cl2_a_complete_solver_row_still_counts_every_interval(four_cycles, monkeypatch):
+    row, ns = _score_stored(four_cycles, monkeypatch, 4)
+    assert row["failed_cycle"] is None and row["violations"]["S"] == 4 * ns - 1
+
+
+# ---- CL-3/CL-4: full-Newton retries are counted also where the solve failed ---------------------
+def test_cl3_retries_of_a_failed_batch_attempt_are_reported(tmp_path, monkeypatch):
+    from p3b.train import cplusl
+    count = {"batch": 0}
+
+    def planted(rhs, y0, inp, h, substeps=1, jac_cache=None, **k):
+        if y0.shape[0] > 1:                         # the batch: one retry per call, fails at call 3
+            count["batch"] += 1
+            jac_cache["full_newton_retries"] = jac_cache.get("full_newton_retries", 0) + 1
+            if count["batch"] == 3:
+                raise NewtonFailure("planted non-convergence")
+        return y0                                   # single runs: no retries
+    monkeypatch.setattr(cplusl, "implicit_euler_step", planted)
+    report = {}
+    cplusl.rollout_cplusl_each(Multipliers(n_out=3, constant=1.0), POINTS, "MOF-303", n_coarse=4, n_target=8,
+                               n_snap=20, K=8, paths=[tmp_path / f"e{j}.npz" for j in range(3)], report=report)
+    assert len(report["batch_fallback"]) == 1
+    assert report["full_newton_retries"] == 3
+
+
+def test_cl3_validation_loss_reports_its_retries_also_when_a_solve_fails(paths, monkeypatch):
+    from p3b.latent.data import load_set
+    from p3b.train import cplusl
+    count = {"n": 0}
+
+    def planted(rhs, y0, inp, h, substeps=1, jac_cache=None, **k):
+        count["n"] += 1
+        jac_cache["full_newton_retries"] = jac_cache.get("full_newton_retries", 0) + 1
+        if count["n"] == 2:
+            raise NewtonFailure("planted non-convergence")
+        return y0
+    monkeypatch.setattr(cplusl, "implicit_euler_step", planted)
+    stats = {}
+    loss = cplusl.cplusl_val_loss(Multipliers(n_out=3, constant=1.0), load_set(paths), "MOF-303", n_coarse=4, K=1,
+                                  stats=stats)
+    assert loss != loss                             # NaN: not finished
+    assert stats["full_newton_retries"] == 2
+
+
 # ---- CL-5: the stall-accepted value takes the final Newton correction ---------------------------
 def test_cl5_a_stall_accepted_solve_returns_the_corrected_value():
     # sample 0 of STALL_SCRIPT is accepted by the stall rule at iteration 3; full Newton's final
@@ -377,9 +479,8 @@ def test_cl5_stalled_solves_without_a_gradient_agree_with_full_newton_to_tol():
     with torch.no_grad():
         fast = _try(lambda: implicit_euler_step(rhs, y0, inp, h, tol=1e-15))
         full = _try(lambda: implicit_euler_step(rhs, y0, inp, h, tol=1e-15, chord=False))
-    assert (fast is None) == (full is None)
-    if fast is not None:
-        assert _rel(fast.unsqueeze(0), full.unsqueeze(0)) < 1e-9
+    assert fast is not None and full is not None    # else the test would check nothing
+    assert _rel(fast.unsqueeze(0), full.unsqueeze(0)) < 1e-9
 
 
 # ---- CL-6 and CL-7: documentation -------------------------------------------------------------
