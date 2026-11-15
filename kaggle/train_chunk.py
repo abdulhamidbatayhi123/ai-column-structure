@@ -91,6 +91,8 @@ def main(argv=None):
     ap.add_argument("--pilot", default=os.path.join(ROOT, "results", "pilot_values.json"))
     ap.add_argument("--decoder-choice", default=os.path.join(ROOT, "results", "decoder_choice.json"))
     ap.add_argument("--resume-from", default=None, help="an earlier session's output (Kaggle kernel input)")
+    ap.add_argument("--weights-from", default="/kaggle/input",
+                    help="--evaluate: where the training kernel's output (weights, results file) is mounted")
     ap.add_argument("--hours", type=float, default=11.0,
                     help="pause with a checkpoint and RESUME.json after so many hours (Kaggle sessions end at 12)")
     a = ap.parse_args(argv)
@@ -116,7 +118,8 @@ def main(argv=None):
         c = next(c for c in cells() if job_name(c) == name)
         with open(a.gate) as f:
             gate = json.load(f)
-        print(evaluate_cell(c, set_name, data_dir(c), a.out, cell_pilot(c, pilot, choice), gate), flush=True)
+        print(evaluate_cell(c, set_name, data_dir(c), a.out, cell_pilot(c, pilot, choice), gate,
+                            weights_from=a.weights_from), flush=True)
         return
     c = next(c for c in cells() if job_name(c) == a.cell)
     print(train_cell(c, data_dir(c), a.out, cell_pilot(c, pilot, choice), deadline=deadline,

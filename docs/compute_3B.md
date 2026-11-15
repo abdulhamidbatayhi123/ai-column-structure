@@ -115,17 +115,25 @@ Removing them leaves the arithmetic unchanged (forward results bit for bit, para
 2 × 10⁻¹⁶, `tests/test_s_speed_refactor.py`). On Kaggle it cut S's iteration by 32 to 33 % and the
 other structured arms' by 22 to 34 %.
 
-**Pilot layout (2026-11-10).** One piece per kernel on one thread (autoencoders on four). The longest
-piece is S-L's learning curve: 16,000 iterations at h = 1, about 9.2 hours at 2.08 s per iteration,
-plus 16 batched validations. Kaggle sessions end at 12 hours, so the margin is about 2.5 hours (one
-earlier measurement on another session ran 50 % slower).
+**Pilot layout (2026-11-10; timings corrected 2026-11-16, T8 review RS-9).** One piece per kernel on one
+thread (autoencoders on four). The longest latent piece is S-L's learning curve: 16,000 iterations at
+h = 1, about 9.2 hours at 2.08 s per iteration measured at d = 16 (`results/timing_arms.json`; the pilot's
+working d of 64 has not been timed and costs more), plus 16 batched validations. C+L is longer: at the
+re-timed 8.1 s per iteration (K = 4, above) its curve to 16,000 iterations takes about 36 hours, four
+Kaggle sessions, and its learning-rate sweep (3 x 2,000 iterations) about 13.5 hours, two sessions. Kaggle
+sessions end at 12 hours, so every lr-, curve-, s-, two- and pcq- piece checkpoints after 11 hours and the
+queue continues it (below).
 
 **Resuming across sessions (2026-11-10).** Confirmatory runs at 4 per session (S about 14 hours at h = 2)
 need it. A cell still training after `--hours` (default 11) checkpoints and writes `RESUME.json`
 (`TrainConfig.deadline`, `train_cell`, `kaggle/train_chunk.py`). A kernel given that output as input
 continues it with `--resume-from`, using the same autoencoder, to the same weights; CPU time accumulates
-across sessions (`tests/test_resume_sessions.py`). Still open: the queue does not yet push the
-continuation kernel and re-point the evaluation jobs to it. That is part of the confirmatory run plan.
+across sessions (`tests/test_resume_sessions.py`). `kaggle/run_queue.py` pushes the continuation kernel
+(`<name>-r<n>`) while the RESUME.json progress advances, at most 10 times per job, and points every
+dependent job (evaluation included) at the kernel that produced the expected output; evaluation finds
+the weights under its kernel inputs and checks their SHA-256 against the training results file. A
+continuation refuses to resume when the stage, kit commit, configuration or inputs differ from the
+first session's (T8 review RS-1 to RS-5, `tests/test_t8_queue.py`).
 Kernels already run each of their commands as a separate process, so 4 runs per session is 4 commands
 in one job.
 

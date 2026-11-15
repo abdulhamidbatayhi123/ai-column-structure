@@ -40,14 +40,15 @@ def run_piece(name: str, data: str, stage: dict, out: str, q: dict, deadline=Non
     if kind == "curve":
         return pieces.piece_curve(ARMS[rest], data, stage, out, q, deadline=deadline, resume_from=resume_from)
     if kind == "s":
-        return pieces.piece_s(rest, data, stage, out, q)
+        return pieces.piece_s(rest, data, stage, out, q, deadline=deadline, resume_from=resume_from)
     if kind == "wall":
         return pieces.piece_wall(data, stage, out, q)
     if kind == "two":
         arm, _, seed = rest.rpartition("-s")
-        return pieces.piece_two(ARMS[arm], int(seed), data, stage, out, q)
+        return pieces.piece_two(ARMS[arm], int(seed), data, stage, out, q, deadline=deadline, resume_from=resume_from)
     if kind == "pcq":
-        return pieces.piece_two("U", int(rest.lstrip("s")), data, stage, out, q, quarter=True)
+        return pieces.piece_two("U", int(rest.lstrip("s")), data, stage, out, q, quarter=True, deadline=deadline,
+                                resume_from=resume_from)
     raise ValueError(f"unknown piece {name!r}")
 
 
@@ -59,7 +60,8 @@ def main(argv=None):
     ap.add_argument("--stage", default=os.path.join(ROOT, "results", "pilot_stage.json"))
     ap.add_argument("--quick", default=None, help="JSON overrides for tests on tiny data only")
     ap.add_argument("--hours", type=float, default=11.0,
-                    help="resumable pieces (lr-*, curve-*) checkpoint after so many hours (Kaggle sessions end at 12)")
+                    help="resumable pieces (lr-*, curve-*, s-*, two-*, pcq-*) checkpoint after so many hours "
+                         "(Kaggle sessions end at 12)")
     ap.add_argument("--resume-from", default=None, help="an earlier session's output (Kaggle kernel input)")
     a = ap.parse_args(argv)
     import time

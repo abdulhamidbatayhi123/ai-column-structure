@@ -281,15 +281,70 @@ def _ae_file(cell) -> str:
     return f"ae_{cell.system}_{cell.material}_{cell.size}_s{cell.seed}.pt"
 
 
-def _copy_session(src: str, out_dir: str, names) -> None:
-    """Copy the named files of an earlier session's output (searched recursively) into out_dir; a name
-    found more than once is an error (which session would be continued is then ambiguous)."""
+def _copy_session(src: str, out_dir: str, names, required=()) -> dict:
+    """Copy the named files of an earlier session's output (searched recursively) into out_dir; returns
+    {name: the copied source}. A name found more than once is an error (which session would be continued
+    is then ambiguous), unless every copy is the same file: the autoencoder sits both in its own job's
+    output and in the previous session's (T8 RS-2). A name in `required` must be found (T8 RS-6: a
+    continuation without its checkpoint would silently restart from iteration 0)."""
+    copied = {}
     for name in names:
         hits = glob.glob(os.path.join(src, "**", name), recursive=True)
-        if len(hits) > 1:
-            raise RuntimeError(f"{name} found {len(hits)} times under {src}")
+        if len(hits) > 1 and len({_sha(h) for h in hits}) > 1:
+            raise RuntimeError(f"{name} found {len(hits)} times under {src}, not all the same file")
+        if not hits and name in required:
+            raise FileNotFoundError(f"{name} not found under {src}: the session to continue is not attached")
         if hits:
             shutil.copy2(hits[0], os.path.join(out_dir, name))
+            copied[name] = hits[0]
+    return copied
+
+
+def _cell_fingerprint(cell, pilot: dict, q: dict, iterations: int, ae_meta) -> dict:
+    """What every session of a cell must share (T8 RS-5): the job, the kit commit, the pilot values
+    (ae_input_root is only where Kaggle mounts the autoencoder), the overrides, the iteration count and
+    the autoencoder's SHA-256."""
+    from p3b.pilot.pieces import _kit_commit
+    from p3b.resume import plain
+    return plain({"job": job_name(cell), "kit_commit": _kit_commit(), "iterations": iterations, "q": q,
+                  "pilot": {k: v for k, v in pilot.items() if k != "ae_input_root"},
+                  "autoencoder_sha256": (ae_meta or {}).get("sha256")})
+
+
+def _resume_cell(resume_from: str, out_dir: str, ckpt: str, extra=()):
+    """The directory holding the earlier session's checkpoint, after copying it (exactly one, required)
+    and `extra` into out_dir; None for a first session."""
+    if not resume_from:
+        return None
+    copied = _copy_session(resume_from, out_dir, [os.path.basename(ckpt), *extra],
+                           required=(os.path.basename(ckpt),))
+    return os.path.dirname(copied[os.path.basename(ckpt)])
+
+
+def _write_resume(out_dir: str, cell, stopped_at: int, iterations: int, ckpt: str, fingerprint: dict):
+    from pathlib import Path
+    path = Path(out_dir) / "RESUME.json"
+    path.write_text(json.dumps({"job": job_name(cell), "stopped_at": stopped_at, "progress": [int(stopped_at)],
+                                "iterations": iterations, "checkpoint": os.path.basename(ckpt),
+                                "fingerprint": fingerprint}, indent=1))
+    return path
+
+
+def _find_weights(cell, root: str) -> str:
+    """The cell's trained weights under `root` (an evaluation kernel's inputs, or the training output):
+    exactly one copy, whose SHA-256 is the one its training results file recorded (T8 RS-3)."""
+    def one(name):
+        hits = glob.glob(os.path.join(str(root), "**", name), recursive=True)
+        if len(hits) != 1:
+            raise (FileNotFoundError if not hits else RuntimeError)(
+                f"{name} found {len(hits)} times under {root} (expected one)")
+        return hits[0]
+    wpath = one(_weights_file(cell))
+    with open(one(job_name(cell) + ".json")) as f:
+        recorded = json.load(f)["meta"]["weights"]["sha256"]
+    if _sha(wpath) != recorded:
+        raise RuntimeError(f"{wpath}: its sha256 is not the one its training recorded ({recorded[:12]})")
+    return wpath
 
 
 def _load_ae(cell, ae, out_dir, pilot, q, std, ds):
@@ -370,11 +425,14 @@ def train_cell(cell: Cell, data_dir: str, out_dir: str, pilot: dict, quick: dict
 
     Sessions: past `deadline` (time.monotonic()) training checkpoints and stops, and out_dir/RESUME.json
     is written and returned instead. `resume_from`: an earlier session's output (searched recursively,
-    as Kaggle mounts it), whose checkpoint and autoencoder are copied in and continued."""
+    as Kaggle mounts it), whose checkpoint (required) and autoencoder are copied in and continued, after
+    the RESUME.json beside the checkpoint showed the same run fingerprint (stage, kit, configuration and
+    autoencoder; T8 RS-5)."""
     from pathlib import Path
 
     from p3b.eval.evaluate import write_results
     from p3b.latent.data import load_set
+    from p3b.resume import check_resume
     from p3b.train.trainer import TrainConfig, train
     q = quick or {}
     os.makedirs(out_dir, exist_ok=True)
@@ -382,8 +440,7 @@ def train_cell(cell: Cell, data_dir: str, out_dir: str, pilot: dict, quick: dict
         return _solver_cell(cell, data_dir, out_dir, pilot, q, VALIDATION_SETS, train=True, deadline=deadline,
                             resume_from=resume_from)
     ckpt = os.path.join(out_dir, job_name(cell) + "_ckpt.pt")
-    if resume_from:
-        _copy_session(resume_from, out_dir, [os.path.basename(ckpt), _ae_file(cell)])
+    prev = _resume_cell(resume_from, out_dir, ckpt, [_ae_file(cell)])
     train_files, train_idx = _train_files(data_dir, cell.size, _pool_size(cell, q))
     ds = load_set(train_files)
     arm, phys, terms, meta = _build(cell, pilot, q, ds, out_dir)
@@ -393,14 +450,14 @@ def train_cell(cell: Cell, data_dir: str, out_dir: str, pilot: dict, quick: dict
         iters = pilot["iterations_ulong"]
     else:
         iters = pilot["iterations"]
+    fp = _cell_fingerprint(cell, pilot, q, iters, meta["autoencoder"])
+    if prev is not None:
+        check_resume(prev, fp)
     hist = train(arm, ds, TrainConfig(lr=pilot["lr"][cell.arm], iterations=iters, seed=cell.seed,
                                       h_steps=pilot["h_steps"], n_windows=q.get("n_windows", 8),
                                       n_steps=q.get("n_steps", 20), checkpoint=ckpt, deadline=deadline))
     if "stopped_at" in hist:                                   # the session ends; a later one resumes
-        path = Path(out_dir) / "RESUME.json"
-        path.write_text(json.dumps({"job": job_name(cell), "stopped_at": hist["stopped_at"], "iterations": iters,
-                                    "checkpoint": os.path.basename(ckpt)}, indent=1))
-        return path
+        return _write_resume(out_dir, cell, hist["stopped_at"], iters, ckpt, fp)
     wpath = os.path.join(out_dir, _weights_file(cell))
     torch.save(arm.dyn.state_dict(), wpath)
     rows = _evaluate_sets(cell, arm, phys, terms, data_dir, pilot, q, VALIDATION_SETS)
@@ -438,10 +495,13 @@ def _evaluate_sets(cell, arm, phys, terms, data_dir, pilot, q, sets):
 
 
 def evaluate_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot: dict, gate: dict,
-                  quick: dict | None = None):
+                  quick: dict | None = None, weights_from: str | None = None):
     """Evaluate a trained cell (its saved weights) on one named set. Test sets (test, long test,
     OOD) open only after H3a passed for the cell's system and material (`gate`, from the H3a
-    check on the validation sets); otherwise PermissionError. Writes out_dir/<job name>_<set>.json."""
+    check on the validation sets); otherwise PermissionError. Writes out_dir/<job name>_<set>.json.
+    The weights are found under `weights_from` (an evaluation kernel's inputs, where its training
+    kernel's output is mounted; out_dir when not given): exactly one copy, with the SHA-256 its
+    training results file recorded (T8 RS-3)."""
     from pathlib import Path
 
     from p3b.eval.evaluate import write_results
@@ -452,11 +512,11 @@ def evaluate_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot:
     if set_name in GATED_SETS and gate.get(key) != "pass":
         raise PermissionError(f"H3a has not passed for {key}: the {set_name} set stays closed")
     if cell.arm in SOLVER_ARMS:
-        return _solver_cell(cell, data_dir, out_dir, pilot, q, (set_name,), train=False)
+        return _solver_cell(cell, data_dir, out_dir, pilot, q, (set_name,), train=False, weights_from=weights_from)
+    wpath = _find_weights(cell, weights_from or out_dir)
     train_files, _ = _train_files(data_dir, cell.size, _pool_size(cell, q))
     ds = load_set(train_files)
     arm, phys, terms, meta = _build(cell, pilot, q, ds, out_dir)
-    wpath = os.path.join(out_dir, _weights_file(cell))
     arm.dyn.load_state_dict(torch.load(wpath))
     rows = _evaluate_sets(cell, arm, phys, terms, data_dir, pilot, q, (set_name,))
     meta.update({"arm": cell.arm, "system": cell.system, "material": cell.material, "size": cell.size,
@@ -468,16 +528,19 @@ def evaluate_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot:
 
 
 def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline: float | None = None,
-                 resume_from: str | None = None):
+                 resume_from: str | None = None, weights_from: str | None = None):
     """C (16-128 cells) and MUSCL-C (32, 64): deterministic runs on each set's trajectories. C+L:
     trained once (multipliers saved first), then rolled out like C. A failed run is a failure at
     cycle 1 (capped), never a lost cell. C+L's training spans sessions like train_cell's: past
-    `deadline` it checkpoints and RESUME.json is returned; `resume_from` continues it."""
+    `deadline` it checkpoints and RESUME.json is returned; `resume_from` continues it (checkpoint
+    required, same run fingerprint). Evaluation (train=False) finds the multipliers under
+    `weights_from` as evaluate_cell does."""
     from pathlib import Path
 
     from p3b.eval.evaluate import evaluate_files, write_results
     from p3b.gates import load_meta
     from p3b.latent.data import load_set
+    from p3b.resume import check_resume
     from p3b.solvers.c_plus_l import Multipliers
     from p3b.solvers.coarse import run_c
     meta_extra = {}
@@ -489,19 +552,17 @@ def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline:
         mult = Multipliers(n_out=3)
         if train:
             ckpt = os.path.join(out_dir, job_name(cell) + "_ckpt.pt")
-            if resume_from:
-                _copy_session(resume_from, out_dir, [os.path.basename(ckpt)])
+            fp = _cell_fingerprint(cell, pilot, q, pilot["iterations"], None)
+            prev = _resume_cell(resume_from, out_dir, ckpt)
+            if prev is not None:
+                check_resume(prev, fp)
             train_files, train_idx = _train_files(data_dir, cell.size, _pool_size(cell, q))
             hist = train_cplusl(mult, load_set(train_files), cell.material, n_coarse=q.get("n_coarse", 32),
                                 lr=pilot["lr"]["C+L"], iterations=pilot["iterations"], seed=cell.seed,
                                 n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20), K=pilot["K"],
                                 checkpoint=ckpt, deadline=deadline)
             if "stopped_at" in hist:                               # the session ends; a later one resumes
-                path = Path(out_dir) / "RESUME.json"
-                path.write_text(json.dumps({"job": job_name(cell), "stopped_at": hist["stopped_at"],
-                                            "iterations": pilot["iterations"],
-                                            "checkpoint": os.path.basename(ckpt)}, indent=1))
-                return path
+                return _write_resume(out_dir, cell, hist["stopped_at"], pilot["iterations"], ckpt, fp)
             torch.save(mult.state_dict(), mfile)                 # saved before any rollout can fail
             meta_extra = {"train_indices": train_idx, "train_skipped": hist["skipped"],
                           "resumed_from": hist.get("resumed_from"),
@@ -509,6 +570,7 @@ def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline:
                           "params": sum(p.numel() for p in mult.parameters()),
                           "weights": {"file": os.path.basename(mfile), "sha256": _sha(mfile)}}
         else:
+            mfile = _find_weights(cell, weights_from or out_dir)
             mult.load_state_dict(torch.load(mfile))
             meta_extra = {"weights": {"file": os.path.basename(mfile), "sha256": _sha(mfile)}}
     rows = []

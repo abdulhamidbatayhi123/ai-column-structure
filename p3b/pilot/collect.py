@@ -5,7 +5,8 @@
   validation); a file name met twice is an error;
 - load_piece: a piece found anywhere under the downloads (the queue nests them per kernel), the one
   whose recorded stage hash is the stage it was meant to run under; stale pieces of an earlier stage
-  are never used (review I6, I7);
+  are never used (review I6, I7). Given the data root, a piece whose recorded data files differ from
+  the current ones (or are gone) is refused too (T8 RS-4: regenerated pilot data);
 - stage: after phase n, the chosen values the next phase needs (d, K, tau_S; lr; iterations;
   h_steps), by the rule functions of p3b.pilot.rules; chosen values only, and the values of later
   phases are dropped (review M2);
@@ -63,59 +64,92 @@ def stage_data(gen_dirs, data_root) -> dict:
     return {f"{k}/{s}": n for (k, s), n in sorted(counts.items())}
 
 
-def load_piece(pieces_dir, name: str, stage: dict):
+_SHA_CACHE: dict = {}
+
+
+def _current_sha(data_root, name: str):
+    """SHA-256 of the data file `name` under data_root (searched recursively), None if it is not there
+    exactly once; cached by path, size and modification time."""
+    from p3b.pilot.pieces import _sha_file
+    hits = glob.glob(os.path.join(str(data_root), "**", name), recursive=True)
+    if len(hits) != 1:
+        return None
+    st = os.stat(hits[0])
+    key = (os.path.abspath(hits[0]), st.st_size, st.st_mtime_ns)
+    if key not in _SHA_CACHE:
+        _SHA_CACHE[key] = _sha_file(hits[0])
+    return _SHA_CACHE[key]
+
+
+def _stale_data(obj: dict, data_root) -> list:
+    """The data files a piece recorded whose current SHA-256 under data_root differs (or that are gone)."""
+    used = (obj.get("meta", {}).get("used") or {}).get("data") or {}
+    return sorted(f for f, sha in used.items() if _current_sha(data_root, f) != sha)
+
+
+def load_piece(pieces_dir, name: str, stage: dict, data_root=None):
     """The value of piece `name` run under `stage` (already restricted to the piece's phase), searched
-    recursively; FileNotFoundError if absent, RuntimeError if no copy or more than one copy matches."""
+    recursively; FileNotFoundError if absent, RuntimeError if no copy or more than one copy matches.
+    With `data_root` (the current data/pilot), a copy whose recorded data files differ from the current
+    ones does not match."""
     found = sorted(Path(pieces_dir).rglob(name))
     if not found:
         raise FileNotFoundError(f"piece {name} not found under {pieces_dir}")
     want = stage_sha(stage)
-    match = []
+    match, stale = [], []
     for p in found:
         with open(p) as f:
             obj = json.load(f)
-        if obj.get("meta", {}).get("stage_sha256") == want:
-            match.append(obj["value"])
+        if obj.get("meta", {}).get("stage_sha256") != want:
+            continue
+        bad = _stale_data(obj, data_root) if data_root is not None else []
+        if bad:
+            stale.append(f"{p} ({len(bad)} data files differ, e.g. {bad[0]})")
+            continue
+        match.append(obj["value"])
     if len(match) != 1:
         raise RuntimeError(f"piece {name}: {len(match)} of {len(found)} copies ran under the current stage "
-                           f"(sha256 {want[:12]}); rerun or remove the stale ones")
+                           f"(sha256 {want[:12]}) and data; rerun or remove the stale ones"
+                           + (f"; other data: {'; '.join(stale)}" if stale else ""))
     return match[0]
 
 
-def _load(pieces_dir, name, stage):
-    return load_piece(pieces_dir, name, restrict(stage, _phase(name)))
+def _load(pieces_dir, name, stage, data_root=None):
+    return load_piece(pieces_dir, name, restrict(stage, _phase(name)), data_root)
 
 
-def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS)) -> dict:
-    """The stage after phase n (0 to 3): the previous stage's values of phases before n, plus phase n's."""
+def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS), data_root=None) -> dict:
+    """The stage after phase n (0 to 3): the previous stage's values of phases before n, plus phase n's.
+    `data_root`: the current pilot data, against which every piece's data files are checked."""
     from p3b.latent.autoencoder import pilot_working_decoder
     s = restrict(previous or {}, n)
     if n == 0:
         s["d"], s["decoder"], s["tau_S"] = {}, {}, {}
         for key in keys:
-            data = _load(pieces_dir, f"data_{key}.json", s)
+            data = _load(pieces_dir, f"data_{key}.json", s, data_root)
             # the pilot's working d (PREREG 10 does not set d; the full-data gate does, PREREG 4)
             s["decoder"][key], s["d"][key] = pilot_working_decoder(data["decoder_gate"],
                                                                    data.get("decoder_gate_conv", {}))
             s["tau_S"][key] = rules.tau_S_from(data["reference_noise"]["ref_production"])
-        k = _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", s)
+        k = _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", s, data_root)
         s["K"] = {PRIMARY_KEY: rules.choose_K({int(a): v for a, v in k.items()})}
         if s["K"][PRIMARY_KEY] is None:
             raise RuntimeError("no admissible K: the pilot stops here (PREREG 10)")
     elif n == 1:
-        s["lr"] = rules.choose_lr({arm: {float(k): v for k, v in _load(pieces_dir, f"lr_{_tag(arm)}.json", s).items()}
+        s["lr"] = rules.choose_lr({arm: {float(k): v for k, v in
+                                         _load(pieces_dir, f"lr_{_tag(arm)}.json", s, data_root).items()}
                                    for arm in LR_ARMS})
         if any(v is None for v in s["lr"].values()):
             raise RuntimeError("an arm finished none of its learning-rate runs: the pilot stops here")
     elif n == 2:
         s["iterations"] = rules.choose_iterations(
-            {arm: [tuple(x) for x in _load(pieces_dir, f"curve_{_tag(arm)}.json", s)] for arm in LR_ARMS})
+            {arm: [tuple(x) for x in _load(pieces_dir, f"curve_{_tag(arm)}.json", s, data_root)] for arm in LR_ARMS})
         if s["iterations"] is None:
             raise RuntimeError("no checkpoint where every arm's improvement fell below 2 %: the pilot stops here")
     elif n == 3:
         s["h_steps"] = {}
         for key in keys:
-            hc = _load(pieces_dir, f"s_{key}.json", s)["h_check"]
+            hc = _load(pieces_dir, f"s_{key}.json", s, data_root)["h_check"]
             s["h_steps"][key] = rules.choose_h_steps({int(k): v["viol_rate"] for k, v in hc.items()},
                                                      {int(k): v["stiff_ok"] for k, v in hc.items()})
         missing = [key for key in keys if s["h_steps"][key] is None]
@@ -127,13 +161,14 @@ def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS)) ->
 
 
 def final(pieces_dir, inputs_dir, stage: dict, keys=tuple(KEYS), hyp_stat: dict | None = None,
-          draws: int = 10_000) -> list:
+          draws: int = 10_000, data_root=None) -> list:
     """The ten input files of scripts/pilot_rules.py, written into inputs_dir; returns their paths.
     The defects are those of the chosen h of each key (review I4); a two-seed run with more than 5 %
-    of its iterations skipped stops the pilot here (review I5)."""
-    data = {key: _load(pieces_dir, f"data_{key}.json", stage) for key in keys}
-    s_ = {key: _load(pieces_dir, f"s_{key}.json", stage) for key in keys}
-    two = {(a, sd): _load(pieces_dir, f"rows_{a}_s{sd}.json", stage) for a in ("U", "S", "Uq") for sd in TWO_SEEDS}
+    of its iterations skipped stops the pilot here (review I5). `data_root` as for stage."""
+    data = {key: _load(pieces_dir, f"data_{key}.json", stage, data_root) for key in keys}
+    s_ = {key: _load(pieces_dir, f"s_{key}.json", stage, data_root) for key in keys}
+    two = {(a, sd): _load(pieces_dir, f"rows_{a}_s{sd}.json", stage, data_root)
+           for a in ("U", "S", "Uq") for sd in TWO_SEEDS}
     for (a, sd), piece in two.items():
         t = piece["train"]
         if runs.too_many_skipped(t, t["iterations"]):
@@ -150,21 +185,21 @@ def final(pieces_dir, inputs_dir, stage: dict, keys=tuple(KEYS), hyp_stat: dict 
             raise RuntimeError(f"{key}: no defect counts at the chosen h ({h}); the pilot stops here")
         defects[key] = d
     out = {
-        "lr_runs.json": {arm: _load(pieces_dir, f"lr_{_tag(arm)}.json", stage) for arm in LR_ARMS},
-        "curves.json": {arm: _load(pieces_dir, f"curve_{_tag(arm)}.json", stage) for arm in LR_ARMS},
+        "lr_runs.json": {arm: _load(pieces_dir, f"lr_{_tag(arm)}.json", stage, data_root) for arm in LR_ARMS},
+        "curves.json": {arm: _load(pieces_dir, f"curve_{_tag(arm)}.json", stage, data_root) for arm in LR_ARMS},
         "h_check.json": {key: s_[key]["h_check"] for key in keys},
         "threshold_inputs.json": {key: {"floors": data[key]["reference_noise"]["floors"],
                                         "ref_production": data[key]["reference_noise"]["ref_production"],
                                         "tau_ref": data[key]["reference_noise"]["tau_ref"],
                                         "g2": s_[key]["g2"], "defects_per_step": defects[key]}
                                   for key in keys},
-        "cplusl_K.json": {PRIMARY_KEY: _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", stage)},
+        "cplusl_K.json": {PRIMARY_KEY: _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", stage, data_root)},
         "sds.json": sds,
         "css.json": {key: data[key]["css"] for key in keys},
         "decoder_gate.json": {key: data[key]["decoder_gate"] for key in keys},
         "decoder_gate_conv.json": {key: data[key].get("decoder_gate_conv", {}) for key in keys},
         "positive_control.json": pc,
-        "wall_per_iter.json": _load(pieces_dir, "wall_per_iter.json", stage),
+        "wall_per_iter.json": _load(pieces_dir, "wall_per_iter.json", stage, data_root),
     }
     os.makedirs(str(inputs_dir), exist_ok=True)
     paths = []

@@ -160,6 +160,8 @@ def train_curve(arm, ds, val, lr: float, iterations: int, every: int, h_steps: i
     st = state or {}
     curve = [tuple(x) for x in st.get("curve", [])]
     pos = int(st.get("it", 0))                          # iterations held by the checkpoint
+    if pos > 0:                                         # a fresh model trained from the state's position would
+        _check_checkpoint(checkpoint, pos)              # look resumed but is not (T8 RS-1)
     with tempfile.TemporaryDirectory() as tmp:
         ck = checkpoint or os.path.join(tmp, "ck.pt")
         while pos < iterations:
@@ -176,6 +178,15 @@ def train_curve(arm, ds, val, lr: float, iterations: int, every: int, h_steps: i
     return curve
 
 
+def _check_checkpoint(checkpoint, it: int) -> None:
+    """A resumed session's checkpoint must exist and hold exactly the iteration its state says."""
+    if not checkpoint or not os.path.exists(checkpoint):
+        raise FileNotFoundError(f"the state says iteration {it}, but its checkpoint {checkpoint} is missing")
+    held = torch.load(checkpoint, weights_only=False)["it"]
+    if held != it:
+        raise RuntimeError(f"the state says iteration {it}, but the checkpoint {checkpoint} holds {held}")
+
+
 SKIP_LIMIT = 0.05      # PREREG 4: a run with more than 5 % of its iterations skipped is a deviation
 
 
@@ -185,11 +196,13 @@ def too_many_skipped(hist: dict, iterations: int) -> bool:
 
 def lr_sweep(make_arm, ds, val, rates=(3e-4, 1e-3, 3e-3), iterations: int = 2000, h_steps: int = 1, seed: int = 0,
              n_windows: int = 8, n_steps: int = 20, checkpoint_dir: str | None = None,
-             deadline: float | None = None, state: dict | None = None) -> dict:
+             deadline: float | None = None, state: dict | None = None, tag: str | None = None) -> dict:
     """{lr: validation rollout loss over one cycle after `iterations`} for a fresh arm per rate. With
-    `checkpoint_dir` and `deadline` it spans sessions like train_curve (one checkpoint per rate)."""
+    `checkpoint_dir` and `deadline` it spans sessions like train_curve (one checkpoint per rate). `tag`
+    (the arm's) goes into the checkpoint names, lr_<tag>_<lr>_ckpt.pt, so a resumed piece finds them."""
     def one(lr, deadline, inner):
-        ck = os.path.join(checkpoint_dir, f"lr_{lr:g}_ckpt.pt") if checkpoint_dir else None
+        name = f"lr_{tag}_{lr:g}_ckpt.pt" if tag else f"lr_{lr:g}_ckpt.pt"
+        ck = os.path.join(checkpoint_dir, name) if checkpoint_dir else None
         return train_curve(make_arm(), ds, val, lr, iterations, iterations, h_steps, seed, n_windows, n_steps,
                            checkpoint=ck, deadline=deadline, state=inner)
     return _sweep(rates, one, deadline, state)
@@ -435,11 +448,17 @@ def positive_control(full_rows: dict, quarter_rows: dict, hyp: str = "H2", alpha
 
 
 def two_seed_rows(make_arm, ds, val, lr: float, iterations: int, h_steps: int, seeds=(0, 1), n_cycles=None,
-                  floors=None, tau_S=None, n_windows: int = 8, n_steps: int = 20) -> dict:
+                  floors=None, tau_S=None, n_windows: int = 8, n_steps: int = 20, checkpoint: str | None = None,
+                  deadline: float | None = None):
     """({seed: p3b.eval.evaluate rows on val}, {seed: {"iterations", "skipped", "skipped_grad"}}) for
     a fresh arm per seed trained at the pilot's lr and iterations; the rows never leave the pilot
     results directory (blinding); the training counts let the collector stop on an unfinished run
-    (review I5)."""
+    (review I5).
+
+    Sessions (one seed only, T8 RS-8): with `checkpoint` and `deadline` a session that runs out of time
+    returns {"stopped_at"}; called again with the checkpoint it continues to the same rows."""
+    if checkpoint and len(tuple(seeds)) != 1:
+        raise ValueError("a checkpointed run trains one seed")
     from p3b.eval import evaluate as ev
     from p3b.train import trainer
     phys = _physics(val)
@@ -451,7 +470,10 @@ def two_seed_rows(make_arm, ds, val, lr: float, iterations: int, h_steps: int, s
         torch.manual_seed(s)
         arm = make_arm()
         hist = trainer.train(arm, ds, trainer.TrainConfig(lr=lr, iterations=iterations, seed=s, h_steps=h_steps,
-                                                          n_windows=n_windows, n_steps=n_steps))
+                                                          n_windows=n_windows, n_steps=n_steps, checkpoint=checkpoint,
+                                                          deadline=deadline))
+        if "stopped_at" in hist:                        # the session ends; a later one resumes
+            return {"stopped_at": hist["stopped_at"]}
         info[int(s)] = {"iterations": int(iterations), "skipped": int(hist.get("skipped", 0)),
                         "skipped_grad": int(hist.get("skipped_grad", 0))}
         out[int(s)] = ev.evaluate(arm, val, phys, n_cycles, h_steps, floors, tau_S, s)
