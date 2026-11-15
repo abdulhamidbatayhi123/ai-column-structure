@@ -43,11 +43,13 @@ def current_constants(system: str) -> dict:
     """The physical and numerical constants a trajectory of `system` is generated with, as JSON
     values, read from the modules at call time. Written into every npz meta (p3b.generate)."""
     from p3b import materials as mat
+    from p3b import packed_bed
     from p3b import simulate_a as sa
     if system == "A":
         with open(mat.FIT_PATH, "rb") as f:
             fit_sha = hashlib.sha256(f.read()).hexdigest()
-        return dict(BED=dict(mat.BED), K_E0=mat.K_E0, DELTA_AX=mat.DELTA_AX, DH_C=dict(mat.DH_C),
+        return dict(BED=dict(mat.BED), K_E0=mat.K_E0, DELTA_AX=mat.DELTA_AX, K_Z_MODEL=packed_bed.kz_spec(),
+                    DH_C=dict(mat.DH_C),
                     EPS_PELLET=mat.EPS_PELLET, D_M_WATER=mat.D_M_WATER, TORTUOSITY=mat.TORTUOSITY,
                     C_W=sa.C_W, RTOL=sa.RTOL, ATOL=sa.ATOL, PREWET=sa.PREWET, COMPENSATE=sa.COMPENSATE,
                     fit_isotherms_sha256=fit_sha)

@@ -179,7 +179,7 @@ class TorchStoreRHS(nn.Module):
         super().__init__()
         self.st, self.mult = st, mult
         self.N, self.dz = st.N, st.dz
-        self.Cf, self.Cs, self.rhoc, self.h_v, self.k_s, self.h_a = st.Cf, st.Cs, st.rhoc, st.h_v, st.k_s, st.h_a
+        self.Cf, self.Cs, self.rhoc, self.k_s, self.h_a = st.Cf, st.Cs, st.rhoc, st.k_s, st.h_a  # h_v: st.h_v_of
 
     def forward(self, y, inp):
         v, T_in, T_amb = float(inp[0]), inp[1], inp[2]

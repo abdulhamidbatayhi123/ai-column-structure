@@ -38,7 +38,8 @@ class ThermalStore:
         self.params = dict(L=L, eps=eps, rho_f=rho_f, c_f=c_f, rho_s=rho_s, c_s=c_s, h_v=h_v, k_f=k_f, k_s=k_s,
                            h_wall=h_wall, D=D, d_p=d_p, delta_ax=delta_ax, compensate=bool(compensate))
         if h_v_model is not None:     # recorded only when set: the constants of data made without one stay valid
-            self.params["h_v_model"] = getattr(h_v_model, "__name__", repr(h_v_model))
+            spec = getattr(h_v_model, "spec", None)    # a model with parameters records all of them
+            self.params["h_v_model"] = dict(spec) if spec else getattr(h_v_model, "__name__", repr(h_v_model))
         self.Cf = eps * rho_f * c_f           # J/m3/K per bed volume
         self.Cs = (1 - eps) * rho_s * c_s
         self.rhoc = rho_f * c_f               # per m3 of flowing fluid

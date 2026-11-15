@@ -22,19 +22,24 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.sparse import bmat, csr_matrix, diags, lil_matrix
 
+from p3b import packed_bed
 from p3b.simulate_a import ATOL, RTOL, TrajectoryResult
 from p3b.thermal_store import T0, ThermalStore
 
 T_AMB = 293.15       # K, ambient bath of the wall loss (constant)
-# Rock size for the flow-dependent fluid dispersion; provisional (about 5 cm is what the default
-# h_v = 2e4 W m^-3 K^-1 implies for a rock bed; to be verified, cs task). The reference uses the
-# hybrid scheme, as in system A.
+# Rock size, for the flow-dependent fluid dispersion and the fluid-rock exchange. The reference uses
+# the hybrid scheme, as in system A.
 D_P_B = 0.05
+# Revision R3: the fluid-rock exchange follows the flow, h_v(|v|) = a_s h_eff (Wakao et al. 1979 with
+# Jeffreson's 1972 intraparticle correction; p3b.packed_bed), with the store's own void fraction, water
+# density and heat capacity (ThermalStore defaults) and water's transport properties at 318.15 K.
+H_V_MODEL = packed_bed.ExchangeModel(d_p=D_P_B, eps=0.38, rho=990.0, c=4180.0, mu=packed_bed.WATER_B["mu"],
+                                     k=packed_bed.WATER_B["k"], k_s=packed_bed.K_ROCK)
 
 
 def make_store(N_z: int) -> ThermalStore:
-    """The reference thermocline store: flow-dependent fluid dispersion, hybrid scheme."""
-    return ThermalStore(N_z, d_p=D_P_B, compensate=True)
+    """The reference thermocline store: flow-dependent fluid dispersion and exchange, hybrid scheme."""
+    return ThermalStore(N_z, d_p=D_P_B, compensate=True, h_v_model=H_V_MODEL)
 N_PORTS = 6
 PORT_NAMES = ("energy_in", "energy_out", "wall_heat", "direction", "entropy_in", "entropy_out")
 

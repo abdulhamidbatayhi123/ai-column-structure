@@ -13,6 +13,7 @@ import os
 import numpy as np
 
 from p3b import _paper1  # noqa: F401  (puts Paper 1 on sys.path)
+from p3b import packed_bed
 from p3b.isotherms import MultiTermIsotherm, R, from_fit, p_sat
 from gen_parametric_dataset import D_M_WATER, EPS_PELLET, TORTUOSITY  # Paper 1
 from solver_fd import AdsorptionPhysicsConfig  # Paper 1
@@ -21,9 +22,12 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FIT_PATH = os.path.join(_ROOT, "verify", "materials", "fit_isotherms.json")
 
 BED = dict(eps_t=0.39, rho_p=1050.0, d_p=3.25e-3, L=0.10, D_in=0.05, h_w=10.0)
-# Axial effective thermal conductivity, flow-dependent as in packed-bed practice (Yagi, Kunii and
-# Wakao 1960): k_z = K_E0 + DELTA_AX rho_g C_pg v d_p, the heat analogue of D_L's 0.5 d_p u term.
-# K_E0 is Paper 1's constant k_z. DELTA_AX is provisional until verified in the full text (cs task).
+# Axial effective thermal conductivity of the one-temperature bed (revision R3, p3b.packed_bed):
+# k_z = K_E0 + DELTA_AX rho_g C_pg v d_p + Phi (rho_g C_pg v)^2 / (h a_s): the stagnant value (Paper 1's
+# constant k_z), the fluid's axial dispersion (0.5 Pr Re k_g, Wakao and Kaguei 1982) and the fluid-solid
+# resistance carried by a one-temperature model (Vortmeyer and Schaefer 1974, with h from Wakao et al.
+# 1979). The resulting delta_eff = (k_z - K_E0)/(rho_g C_pg v d_p) is about 0.75 at the lowest design
+# velocity, Yagi, Kunii and Wakao's (1960) measured one-phase value, and rises with flow.
 K_E0 = 0.10
 DELTA_AX = 0.5
 DH_C = {"MOF-303": -51.3e3, "Al-fumarate": -48.5e3}
@@ -55,7 +59,9 @@ def bed_physics(v: float, T: float) -> AdsorptionPhysicsConfig:
     p.v = float(v)
     p.T_in = p.T_w = float(T)
     p.D_L = 0.7 * 2.5e-5 + 0.5 * p.d_p * (p.v / p.eps_t)  # Ruthven, as in Paper 1's build_physics
-    p.k_z = K_E0 + DELTA_AX * p.rho_g * p.C_pg * p.v * p.d_p
+    p.k_z = packed_bed.one_temperature_kz(p.v, K_E0, p.eps_t, p.d_p, p.rho_g, p.C_pg, packed_bed.AIR_A["mu"],
+                                          packed_bed.AIR_A["k"], (1 - p.eps_t) * p.rho_p * p.C_ps,
+                                          packed_bed.K_PELLET, DELTA_AX)
     p.k_LDF = float("nan")
     return p
 
