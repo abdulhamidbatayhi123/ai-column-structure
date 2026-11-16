@@ -155,3 +155,24 @@ def test_each_arm_is_evaluated_at_its_own_measured_batched_step_when_there_is_on
     assert budget.latent_eval_hours(t, "B", h=1, n_arms=1, arm="U") == pytest.approx(expect_u)
     assert budget.latent_eval_hours(t, "B", h=1, n_arms=1, arm="P") == pytest.approx(expect_u * 10)  # S's step
     assert budget.latent_eval_hours(t, "B", h=4, n_arms=1, arm="U") == pytest.approx(expect_u * 4)   # a + b h
+
+
+def test_the_reference_cost_is_the_slowest_of_the_r3_probe_and_the_earlier_records(tmp_path):
+    """The R3 probe times one point per key; the earlier exact-Jacobian records (timing_reference.json,
+    8 points for A) stay as a floor, so the data block is never priced on one fast point."""
+    import json as js
+    t = flat_inputs(ref_a=10.0, ref_b=0.4)
+    for f, obj in {"timing_arms.json": {"train": t["train"]},
+                   "timing_concurrency_batch.json": {"step_S": t["step_S"], "concurrent": {}},
+                   "timing_cplusl_train.json": t["cl_train"], "timing_cplusl_eval.json": t["cl_eval"],
+                   "timing_ceiling.json": {**{k: t[k] for k in ("train", "step_S", "C", "MUSCL-C", "ae", "reference")},
+                                           "step": {}, "settings": {"q": {"d": 64}}},
+                   "timing_reference.json": {"records": [
+                       {"system": "A", "N_z": 2048, "ok": True, "cpu_s": 26.0, "jacobian": "exact"},
+                       {"system": "B", "N_z": 1024, "ok": True, "cpu_s": 1.5},
+                       {"system": "B", "N_z": 512, "ok": True, "cpu_s": 9.0}],
+                       "data_cost_decision": {"system_A_2048_exact_max": 26.0, "N_z_B": 1024}}}.items():
+        (tmp_path / f).write_text(js.dumps(obj))
+    got = budget.load_inputs(str(tmp_path))
+    assert max(got["reference"]["A_MOF-303"]["cycle_cpu_s"]) == 26.0
+    assert max(got["reference"]["B"]["cycle_cpu_s"]) == 1.5          # only the registered grid (1024 cells)
