@@ -68,10 +68,10 @@ skipped, one thread:
   interval at h = 2, against 0.075 s for one: 19 × the throughput. The evaluation and the pilot's
   validation rollouts therefore batch 48 trajectories per tensor (`rollouts` and `rollout_batch` in
   `p3b/eval/rollout.py`, 2026-11-10, as PREREG Section 5 says), each trajectory's result as if rolled out
-  alone (`tests/test_eval_rollout_batch.py`). The evaluation line of Section 2 is 74 hours batched,
+  alone (`tests/test_eval_rollout_batch.py`). The pre-pilot evaluation line was 74 hours batched,
   against about 1,440 one trajectory at a time, at h = 2 (42 and 1,021 at h = 1).
 
-`scripts/budget.py` turns these into hours. Training at 8,000 iterations comes to **381 CPU-hours at
+*(2026-11-10, before C+L was timed; superseded by Section 2.)* `scripts/budget.py` turned these into hours. Training at 8,000 iterations came to **381 CPU-hours at
 h = 1 and 756 at h = 2** (one run alone on a session), against 298 budgeted in Section 2. The
 budgeted total of about 620 hours becomes about 650 at h = 1 and about 1,060 at h = 2, with the
 batched evaluation, the pilot scaled alike and C+L at its budgeted 1 hour per run (not timed). At
@@ -168,40 +168,84 @@ cycle (`results/timing_reference.json`, key `data_cost_decision`). The reference
 wide margin at that grid (outlet changes of 2 to 10 × 10⁻⁶ from 1024 to 2048 cells against Paper
 1's 2 % gate).
 
-## 2. Budget (hours; training per run at 8,000 iterations of 640 dynamics evaluations, CPU-equivalent)
+## 2. Budget (re-derived 2026-11-16 by `scripts/budget.py`; T8 DOC-2, DOC-7, R1-6)
 
-*The per-run values and the total below are the pre-pilot budget; the measured costs in Section 1
-(2026-11-10) supersede them, and this table is replaced by measured values at the freeze.*
+Every number in this section is printed by `python scripts/budget.py` (its output is kept in
+`results/budget_output.txt`). The inputs are measured on Kaggle, one thread:
+- latent training per iteration at d = 64 and S's and every arm's batched rollout step;
+- arm C on 16 to 128 cells and MUSCL-C on 32 and 64, CPU seconds per cycle;
+- the reference after R3 at 2048 (A) and 1024 (B) cells;
+- one full-data autoencoder epoch at balance weight 1 (R1) and 0.
 
-Per-run training: U 0.23, P 0.5, FNO 0.5, C+L 1.0, S-L 1.5, U+F 2.3, S−Π 2.3, S−M 2.9, S 3.25,
-U-long 3.25. On a GPU the decoder-gradient arms are expected to run several times faster,
-which is measured in the pilot.
+These come from kernel p3b-timing-ceiling-59499f9 (`results/timing_ceiling.json`, script
+`scripts/time_ceiling.py`, kernel `results/timing_ceiling_kernel.py`). C+L comes from
+`results/timing_cplusl_train.json` and `results/timing_cplusl_eval.json`, at K = 1 or 4 (the pilot sets K;
+an unmeasured K is refused). d = 64 is the largest d of the gate's grid, so the latent training costs are
+upper bounds for the study's d.
 
-| block | CPU-equivalent hours |
-|---|---|
-| reference data, System A (primary 6,720 cycles + replication 5,328 + H6 designs about 4,680), at 30 s per cycle | 139 |
-| reference data, System B (5,328 cycles, at about 5 s per cycle) | 7 |
-| pilot: learning-rate sweeps (3 rates × all arm types, 2,000 iterations), 2 seeds × all arms, size-32 SD models, positive control, decoder gate on pilot data | 50 |
-| autoencoders (all systems, sizes and seeds, plus the pilot d grid) | 15 |
-| A-primary: full data (79), size 32 (43), learning curve 16/64/128 (36) | 158 |
-| A-replication: U, U+F, P, S × 3 seeds at full data and at size 32 | 38 |
-| System B: U, U+F, S × 5 seeds at full data and at size 32; S-L × 3 seeds | 67 |
-| sensitivities: next latent dimension, degraded data | 35 |
-| autoencoder-loss sensitivity (R1, added 2026-11-16): U and S × 3 seeds with plain-MSE autoencoders | not in the pre-pilot total; measured at the freeze |
-| evaluation: about 120 projected-arm rollouts (48 trajectories × 60 cycles, h = T_cycle/200), plain arms, H6 searches | 105 |
-| arm C and MUSCL-C on every test set | 5 |
-| **total** | **about 620 CPU-equivalent hours** |
+What the script counts:
+- **Training:** every design cell and every descriptive sensitivity (U-long at S's cost).
+- **Autoencoders:**
+  - one per (system, material, size, seed) of the learned cells: 35;
+  - the full-data MLP gate wave: 65;
+  - the sensitivities' autoencoders: 9, of which R1's 3 use plain MSE.
+- **Evaluation:** every cell on its validation sets and on each test set of its system, at its own
+  batched step. S's step is used for the projected arms and for FNO, whose step the probe could not
+  drive.
+- **Solver arms:** C, MUSCL-C and C+L on the same sets.
+- **H6:** the searches (180 designs × 8 scenarios, 13 cycles to the cyclic steady state, an assumption
+  until the pilot gives the cycle), plus the reference checks of 20 Sobol points and each arm's optima.
+- **Reference data:** the confirmatory sets (the pilot sets are made before the freeze and not counted).
 
-Running in parallel on Kaggle (up to 5 CPU sessions, plus GPU for the decoder-gradient
-arms) brings the wall time to an estimated 4 to 6 weeks, including queueing. The evaluation
-line assumes h = T_cycle/200. At T_cycle/800 it grows about fourfold, so the evaluation
-block counts toward the ceiling.
+The reference cost per cycle is the slowest of the R3 probe (one point per key) and the earlier
+exact-Jacobian records (`results/timing_reference.json`).
+
+Hours at 8,000 iterations, K = 4:
+
+| block | h = 1 | h = 2 | h = 4 |
+|---|---|---|---|
+| training, latent arms | 473.4 | 956.3 | 1,922.2 |
+| training, C+L | 108.2 | 108.2 | 108.2 |
+| autoencoders | 60.1 | 60.1 | 60.1 |
+| evaluation, latent arms | 99.7 | 192.7 | 378.9 |
+| evaluation, solver arms | 70.5 | 70.5 | 70.5 |
+| H6 searches and reference checks | 106.4 | 121.3 | 151.0 |
+| reference data (confirmatory sets) | 77.6 | 77.6 | 77.6 |
+| **total, one-run CPU hours** | **995.9** | **1,586.7** | **2,768.4** |
+| **Kaggle session hours** (the ceiling's unit, Section 3), one job per session as implemented | **1,068.5** | **1,659.3** | **2,849.8** |
+| session hours if four one-thread jobs shared each session | 519.2 | 816.4 | 1,413.0 |
+
+How the session hours are formed:
+- **One job per session (as implemented).** The session hours add a start-up of 300 s to each of 871
+  to 976 sessions (865 kernels). The first log lines of downloaded kernels came at 141 to 317 s, which
+  includes start-up and the first work, so 300 s is an upper bound.
+- **Four one-thread jobs per session.** The work is divided by the measured throughput of four jobs,
+  1.99 × one job (`results/timing_concurrency_batch.json`). `kaggle/run_queue.py` does not implement
+  this layout yet.
+
+At K = 1, C+L training is 35.8 hours and the h = 2 total 1,484.3 one-run hours (1,556.4 session
+hours). A conv gate wave, needed only if no MLP d passes, would add about 229 hours. It is not in the
+totals.
+
+**Against the ceiling (1,300 session hours):**
+- **At h = 2 and K = 4, as the jobs are now laid out**, the need is 1,659 session hours. The whole
+  reduction order saves 274.6 hours of training, which leaves at most 1,384.8. So the core alone would
+  exceed the ceiling.
+- **With four jobs per session**, the need is 816 session hours, under the ceiling with the whole
+  reduction order unused.
+- **At h = 4** neither layout fits.
+
+The recommendation to the author is in `docs/freeze_decisions_3B.md` §2. The pre-pilot table this
+section replaces (about 620 CPU-equivalent hours, 2026-11-08) is in git history.
 
 ## 3. Ceiling and reduction order
 
-Hard ceiling: **1,300 Kaggle CPU-hours** (700 CPU-equivalent hours before revision R2, 2026-11-12),
-measured as the running total. Past it, these
-are removed in order (pre-registration, Section 11), all secondary or descriptive:
+Ceiling: **1,300 Kaggle session hours** (700 CPU-equivalent hours before revision R2, 2026-11-12).
+The running total counts, for every kernel version pushed from the freeze on (failed, timed-out and
+cancelled kernels and continuations included), the last time stamp of its Kaggle log; a pushed kernel
+without a readable log counts 12 hours (pre-registration, Section 11; `scripts/ceiling_ledger.py`). Past
+it, these are removed in order, all secondary or descriptive (`p3b.train.cells.ceiling_status` gives the
+steps):
 1. the degraded-data sensitivity;
 2. U-long;
 3. S−Π;
@@ -215,6 +259,10 @@ The decoder-only floor (R1) costs no training and is never removed.
 
 Never reduced: the primary arms, the 5 seeds of every primary contrast, the 48-trajectory
 test sets, the second isotherm, and System B's U, U+F, U+F+proj and S.
+
+If the core alone exceeds the ceiling (T8 DOC-3): at the freeze, the projected need with every step
+applied must fit with a margin of 10 % of the ceiling, or the design is revised before the freeze; after
+the freeze, the core completes and the excess is reported as a deviation (pre-registration, Section 11).
 
 ## 4. Organisation
 

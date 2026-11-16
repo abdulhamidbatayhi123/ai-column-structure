@@ -154,6 +154,44 @@ resume across Kaggle sessions, so this is time, not feasibility.
 Any change is decided now, before the pilot sets h and before any error is seen, and it goes in the
 rationale.
 
+**Update 2026-11-16: re-derived need (T8 DOC-1, DOC-2, DOC-3, DOC-5, DOC-7, R1-6).** The 1,300 hours
+(R2) rested on a hand sum without C, MUSCL-C, the H6 searches, the gate wave or R1's slower autoencoders,
+in an undefined unit. Now:
+- **The unit** is Kaggle session hours, from each kernel's log (PREREG 11, `scripts/ceiling_ledger.py`).
+- **The need** comes from `scripts/budget.py` on Kaggle timings taken after R3 (`results/timing_ceiling.json`,
+  output in `results/budget_output.txt`).
+
+At 8,000 iterations and K = 4:
+
+| h | one-run CPU hours | session hours, one job per session (as implemented) | four jobs per session |
+|---|---|---|---|
+| 1 | 995.9 | 1,068.5 | 519.2 |
+| 2 | 1,586.7 | 1,659.3 | 816.4 |
+| 4 | 2,768.4 | 2,849.8 | 1,413.0 |
+
+At h = 2, as implemented, the whole reduction order saves 274.6 hours of training and leaves at most
+1,384.8 session hours. The core alone would exceed 1,300. h, the iterations, K and every error are still
+unknown (the pilot is redone for R3), so this is blind.
+
+**Recommendation for the author** (a registration decision; 1,300 stays in code until decided):
+- **(i) Keep 1,300 and run four one-thread jobs per session.** Measured throughput is 1.99 × one job,
+  and a one-thread job on a 4-thread session is no faster than alone (`results/timing_arms.json`,
+  `results/timing_concurrency_batch.json`). This needs `kaggle/run_queue.py` to pack jobs. h = 2 then
+  needs about 816 session hours, with a margin of about 37 %. h = 4 (1,413) would not fit, so at the
+  freeze the design would be revised (PREREG 11).
+- **(ii) Keep one job per session and raise the ceiling to about 1,850 session hours.** That is h = 2's
+  1,659 plus about 10 %, set now, blind.
+
+Recommended: (i). It keeps the registered number, uses the measured throughput, and halves the wall
+time. The 1,300 then has a stated margin over the h = 2 need.
+
+Three smaller findings from this pass, for the main session:
+- `kaggle/train_jobs.py evaluation_jobs` makes a job for the set "test", which no system has
+  (`p3b.design.SET_SIZES`). That is one empty kernel per cell, about 250 start-ups.
+- FNO's batched step could not be timed by the probe (its arm has no autoencoder), so its evaluation is
+  priced at S's step, an upper bound.
+- H6's 13 cycles to the cyclic steady state is an assumption until the pilot gives the CSS cycle.
+
 ## 3. Already decided or set by rule (for reference)
 
 - τ_ref, κ, τ_S, the violation thresholds and the defect bound are set by the pilot rules (PREREG
