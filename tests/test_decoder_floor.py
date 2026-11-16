@@ -2,12 +2,13 @@
 
 - U-type floor: the stored reference states encoded and decoded (what U's released amount can reach
   with perfect latent dynamics);
-- projected floor: the encoded reference path, interval by interval, with the balance projection of
-  the projected arms applied at every RK4 step (what the projected arms can reach).
+- projected floor: per snapshot interval i, independently, one projected step (the production U+proj
+  step, h_steps RK4 substeps each followed by the balance projection) from enc(x_i) with the constant
+  field c_i = (enc(x_{i+1}) - enc(x_i)) / dt_i; the decoded result is scored at snapshot i+1. No state is
+  carried between intervals, and the interval after the last stored snapshot is not stepped.
 
-Both are scored by `evaluate`, the arms' own metric code. The projected floor steps the constant field
-c_i = (enc(x_{i+1}) - enc(x_i)) / dt_i with the production `Arm.step` / `rollout_batch`; RK4 is exact for
-a constant field, so with the projection off it reproduces the round trip.
+Both are scored by `evaluate`, the arms' own metric code. RK4 is exact for a constant field, so with the
+projection off the projected floor reproduces the round trip.
 """
 import json
 
@@ -108,6 +109,20 @@ def test_projection_off_reproduces_the_u_floor(case):
         assert torch.allclose(torch.tensor(a["W_pred"]), torch.tensor(b["W_pred"]), rtol=1e-9, atol=0)
 
 
+def _stay_rows(ds, phys, lf, ae, std, n_cycles=2):
+    """A baseline with zero increments: each scored state is the previous stored snapshot."""
+    from dataclasses import replace  # noqa: F401
+    from p3b.eval import rollout as ro
+    from p3b.eval.evaluate import evaluate
+    from p3b.train.trainer import Arm
+    res = []
+    for j in range(ds.X.shape[0]):
+        X = ds.X[j, :n_cycles].reshape(-1, ds.X.shape[-1])
+        Y = torch.cat([X[:1], X[:-1]]).reshape(ds.X[j, :n_cycles].shape)
+        res.append(ro.RolloutResult(Y, Y[-1, -1], torch.ones(n_cycles, dtype=torch.bool), None, 0.0))
+    return evaluate(Arm("U", None, ae, std, lf), ds, phys, n_cycles, 1, FLOORS, TAU, 0, results=res)
+
+
 def test_projected_floor_tracks_balances_and_has_the_evaluate_schema(case):
     ds, std, phys = case
     ae = Identity()
@@ -117,24 +132,68 @@ def test_projected_floor_tracks_balances_and_has_the_evaluate_schema(case):
         assert {"trajectory", "seed", "e", "eps", "failed_cycle", "violations", "flags", "cpu_s",
                 "W_pred", "W_ref", "violations_method"} <= set(r)
         assert r["violations_method"] == "RK4 stages"
+        assert r["failed_cycle"] is None
         assert all(isinstance(v, int) for v in r["violations"].values())
-    # with an exact autoencoder the projection pulls the encoded reference onto the discrete balance:
-    # the water and energy residuals of the projected path are at the projection's tolerance
-    res = fl.projected_rollouts(ae, std, lf, ds, n_cycles=2, h_steps=1)
+    # with an exact autoencoder the floor stays near the reference, far below a model that does not move
+    # (zeroed increments would score each snapshot as the previous one)
+    stay = _stay_rows(ds, phys, lf, ae, std)
+    e_floor = max(max(r["e"]) for r in rows)
+    e_stay = max(max(r["e"]) for r in stay)
+    assert e_floor < 1e-2 and e_floor < 0.25 * e_stay
+    eps_floor = max(max(r["eps"]) for r in rows)
+    eps_stay = max(max(r["eps"]) for r in stay)
+    assert eps_floor < 0.25 * eps_stay
+    # each step meets its own discrete balance from its anchor (the projection's tolerance)
+    res = fl.projected_results(ae, std, lf, ds, n_cycles=2, h_steps=1)
     for r in res:
         assert set(r.residuals) == {"N", "E", "S"}
         assert float(r.residuals["N"].abs().max()) < 1e-8 * float(ds.W_ref.abs().max())
 
 
-def test_projected_floor_batched_equals_one_trajectory_at_a_time(case):
+def test_no_closing_interval_is_stepped_or_scored(case):
+    """n_cycles = the stored cycles (2 x 40 snapshots): there is no next snapshot after the last one, so
+    the residuals (and the violation counts) cover the T - 1 = 79 intervals between stored snapshots;
+    with one cycle of the two, still T - 1 = 39 (the closing interval is never stepped)."""
+    ds, std, phys = case
+    ae = Identity()
+    lf = _lf(ae, std, phys)
+    for n_cycles, n_int in ((2, 2 * NS - 1), (1, NS - 1)):
+        for r in fl.projected_results(ae, std, lf, ds, n_cycles=n_cycles, h_steps=1):
+            assert all(len(v) == n_int for v in r.residuals.values())
+            assert bool(torch.isfinite(r.X).all())
+
+
+def test_projected_floor_is_re_anchored_at_every_interval(case):
+    """A lossy autoencoder with the projection on: each scored state depends only on enc(x_i) and
+    enc(x_{i+1}), so perturbing trajectory 0's first snapshot changes its scored snapshots 0 and 1 only,
+    and no other trajectory."""
+    from dataclasses import replace
     ds, std, phys = case
     ae = Affine(ds.X.shape[-1], 12)
     lf = _lf(ae, std, phys)
-    a = fl.projected_rollouts(ae, std, lf, ds, n_cycles=2, h_steps=1, batch=3)
-    b = fl.projected_rollouts(ae, std, lf, ds, n_cycles=2, h_steps=1, batch=1)
+    a = fl.projected_results(ae, std, lf, ds, n_cycles=2, h_steps=1)
+    X2 = ds.X.clone()
+    X2[0, 0, 0] = X2[0, 0, 0] * 1.01
+    b = fl.projected_results(ae, std, lf, replace(ds, X=X2), n_cycles=2, h_steps=1)
+    xa, xb = a[0].X.reshape(-1, ds.X.shape[-1]), b[0].X.reshape(-1, ds.X.shape[-1])
+    assert not torch.allclose(xa[1], xb[1], rtol=1e-9, atol=0)
+    assert torch.allclose(xa[2:], xb[2:], rtol=1e-12, atol=1e-14)
+    for j in (1, 2):
+        assert torch.allclose(a[j].X, b[j].X, rtol=1e-12, atol=1e-14)
+
+
+def test_projected_floor_batched_equals_one_pair_at_a_time(case):
+    ds, std, phys = case
+    ae = Affine(ds.X.shape[-1], 12)
+    lf = _lf(ae, std, phys)
+    a = fl.projected_results(ae, std, lf, ds, n_cycles=2, h_steps=1)
+    b = fl.projected_results(ae, std, lf, ds, n_cycles=2, h_steps=1, chunk=1)
     for x, y in zip(a, b):
         assert x.failed_cycle == y.failed_cycle
         assert torch.allclose(x.X, y.X, rtol=1e-9, atol=1e-12, equal_nan=True)
+        for q in x.residuals:
+            assert torch.allclose(x.residuals[q], y.residuals[q], rtol=1e-6, atol=1e-12 * float(ds.W_ref.abs().max()),
+                                  equal_nan=True)
 
 
 def test_floor_through_the_pilot_builders_and_the_results_file(tmp_path):
