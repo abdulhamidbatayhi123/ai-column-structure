@@ -159,25 +159,6 @@ def n_cells() -> int:
     return sum(n for cols in CELL_DESIGN.values() for _, _, n in cols) + sum(3 * len(a) for a, _ in SENS_CELLS.values())
 
 
-def ae_specs() -> list:
-    """Every autoencoder job: one per (system, material, size, seed) of the learned cells (the most seeds of
-    any learned arm in that column), the full-data MLP gate wave (5 d per full-data seed), and one per
-    sensitivity kind and seed (degraded data and the next d with the R1 loss, R1's own with plain MSE)."""
-    cols = {}
-    for arm in WITH_AE:
-        for key, size, n in CELL_DESIGN[arm]:
-            cols[(key, size)] = max(cols.get((key, size), 0), n)
-    sy = lambda key: key.split("_")[0]  # noqa: E731
-    out = [{"kind": "study", "system": sy(k), "key": k, "size": s, "seed": i, "weight": 1}
-           for (k, s), n in cols.items() for i in range(n)]
-    out += [{"kind": "gate", "system": sy(k), "key": k, "size": "full", "seed": i, "weight": 1, "d_index": j}
-            for (k, s), n in cols.items() if s == "full" for i in range(n) for j in range(D_GRID_N)]
-    for kind, (_, (k, s)) in SENS_CELLS.items():
-        out += [{"kind": "sensitivity", "system": sy(k), "key": k, "size": s, "seed": i,
-                 "weight": 0 if kind == "aemse" else 1} for i in range(3)]
-    return out
-
-
 def _pool(size) -> int:
     return POOL if size == "full" else int(size)
 
@@ -235,81 +216,196 @@ def session_hours(job_hours: list, startup_s: float = STARTUP_S) -> float:
     return sum(h + job_sessions(h) * startup_s / 3600 for h in job_hours)
 
 
-def packed_session_hours(run_hours: float, sessions: int, throughput: float, startup_s: float = STARTUP_S) -> float:
-    """Session time if four one-thread jobs share each session (not implemented in kaggle/run_queue.py): the
-    work divided by the measured throughput of four jobs, and a quarter of the sessions' start-ups."""
-    return run_hours / throughput + math.ceil(sessions / 4) * startup_s / 3600
-
-
-def core_session_hours(n: dict, b: dict) -> float:
-    """The need with every reduction step applied (their training hours; their evaluation is not removed,
-    so this is an upper bound for the core)."""
-    return n["session_hours"] - sum(r["hours"] for r in b["reductions"])
-
-
 def _ref_s(t: dict, key: str) -> float:
     return max(t["reference"][key]["cycle_cpu_s"])
 
 
-def need(t: dict, iterations: int, h: int, K: int, n_css: int = 13, startup_s: float = STARTUP_S) -> dict:
-    """The confirmatory need in one-run CPU hours per block, and in Kaggle session hours (jobs as
-    kaggle/train_jobs.py makes them: one per session, evaluation one job per cell and test set)."""
-    blocks, jobs = {}, {}
-    # training: latent arms (U-long for S's wall-clock) with their sensitivities, C+L
-    runs = {}
-    for arm in LATENT:
-        for key, size, n in CELL_DESIGN[arm]:
-            runs.setdefault(arm, []).extend([(key, size)] * n)
-    for kind, (arms, col) in SENS_CELLS.items():
-        for a in arms:
-            runs[a].extend([col] * 3)
-    lat = [_s_per_iteration(t, "S" if a == "U-long" else a, h) * iterations / 3600 for a, cs in runs.items() for _ in cs]
-    blocks["training, latent arms"] = {"hours": sum(lat)}
-    jobs["training, latent arms"] = lat
-    cl = [cplusl_run_hours(t, iterations, K)] * sum(n for _, _, n in CELL_DESIGN["C+L"])
-    blocks["training, C+L"] = {"hours": sum(cl)}
-    jobs["training, C+L"] = cl
-    # autoencoders
-    ae = [ae_hours(t, [s]) for s in ae_specs()]
-    blocks["autoencoders"] = {"hours": sum(ae)}
-    jobs["autoencoders"] = ae
-    # evaluation: every latent cell on its validation sets (in its training job) and on each existing test set
-    ev_lat, n_eval_jobs = [], 0
-    for arm, cs in runs.items():
-        for key, size in cs:
-            ev_lat.append(latent_eval_hours(t, key, h, 1, arm))
-            if (arm == "U" and key == P_KEY and size in ("full", 32)) or arm == "U+F":
-                ev_lat.append(latent_eval_hours(t, key, h, 1, "S"))   # U+proj, U+F+proj: S's projected step
-            n_eval_jobs += 3                                   # one job per cell and GATED set (train_jobs)
-    blocks["evaluation, latent arms"] = {"hours": sum(ev_lat),
-                                         "note": "each arm's batched step; S's for the projected arms and any arm not timed"}
-    ev_sol = [solver_eval_hours(t, arm, key) for arm in ("C", "MUSCL-C") for key, _, n in CELL_DESIGN[arm] for _ in range(n)]
-    cl_tc = _cl_eval_s_per_traj_cycle(t, K)
-    ev_sol += [_traj_cycles(key) * cl_tc / 3600 for key, _, n in CELL_DESIGN["C+L"] for _ in range(n)]
-    n_eval_jobs += 3 * sum(n for a in ("C", "MUSCL-C", "C+L") for _, _, n in CELL_DESIGN[a])
-    blocks["evaluation, solver arms"] = {"hours": sum(ev_sol)}
-    # H6: every design of every scenario rolled out to the cyclic steady state, optima and Sobol by the reference
-    sc, de = H6["scenarios"], H6["designs"]
-    h6_lat = sum(H6["seeds"][a] * _step_s(t, h, a) for a in H6["latent_arms"]) * math.ceil(de / BATCH) * n_css * N_SNAP
-    h6_c = de * n_css * max(t["C"][f"{P_KEY}|32"]["cycle_cpu_s"])
-    h6_cl = H6["seeds"]["C+L"] * de * n_css * cl_tc
-    h6_ref = (H6["sobol"] + sum(H6["seeds"].values())) * n_css * _ref_s(t, P_KEY)
-    blocks["H6 searches and reference checks"] = {"hours": sc * (h6_lat + h6_c + h6_cl + h6_ref) / 3600,
-                                                  "note": f"{n_css} cycles to the cyclic steady state (assumed)"}
-    # the confirmatory reference sets (generated after the freeze; the pilot sets are not counted)
-    ref = sum((TRAIN_POOL[0] * TRAIN_POOL[1] + _traj_cycles(key)) * _ref_s(t, key) for key in (P_KEY, R_KEY, B_KEY))
-    blocks["reference data (confirmatory sets)"] = {"hours": ref / 3600}
-    total = sum(b["hours"] for b in blocks.values())
-    # session time: one job per session as implemented; evaluation, H6 and data spread over their kernels
-    per_job = jobs["training, latent arms"] + jobs["training, C+L"] + jobs["autoencoders"]
-    rest = (blocks["evaluation, latent arms"]["hours"] + blocks["evaluation, solver arms"]["hours"]
-            + blocks["H6 searches and reference checks"]["hours"] + blocks["reference data (confirmatory sets)"]["hours"])
-    n_rest = n_eval_jobs
-    kernels = len(per_job) + n_rest
-    sessions = sum(job_sessions(x) for x in per_job) + max(n_rest, math.ceil(rest / SESSION_WORK_H))
-    sess_h = total + sessions * startup_s / 3600
-    return {"iterations": iterations, "h": h, "K": K, "n_css": n_css, "blocks": blocks, "total_run_hours": total,
-            "kernels": kernels, "sessions": sessions, "session_hours": sess_h}
+# ---- the job list (T8 ceiling review, 2026-11-17) ---------------------------------------------------------
+REDUCTION_ORDER = ["degraded-data sensitivity", "U-long", "S-Pi", "latent-dimension sensitivity",
+                   "autoencoder-loss sensitivity", "MUSCL-C", "sizes 16 and 128 to 2 seeds", "System B S-L"]
+_SENS_STEP = {"degraded-data sensitivity": "noise", "latent-dimension sensitivity": "d+",
+              "autoencoder-loss sensitivity": "aemse"}
+GATED = ("long_test", "ood")                     # the test sets; a cell is evaluated on those its system has
+VALIDATION = ("validation", "long_validation")   # scored in the cell's training job
+
+
+def design_cells() -> list:
+    """Every cell of p3b.train.cells.cells() and sensitivity_cells(), with how many projected arms it is also
+    evaluated as (evaluate_also: U+proj for U at A-primary full and 32, U+F+proj for every U+F)."""
+    out = []
+    for arm, cols in CELL_DESIGN.items():
+        for key, size, n in cols:
+            also = 1 if (arm == "U" and key == P_KEY and size in ("full", 32)) or arm == "U+F" else 0
+            out += [{"arm": arm, "key": key, "size": size, "seed": s, "sens": None, "also": also} for s in range(n)]
+    for kind, (arms, (key, size)) in SENS_CELLS.items():
+        out += [{"arm": a, "key": key, "size": size, "seed": s, "sens": kind, "also": 0} for a in arms for s in range(3)]
+    return out
+
+
+def reduce_cells(cs: list, steps) -> list:
+    """The cells left after the reduction steps (p3b.train.cells.apply_reductions)."""
+    def gone(c, step):
+        if step in _SENS_STEP:
+            return c["sens"] == _SENS_STEP[step]
+        if step in ("U-long", "S-Pi", "MUSCL-C"):
+            return c["arm"] == step and c["sens"] is None
+        if step == "sizes 16 and 128 to 2 seeds":
+            return c["size"] in (16, 128) and c["seed"] >= 2
+        if step == "System B S-L":
+            return c["arm"] == "S-L" and c["key"] == B_KEY
+        raise KeyError(step)
+    return [c for c in cs if not any(gone(c, s) for s in steps)]
+
+
+def projected_evaluations(cs: list) -> int:
+    return sum(c["also"] for c in cs)
+
+
+def _ae_from_cells(cs: list) -> list:
+    sy = lambda key: key.split("_")[0]  # noqa: E731
+    study, gate_seeds, sens = [], {}, []
+    for c in cs:
+        if c["arm"] not in WITH_AE:
+            continue
+        if c["sens"]:
+            s = {"kind": "sensitivity", "system": sy(c["key"]), "key": c["key"], "size": c["size"], "seed": c["seed"],
+                 "weight": 0 if c["sens"] == "aemse" else 1, "sens": c["sens"]}
+            if not any(x["sens"] == s["sens"] and x["seed"] == s["seed"] for x in sens):
+                sens.append(s)
+            continue
+        s = {"kind": "study", "system": sy(c["key"]), "key": c["key"], "size": c["size"], "seed": c["seed"], "weight": 1}
+        if not any((x["key"], x["size"], x["seed"]) == (s["key"], s["size"], s["seed"]) for x in study):
+            study.append(s)
+        if c["size"] == "full":
+            gate_seeds.setdefault(c["key"], set()).add(c["seed"])
+    gate = [{"kind": "gate", "system": sy(k), "key": k, "size": "full", "seed": s, "weight": 1, "d_index": j}
+            for k, ss in gate_seeds.items() for s in sorted(ss) for j in range(D_GRID_N)]
+    return study + gate + sens
+
+
+def ae_specs() -> list:
+    """Every autoencoder job: one per (system, material, size, seed) of the learned cells, the full-data MLP
+    gate wave (5 d per full-data seed), and one per sensitivity kind and seed (degraded data and the next d
+    with the R1 loss, R1's own with plain MSE)."""
+    return _ae_from_cells(design_cells())
+
+
+def _set_hours(t: dict, key: str, set_name: str, h: int, arm: str) -> float:
+    n, cyc = SETS[key][set_name]
+    return math.ceil(n / BATCH) * cyc * N_SNAP * _step_s(t, h, arm) / 3600
+
+
+def _solver_set_hours(t: dict, arm: str, key: str, set_name: str, K: int) -> float:
+    n, cyc = SETS[key][set_name]
+    if arm == "C+L":
+        return n * cyc * _cl_eval_s_per_traj_cycle(t, K) / 3600
+    grids = (16, 32, 64, 128) if arm == "C" else (32, 64)
+    return n * cyc * sum(max(t[arm][f"{key}|{g}"]["cycle_cpu_s"]) for g in grids) / 3600
+
+
+def _t4(t: dict, arm: str, h: int) -> float:
+    r = t.get("t4_ratio", {})
+    return r.get(f"{'S' if arm == 'U-long' else arm}|h{min(h, 2)}", 1.0)
+
+
+def jobs(t: dict, cs: list, iterations: int, h: int, K: int, n_css: int = 13, four_threads: bool = False) -> list:
+    """The confirmatory jobs, each {"kind", "stage", "hours", "blocks": {block: hours}} at one thread (or, with
+    four_threads, the latent training at the measured four-thread cost): reference data (stage 0), the
+    autoencoders (1), the training jobs with their validation sets (2), and the evaluation of each existing
+    test set per cell, the decoder-only floor and H6 (3)."""
+    js = []
+
+    def add(kind, stage, blocks):
+        js.append({"kind": kind, "stage": stage, "hours": sum(blocks.values()), "blocks": blocks})
+    for key in (P_KEY, R_KEY, B_KEY):                 # reference data: chunks of at most 11 hours
+        sets = {"train": TRAIN_POOL, **SETS[key]}
+        for name, (n, cyc) in sets.items():
+            hrs = n * cyc * _ref_s(t, key) / 3600
+            k = job_sessions(hrs)
+            for _ in range(k):
+                add("data", 0, {"reference data (confirmatory sets)": hrs / k})
+    for s in _ae_from_cells(cs):
+        add("autoencoder", 1, {"autoencoders": ae_hours(t, [s])})
+    for c in cs:
+        arm, key = c["arm"], c["key"]
+        val = VALIDATION
+        if arm in LATENT:
+            tr = _s_per_iteration(t, "S" if arm == "U-long" else arm, h) * iterations / 3600
+            tr *= _t4(t, arm, h) if four_threads else 1.0
+            ev = sum(_set_hours(t, key, s, h, arm) + c["also"] * _set_hours(t, key, s, h, "S") for s in val)
+            add("training", 2, {"training, latent arms": tr, "evaluation, latent arms": ev})
+            for s in GATED:
+                if s in SETS[key]:
+                    add("evaluation", 3, {"evaluation, latent arms": _set_hours(t, key, s, h, arm)
+                                          + c["also"] * _set_hours(t, key, s, h, "S")})
+        else:                                          # C, MUSCL-C, C+L
+            blocks = {"evaluation, solver arms": sum(_solver_set_hours(t, arm, key, s, K) for s in val)}
+            if arm == "C+L":
+                blocks["training, C+L"] = cplusl_run_hours(t, iterations, K)
+            add("training", 2, blocks)
+            for s in GATED:
+                if s in SETS[key]:
+                    add("evaluation", 3, {"evaluation, solver arms": _solver_set_hours(t, arm, key, s, K)})
+    # the decoder-only floor (R1; registered, never removed): until its own cost is measured, one projected
+    # batched rollout of the long test and OOD sets per A-primary study autoencoder, at S's step
+    for s in _ae_from_cells(cs):
+        if s["kind"] == "study" and s["key"] == P_KEY:
+            add("floor", 3, {"decoder-only floor": sum(_set_hours(t, P_KEY, x, h, "S") for x in GATED)})
+    # H6: per scenario, each latent model's search (180 designs batched), C's and each C+L seed's, and the
+    # reference checks of the 20 Sobol points and the arms' optima, to the cyclic steady state
+    de = H6["designs"]
+    for _ in range(H6["scenarios"]):
+        for a in H6["latent_arms"]:
+            for _s in range(H6["seeds"][a]):
+                add("H6", 3, {"H6 searches and reference checks":
+                              math.ceil(de / BATCH) * n_css * N_SNAP * _step_s(t, h, a) / 3600})
+        add("H6", 3, {"H6 searches and reference checks": de * n_css * max(t["C"][f"{P_KEY}|32"]["cycle_cpu_s"]) / 3600})
+        for _s in range(H6["seeds"]["C+L"]):
+            add("H6", 3, {"H6 searches and reference checks": de * n_css * _cl_eval_s_per_traj_cycle(t, K) / 3600})
+        add("H6", 3, {"H6 searches and reference checks":
+                      (H6["sobol"] + sum(H6["seeds"].values())) * n_css * _ref_s(t, P_KEY) / 3600})
+    return js
+
+
+def packed_sessions(js: list, slowdown: float, startup_s: float = STARTUP_S, size: int = 4) -> dict:
+    """Session time with the jobs packed `size` to a kernel per stage, in order (kaggle/run_queue.py
+    pack_jobs): a kernel lasts as long as its slowest member, each member slowed by `slowdown` when four
+    run at once; past 11 hours of work it continues in a further session; each session pays a start-up."""
+    kernels = sessions = 0
+    hours = 0.0
+    for stage in sorted({j["stage"] for j in js}):
+        g = [j["hours"] for j in js if j["stage"] == stage]
+        for a in range(0, len(g), size):
+            wall = max(g[a:a + size]) * slowdown
+            n = job_sessions(wall)
+            kernels += 1
+            sessions += n
+            hours += wall + n * startup_s / 3600
+    return {"kernels": kernels, "sessions": sessions, "session_hours": hours}
+
+
+def single_sessions(js: list, startup_s: float = STARTUP_S) -> dict:
+    return {"kernels": len(js), "sessions": sum(job_sessions(j["hours"]) for j in js),
+            "session_hours": session_hours([j["hours"] for j in js], startup_s)}
+
+
+def need(t: dict, iterations: int, h: int, K: int, n_css: int = 13, startup_s: float = STARTUP_S,
+         reductions=()) -> dict:
+    """The confirmatory need (or, with `reductions`, the need left after those steps) in one-run CPU hours
+    per block and in Kaggle session hours, the ceiling's unit, for the implemented layout (one-thread jobs
+    packed four per session) and for one job per session at the measured four-thread cost."""
+    cs = reduce_cells(design_cells(), reductions)
+    js = jobs(t, cs, iterations, h, K, n_css)
+    blocks = {}
+    for j in js:
+        for b, v in j["blocks"].items():
+            blocks.setdefault(b, {"hours": 0.0})["hours"] += v
+    js4 = jobs(t, cs, iterations, h, K, n_css, four_threads=True)
+    single = single_sessions(js4, startup_s)
+    single["training_hours"] = sum(j["blocks"].get("training, latent arms", 0.0) for j in js4)
+    return {"iterations": iterations, "h": h, "K": K, "n_css": n_css, "reductions": list(reductions),
+            "blocks": blocks, "total_run_hours": sum(b["hours"] for b in blocks.values()), "jobs": len(js),
+            "packed": packed_sessions(js, t.get("pack_slowdown", 1.0), startup_s), "single": single}
 
 
 def load_inputs(results: str) -> dict:
@@ -326,6 +422,16 @@ def load_inputs(results: str) -> dict:
         for k in ("C", "MUSCL-C", "ae", "reference", "step"):
             t[k] = tc[k]
         t["sources"]["train"] = f"timing_ceiling.json (d = {tc['settings']['q']['d']}) for its arms"
+        # four threads over one (timing_arms.json, d = 16), for pricing one job per session at four threads
+        t["t4_ratio"] = {f"{a}|h{k}": arms["train"][f"{a}|h{k}|t4"]["wall_s_per_iteration"]
+                         / arms["train"][f"{a}|h{k}|t1"]["wall_s_per_iteration"]
+                         for a in {x.split("|")[0] for x in arms["train"]} for k in (1, 2)
+                         if f"{a}|h{k}|t4" in arms["train"]}
+        # four one-thread jobs at once: each job's slowdown, the larger of U's and S's (concurrency timing)
+        c = conc["concurrent"]
+        if c:
+            t["pack_slowdown"] = max(sum(c[f"{a}|h2|n4"]["wall_s_per_iteration"]) / 4 / c[f"{a}|h2|n1"]["wall_s_per_iteration"][0]
+                                     for a in ("U", "S"))
         ref = rd("timing_reference.json")
         if ref:                                  # the probe timed one point per key: the earlier records stay a floor
             a_max = ref["data_cost_decision"]["system_A_2048_exact_max"]
@@ -359,36 +465,31 @@ def main(argv=None):
     if missing:
         print(f"not measured yet: {missing} (run the timing kernel, results/timing_ceiling_kernel.py)")
         return None
-    print(f"inputs: latent training from {t['sources']['train']}; batched step, C, MUSCL-C, autoencoders and the "
+    print(f"inputs: latent training from {t['sources']['train']}; batched steps, C, MUSCL-C, autoencoders and the "
           "reference from timing_ceiling.json; C+L from timing_cplusl_train.json and timing_cplusl_eval.json")
     print(f"{a.iterations} iterations; {a.n_css} cycles to the cyclic steady state in H6 (assumed); "
-          f"{STARTUP_S:.0f} s start-up per Kaggle session; one job per session (kaggle/train_jobs.py)")
+          f"{STARTUP_S:.0f} s start-up per Kaggle session (a typical estimate: first log lines at 141 to 317 s)")
+    print(f"implemented layout: one-thread jobs packed four per session (kaggle/run_queue.py pack_jobs), each "
+          f"member {t.get('pack_slowdown', 1.0):.2f} x slower than alone (timing_concurrency_batch.json, d = 16 "
+          "training); alternative: one job per session, latent training at the four-thread cost (timing_arms.json)")
     out = {}
     for K in (1, 4):
         for h in (1, 2, 4):
             n = need(t, a.iterations, h, K, a.n_css)
-            out[(h, K)] = n
-            print(f"\nh = {h}, K = {K}:")
+            c = need(t, a.iterations, h, K, a.n_css, reductions=REDUCTION_ORDER)
+            out[(h, K)] = (n, c)
+            print(f"\nh = {h}, K = {K} ({n['jobs']} jobs):")
             for name, b in n["blocks"].items():
-                print(f"  {name:38s} {b['hours']:8.1f} h" + (f"   ({b['note']})" if "note" in b else ""))
+                print(f"  {name:38s} {b['hours']:8.1f} h")
             print(f"  {'total, one-run CPU hours':38s} {n['total_run_hours']:8.1f} h")
-            print(f"  {'Kaggle session hours (the ceiling unit)':38s} {n['session_hours']:8.1f} h "
-                  f"({n['sessions']} sessions, {n['kernels']} kernels)")
-            thr = min(session_throughput({"concurrent": t["concurrent"]}, arm, 4) for arm in ("U", "S"))
-            print(f"  {'  if four jobs shared each session':38s} "
-                  f"{packed_session_hours(n['total_run_hours'], n['sessions'], thr):8.1f} h (throughput {thr:.2f} x)")
+            for lay, label in (("packed", "packed four per session"), ("single", "one job per session")):
+                print(f"  session hours, {label:24s} {n[lay]['session_hours']:8.1f} h ({n[lay]['sessions']} sessions, "
+                      f"{n[lay]['kernels']} kernels); core after every reduction {c[lay]['session_hours']:8.1f} h")
     ae_g = ae_hours(t, [s for s in ae_specs() if s["kind"] == "gate"])
     f = conv_factor(a.results)
     if f:
         print(f"\ncontingency, not in the totals: a conv gate wave (65 autoencoders) at {f:.1f} x the MLP's time "
-              f"adds about {ae_g * f:.0f} h")
-    b = training_budget(t, a.iterations, 2, cplusl_run_hours(t, a.iterations, 4))
-    print("\nreduction order at h = 2, K = 4, training hours saved:")
-    for r in b["reductions"]:
-        print(f"  {r['step']}: {r['hours']:.1f}")
-    saved = sum(r["hours"] for r in b["reductions"])
-    print(f"  whole order: {saved:.1f} h; the core at h = 2, K = 4 then needs at most "
-          f"{core_session_hours(out[(2, 4)], b):.1f} session hours")
+              f"adds about {ae_g * f:.0f} h of work")
     return out
 
 
