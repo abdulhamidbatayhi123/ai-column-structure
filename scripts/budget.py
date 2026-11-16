@@ -241,6 +241,12 @@ def packed_session_hours(run_hours: float, sessions: int, throughput: float, sta
     return run_hours / throughput + math.ceil(sessions / 4) * startup_s / 3600
 
 
+def core_session_hours(n: dict, b: dict) -> float:
+    """The need with every reduction step applied (their training hours; their evaluation is not removed,
+    so this is an upper bound for the core)."""
+    return n["session_hours"] - sum(r["hours"] for r in b["reductions"])
+
+
 def _ref_s(t: dict, key: str) -> float:
     return max(t["reference"][key]["cycle_cpu_s"])
 
@@ -380,6 +386,9 @@ def main(argv=None):
     print("\nreduction order at h = 2, K = 4, training hours saved:")
     for r in b["reductions"]:
         print(f"  {r['step']}: {r['hours']:.1f}")
+    saved = sum(r["hours"] for r in b["reductions"])
+    print(f"  whole order: {saved:.1f} h; the core at h = 2, K = 4 then needs at most "
+          f"{core_session_hours(out[(2, 4)], b):.1f} session hours")
     return out
 
 
