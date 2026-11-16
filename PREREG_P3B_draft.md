@@ -604,11 +604,33 @@ Pilot errors by arm are never reported or used.
 
 ## 11. Budget and ceiling
 
-Compute is in `docs/compute_3B.md`, measured in the pilot: about 750 CPU-hours at h = 1 and 1,160 at
-h = 2, all run on Kaggle (free CPU sessions). A hard ceiling of 1,300 Kaggle CPU-hours applies, counted
-as a running total of session time (pre-freeze revision R2, Section 12). Past it, the reduction order
-of `docs/compute_3B.md` §3 is applied in sequence. It removes only secondary or descriptive items, never
-the primary arms, seeds or test sets.
+All compute runs on Kaggle (free CPU sessions). The need is computed by `scripts/budget.py` from
+measured costs (`docs/compute_3B.md` §2 cites its output and the timing files).
+
+**The ceiling: 1,300 Kaggle session hours** (pre-freeze revision R2, Section 12). The counted quantity:
+- every kernel version pushed for the study from the freeze commit on, as logged in
+  `kaggle/registry.txt`;
+- this includes training, autoencoder, gate, evaluation, reference-data and solver kernels, resume
+  continuations, and kernels that failed, timed out or were cancelled;
+- each counts the time stamp of the last line of its Kaggle log (seconds since its session started);
+- a pushed kernel without a readable log counts as a full 12-hour session;
+- the pilot and the data regeneration before the freeze are not counted.
+
+`scripts/ceiling_ledger.py` sums this running total, and `p3b.train.cells.ceiling_status` gives the
+reduction steps.
+
+**The reduction order.** Past the ceiling, the reduction order of `docs/compute_3B.md` §3 is applied
+in sequence: before each new kernel, the running total plus the projected cost of the remaining cells is
+checked. The order removes only secondary or descriptive items, never the primary arms, seeds or test
+sets.
+
+**If the core alone exceeds the ceiling** (T8 DOC-3):
+- **At the freeze.** The projected need (`scripts/budget.py` at the pilot's h, iterations and K) must fit
+  under the ceiling with every reduction applied and a margin of 10 % of the ceiling. If it does not,
+  the design is revised before the freeze, and the revision is logged.
+- **After the freeze.** If the core still does not fit with every reduction applied, it is completed
+  anyway. The excess hours are reported as a deviation (this section and Section 12), with the
+  ledger's running total.
 
 ## 12. Discipline, deviations and the AI declaration
 
