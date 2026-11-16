@@ -188,12 +188,17 @@ def test_projected_floor_batched_equals_one_pair_at_a_time(case):
     lf = _lf(ae, std, phys)
     a = fl.projected_results(ae, std, lf, ds, n_cycles=2, h_steps=1)
     b = fl.projected_results(ae, std, lf, ds, n_cycles=2, h_steps=1, chunk=1)
+    # a residual is a difference of totals of size |N|, |E|, |S|, so batched and one-at-a-time agree to
+    # round-off of those totals, not of the residual itself
+    with torch.no_grad():
+        Z = ae.encode(std.encode(ds.X[:, :2].reshape(-1, ds.X.shape[-1])))
+        v = lf.evaluate(Z, ds.raw_inputs[:, :2].reshape(Z.shape[0], -1), grads=False)
+    scale = {q: float(v[q].abs().max()) for q in ("N", "E", "S")}
     for x, y in zip(a, b):
         assert x.failed_cycle == y.failed_cycle
         assert torch.allclose(x.X, y.X, rtol=1e-9, atol=1e-12, equal_nan=True)
         for q in x.residuals:
-            assert torch.allclose(x.residuals[q], y.residuals[q], rtol=1e-6, atol=1e-12 * float(ds.W_ref.abs().max()),
-                                  equal_nan=True)
+            assert torch.allclose(x.residuals[q], y.residuals[q], rtol=0, atol=1e-12 * scale[q], equal_nan=True)
 
 
 def test_floor_through_the_pilot_builders_and_the_results_file(tmp_path):
