@@ -47,5 +47,8 @@ def test_quick_run_times_the_batched_rollout_step_of_every_arm(tmp_path):
     res = tc.main(["--quick", "--out", str(tmp_path / "t.json")])
     for arm in tc.QUICK["arms"]:
         r = res["step"][arm]
-        assert ("error" in r) or all(r[f"h{h}|b48"]["wall_s_per_interval"] > 0 for h in (1, 2))
-    assert "error" not in res["step"]["U"]
+        # an arm whose quick toy model fails at the first timed interval reports intervals 0 (budget.py then
+        # uses S's step for it); every timed interval has a positive cost
+        assert ("error" in r) or all(r[f"h{h}|b48"]["intervals"] == 0 or r[f"h{h}|b48"]["wall_s_per_interval"] > 0
+                                     for h in (1, 2))
+    assert "error" not in res["step"]["U"] and res["step"]["U"]["h2|b48"]["intervals"] > 0

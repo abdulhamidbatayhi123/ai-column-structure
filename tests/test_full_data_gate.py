@@ -62,7 +62,7 @@ def test_gate_jobs_one_per_spec_filtered_by_key():
     j = gate_jobs(cells(), "conv", keys=("B",))["jobs"]
     sp = [s for s in gate_specs(cells(), "conv") if s["system"] == "B"]
     assert [x["name"] for x in j] == [s["name"] for s in sp]
-    assert all(x["expect"] == [f"gate_{x['name']}.json"] and x["threads"] == 4 for x in j)
+    assert all(x["expect"] == [f"gate_{x['name']}.json"] and x["threads"] == 1 for x in j)   # one thread, packed four per session
     assert j[0]["commands"] == [["kaggle/train_chunk.py", "--gate-ae", j[0]["name"], "--out", "OUT"]]
 
 

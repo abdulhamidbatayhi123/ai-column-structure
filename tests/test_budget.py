@@ -224,3 +224,9 @@ def test_the_decoder_floor_is_one_projected_rollout_of_long_test_and_ood_per_pri
     n_ae = sum(1 for s in budget.ae_specs() if s["kind"] == "study" and s["key"] == budget.P_KEY)
     per = (1 * 60 + 1 * 30) * 200 * 0.1 / 3600
     assert budget.need(t, 3600, 1, 4, 13)["blocks"]["decoder-only floor"]["hours"] == pytest.approx(n_ae * per)
+
+
+def test_an_arm_whose_step_timed_no_interval_is_priced_at_s_step():
+    t = flat_inputs(step=0.1)
+    t["step"] = {"U": {f"h{k}|b48": {"wall_s_per_interval": float("nan"), "intervals": 0} for k in (1, 2)}}
+    assert budget.latent_eval_hours(t, "B", h=1, n_arms=1, arm="U") == budget.latent_eval_hours(t, "B", 1, 1, "S")
