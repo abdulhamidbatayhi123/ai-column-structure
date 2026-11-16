@@ -44,8 +44,8 @@ DESIGN = [
 U_PROJ_COLUMNS = {(*PRIMARY, "full"), (*PRIMARY, 32)}
 
 # docs/compute_3B.md Section 3, in order; the descriptive sensitivities are separate jobs (no cells)
-REDUCTION_ORDER = ["degraded-data sensitivity", "U-long", "S-Pi", "latent-dimension sensitivity", "MUSCL-C",
-                   "sizes 16 and 128 to 2 seeds", "System B S-L"]
+REDUCTION_ORDER = ["degraded-data sensitivity", "U-long", "S-Pi", "latent-dimension sensitivity",
+                   "autoencoder-loss sensitivity", "MUSCL-C", "sizes 16 and 128 to 2 seeds", "System B S-L"]
 
 
 @dataclass(frozen=True)
@@ -74,7 +74,7 @@ def cells() -> list:
 _ARM = {"U": "u", "U+F": "uf", "U-long": "ulong", "P": "p", "S": "s", "S-L": "sl", "S-M": "sm", "S-Pi": "spi",
         "FNO": "fno", "C": "c", "C+L": "cl", "MUSCL-C": "muscl"}
 _MAT = {"MOF-303": "-m303", "Al-fumarate": "-alf", None: ""}
-_SENS = {"noise": "noise", "d+": "dplus"}
+_SENS = {"noise": "noise", "d+": "dplus", "aemse": "aemse"}
 
 
 def job_name(c: Cell) -> str:
@@ -112,17 +112,21 @@ def _removed_by(step: str, c: Cell) -> bool:
 def sensitivity_cells() -> list:
     """The descriptive sensitivities (PREREG Section 6) as cells for the ceiling model: degraded
     data (1 % multiplicative noise on the stored fields, size 32; U, U+F, S; 3 seeds) and the next
-    passing latent dimension (U, U+F, S; full data; 3 seeds)."""
+    passing latent dimension (U, U+F, S; full data; 3 seeds); and the autoencoder loss (R1: U and S
+    with a plain-MSE autoencoder of the same d; full data; 3 seeds)."""
     out = []
     for arm in ("U", "U+F", "S"):
         out += [Cell(f"{arm}|noise", *PRIMARY, 32, s) for s in range(3)]
         out += [Cell(f"{arm}|d+", *PRIMARY, "full", s) for s in range(3)]
+    for arm in ("U", "S"):
+        out += [Cell(f"{arm}|aemse", *PRIMARY, "full", s) for s in range(3)]
     return out
 
 
 def _removed_by_sens(step: str, c: Cell) -> bool:
     return (step == "degraded-data sensitivity" and c.arm.endswith("|noise")) or \
-        (step == "latent-dimension sensitivity" and c.arm.endswith("|d+"))
+        (step == "latent-dimension sensitivity" and c.arm.endswith("|d+")) or \
+        (step == "autoencoder-loss sensitivity" and c.arm.endswith("|aemse"))
 
 
 def apply_reductions(cs: list, steps: list) -> list:
