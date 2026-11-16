@@ -175,7 +175,8 @@ unknown (the pilot is redone for R3), so this is blind.
 
 **Recommendation for the author** (a registration decision; 1,300 stays in code until decided):
 - **(i) Keep 1,300 and run four one-thread jobs per session.** Measured throughput is 1.99 × one job,
-  and a one-thread job on a 4-thread session is no faster than alone (`results/timing_arms.json`,
+  while one job given all 4 threads runs no faster than on one (S at h = 2: 3.53 against 3.19 s per
+  iteration, `results/timing_arms.json`;
   `results/timing_concurrency_batch.json`). This needs `kaggle/run_queue.py` to pack jobs. h = 2 then
   needs about 816 session hours, with a margin of about 37 %. h = 4 (1,413) would not fit, so at the
   freeze the design would be revised (PREREG 11).
@@ -187,7 +188,7 @@ time. The 1,300 then has a stated margin over the h = 2 need.
 
 Three smaller findings from this pass, for the main session:
 - `kaggle/train_jobs.py evaluation_jobs` makes a job for the set "test", which no system has
-  (`p3b.design.SET_SIZES`). That is one empty kernel per cell, about 250 start-ups.
+  (`p3b.design.SET_SIZES`). That is one empty kernel per study cell (190 with the sensitivities), each paying a start-up.
 - FNO's batched step could not be timed by the probe (its arm has no autoencoder), so its evaluation is
   priced at S's step, an upper bound.
 - H6's 13 cycles to the cyclic steady state is an assumption until the pilot gives the CSS cycle.
