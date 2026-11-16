@@ -181,3 +181,9 @@ def test_the_reference_cost_is_the_slowest_of_the_r3_probe_and_the_earlier_recor
 def test_packed_session_hours_divide_the_work_by_the_measured_throughput():
     # four one-thread jobs per session at 2.0 x one job's throughput; a quarter of the sessions pay the start-up
     assert budget.packed_session_hours(100.0, sessions=40, throughput=2.0, startup_s=360.0) == pytest.approx(50.0 + 10 * 0.1)
+
+
+def test_core_session_hours_remove_every_reduction_step():
+    n = {"session_hours": 1000.0}
+    b = {"reductions": [{"step": "a", "hours": 30.0}, {"step": "b", "hours": 20.0}]}
+    assert budget.core_session_hours(n, b) == pytest.approx(950.0)
