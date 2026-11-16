@@ -24,3 +24,8 @@ def test_budget_counts_match_the_cells():
         n_cells = sum(c.arm == arm for c in cs) + sum(c.arm.split("|")[0] == arm for c in sensitivity_cells())
         assert n == n_cells, arm
     assert budget.n_cells() == len(cs) + len(sensitivity_cells())
+
+
+def test_budget_projected_evaluations_match_evaluate_also():
+    assert budget.projected_evaluations(budget.design_cells()) == sum(len(c.evaluate_also) for c in cells())
+    assert len(budget.design_cells()) == len(cells()) + len(sensitivity_cells())

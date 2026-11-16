@@ -82,6 +82,10 @@ def flat_inputs(s=1.0, step=0.1, c=2.0, ae_epoch=60.0, ref_a=30.0, ref_b=2.0):
                       "B": {"cycle_cpu_s": [ref_b]}},
         "cl_train": {"K1": {"wall_s_per_iter": 3.0}, "K4": {"wall_s_per_iter": 9.0}},
         "cl_eval": {"n_traj": 16, "cycles": 2, "K1": {"wall_s": 32.0}, "K8": {"wall_s": 32.0 * 8}},
+        # four-thread over one-thread cost per arm and h (timing_arms.json at d = 16): 1.5 x here
+        "t4_ratio": {f"{a}|h{k}": 1.5 for a in arms for k in (1, 2)},
+        # one-thread jobs run four at once: each slower by this factor (timing_concurrency_batch.json)
+        "pack_slowdown": 2.0,
     }
 
 
@@ -129,19 +133,6 @@ def test_solver_evaluation_uses_the_slowest_measured_cycle():
         (tc_b + 24 * 30) * 2.0 * 2 / 3600)
 
 
-def test_need_lists_every_block_and_sums_them_for_each_h():
-    t = flat_inputs()
-    for h in (1, 2, 4):
-        n = budget.need(t, iterations=3600, h=h, K=4, n_css=13)
-        assert set(n["blocks"]) == {"training, latent arms", "training, C+L", "autoencoders", "evaluation, latent arms",
-                                    "evaluation, solver arms", "H6 searches and reference checks",
-                                    "reference data (confirmatory sets)"}
-        assert n["total_run_hours"] == pytest.approx(sum(b["hours"] for b in n["blocks"].values()))
-        assert n["sessions"] >= n["kernels"] > 0
-    assert budget.need(t, 3600, 4, 4, 13)["total_run_hours"] == pytest.approx(
-        budget.need(t, 3600, 2, 4, 13)["total_run_hours"])   # flat timing: h does not change the cost here
-
-
 def test_session_hours_add_the_start_up_of_every_session_a_job_needs():
     # a 23-hour job needs 3 sessions of at most 11 h of work; each pays the start-up
     assert budget.job_sessions(23.0) == 3 and budget.job_sessions(0.5) == 1
@@ -178,12 +169,58 @@ def test_the_reference_cost_is_the_slowest_of_the_r3_probe_and_the_earlier_recor
     assert max(got["reference"]["B"]["cycle_cpu_s"]) == 1.5          # only the registered grid (1024 cells)
 
 
-def test_packed_session_hours_divide_the_work_by_the_measured_throughput():
-    # four one-thread jobs per session at 2.0 x one job's throughput; a quarter of the sessions pay the start-up
-    assert budget.packed_session_hours(100.0, sessions=40, throughput=2.0, startup_s=360.0) == pytest.approx(50.0 + 10 * 0.1)
+# ---- the job list, the packed layout and the core (T8 ceiling review, 2026-11-17) -----------------------
+def test_design_cells_mirror_the_cells_and_the_reductions_remove_45():
+    cs = budget.design_cells()
+    assert len(cs) == budget.n_cells() == 190
+    core = budget.reduce_cells(cs, budget.REDUCTION_ORDER)
+    # sensitivities 24, U-long 3, S-Pi 5, MUSCL-C 1, sizes 16 and 128 seed 2 of U, P, S 6, B S-L 6
+    assert len(core) == 190 - 45
 
 
-def test_core_session_hours_remove_every_reduction_step():
-    n = {"session_hours": 1000.0}
-    b = {"reductions": [{"step": "a", "hours": 30.0}, {"step": "b", "hours": 20.0}]}
-    assert budget.core_session_hours(n, b) == pytest.approx(950.0)
+def test_projected_evaluations_only_for_the_design_cells():
+    assert budget.projected_evaluations(budget.design_cells()) == 36     # U at A-primary full and 32, every U+F
+
+
+def test_evaluation_jobs_only_for_sets_that_exist():
+    jobs = budget.jobs(flat_inputs(), budget.design_cells(), iterations=3600, h=1, K=4, n_css=13)
+    ev = [j for j in jobs if j["kind"] == "evaluation"]
+    primary = sum(1 for c in budget.design_cells() if c["key"] == budget.P_KEY)
+    assert len(ev) == 2 * primary + (190 - primary)                     # long test (+ OOD on A-primary only)
+
+
+def test_packed_sessions_take_the_slowest_member_and_continue_past_eleven_hours():
+    js = [{"stage": 0, "hours": h} for h in (10.0, 2.0, 2.0, 2.0, 5.0)]
+    # packs [10, 2, 2, 2] and [5]; each member twice as slow when four run: walls 20 and 10 hours
+    s = budget.packed_sessions(js, slowdown=2.0, startup_s=360.0)
+    assert s["kernels"] == 2 and s["sessions"] == 2 + 1
+    assert s["session_hours"] == pytest.approx(20.0 + 10.0 + 3 * 0.1)
+
+
+def test_need_has_every_block_both_layouts_and_a_smaller_core():
+    t = flat_inputs()
+    n = budget.need(t, iterations=3600, h=2, K=4, n_css=13)
+    assert set(n["blocks"]) == {"training, latent arms", "training, C+L", "autoencoders", "evaluation, latent arms",
+                                "evaluation, solver arms", "decoder-only floor", "H6 searches and reference checks",
+                                "reference data (confirmatory sets)"}
+    assert n["total_run_hours"] == pytest.approx(sum(b["hours"] for b in n["blocks"].values()))
+    for lay in ("packed", "single"):
+        assert n[lay]["sessions"] >= n[lay]["kernels"] > 0 and n[lay]["session_hours"] > 0
+    assert n["single"]["kernels"] > n["packed"]["kernels"]
+    core = budget.need(t, 3600, 2, 4, 13, reductions=budget.REDUCTION_ORDER)
+    assert core["packed"]["session_hours"] < n["packed"]["session_hours"]
+    assert core["single"]["session_hours"] < n["single"]["session_hours"]
+
+
+def test_the_one_job_per_session_alternative_is_priced_at_four_threads():
+    t = flat_inputs()
+    a = budget.need(t, 3600, 2, 4, 13)
+    lat = a["blocks"]["training, latent arms"]["hours"]
+    assert a["single"]["training_hours"] == pytest.approx(1.5 * lat)
+
+
+def test_the_decoder_floor_is_one_projected_rollout_of_long_test_and_ood_per_primary_autoencoder():
+    t = flat_inputs(step=0.1)
+    n_ae = sum(1 for s in budget.ae_specs() if s["kind"] == "study" and s["key"] == budget.P_KEY)
+    per = (1 * 60 + 1 * 30) * 200 * 0.1 / 3600
+    assert budget.need(t, 3600, 1, 4, 13)["blocks"]["decoder-only floor"]["hours"] == pytest.approx(n_ae * per)
