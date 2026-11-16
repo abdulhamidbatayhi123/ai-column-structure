@@ -146,3 +146,12 @@ def test_session_hours_add_the_start_up_of_every_session_a_job_needs():
     # a 23-hour job needs 3 sessions of at most 11 h of work; each pays the start-up
     assert budget.job_sessions(23.0) == 3 and budget.job_sessions(0.5) == 1
     assert budget.session_hours([23.0, 0.5], startup_s=360.0) == pytest.approx(23.5 + 4 * 0.1)
+
+
+def test_each_arm_is_evaluated_at_its_own_measured_batched_step_when_there_is_one():
+    t = flat_inputs(step=0.1)
+    t["step"] = {"U": {"h1|b48": {"wall_s_per_interval": 0.01}, "h2|b48": {"wall_s_per_interval": 0.02}}}
+    expect_u = (6 + 60 + 60) * 200 * 0.01 / 3600
+    assert budget.latent_eval_hours(t, "B", h=1, n_arms=1, arm="U") == pytest.approx(expect_u)
+    assert budget.latent_eval_hours(t, "B", h=1, n_arms=1, arm="P") == pytest.approx(expect_u * 10)  # S's step
+    assert budget.latent_eval_hours(t, "B", h=4, n_arms=1, arm="U") == pytest.approx(expect_u * 4)   # a + b h

@@ -41,3 +41,11 @@ def test_quick_run_reports_every_cost_block_and_no_error_values(tmp_path):
     for word in ("nrmse", "eps_W", "balance_N", "field_err"):
         assert word not in flat
     assert all(math.isfinite(v["wall_s_per_iteration"]) for v in res["train"].values())
+
+
+def test_quick_run_times_the_batched_rollout_step_of_every_arm(tmp_path):
+    res = tc.main(["--quick", "--out", str(tmp_path / "t.json")])
+    for arm in tc.QUICK["arms"]:
+        r = res["step"][arm]
+        assert ("error" in r) or all(r[f"h{h}|b48"]["wall_s_per_interval"] > 0 for h in (1, 2))
+    assert "error" not in res["step"]["U"]
