@@ -130,7 +130,10 @@ def write_kernels(spec: dict) -> list[dict]:
     """Chunk jobs: one kernel per chunk, split over the 4 CPU cores of a Kaggle session. Command jobs
     ({"name", "commands", "expect"}): one kernel running each command as its own process; arguments
     starting with OUT/ point into the kernel's output directory."""
-    names = {j["name"] for j in spec["jobs"] if "name" in j}
+    if spec.get("pack"):
+        spec = {**spec, "jobs": pack_jobs(spec["jobs"], int(spec["pack"]))}
+    names = {j["name"] for j in spec["jobs"] if "name" in j} | {
+        m["name"] for j in spec["jobs"] for m in j.get("members", ())}
     outside = sorted({d for j in spec["jobs"] for d in j.get("depends_on", ()) if d not in names})
     if outside:                     # the queue tracks producers only within one file: such a job would never run
         raise ValueError(f"jobs depend on {', '.join(outside)}, which are not in this jobs file; queue them "
@@ -149,7 +152,8 @@ def write_kernels(spec: dict) -> list[dict]:
                             "set": job.get("set", job["name"]), "expect": job["expect"],
                             "depends_on": list(job.get("depends_on", ())), "commands": job["commands"],
                             "threads": job.get("threads", 1), "resumable": bool(job.get("resumable", False)),
-                            "kit_name": spec["kit_slug"].split("/")[-1], "r": 0})
+                            "kit_name": spec["kit_slug"].split("/")[-1], "r": 0,
+                            **({"members": job["members"]} if job.get("members") else {})})
             continue
         with open(os.path.join(ROOT, "data", "design", f"{job['system']}_{job['set']}.json")) as f:
             n_traj = len(json.load(f)["points"])
@@ -225,11 +229,110 @@ def download_failed(text: str) -> bool:
     return bool(re.search(r"\b(429|5\d\d)\b|too many requests|error|timed out|timeout", text, re.I))
 
 
+# ---- four one-thread jobs per session (PREREG Section 11; freeze decision 2, option (i)) ----------------
+def _in_member(arg, member: str):
+    """A command argument with the kernel's output directory moved into the member's own folder."""
+    if arg == "OUT":
+        return f"OUT/{member}"
+    if isinstance(arg, str) and arg.startswith("OUT/"):
+        return f"OUT/{member}/{arg[4:]}"
+    return arg
+
+
+def pack_jobs(jobs: list, size: int = 4) -> list:
+    """Command jobs packed `size` to a kernel, by dependency level (a pack never waits for itself), in the
+    jobs' order. Each member keeps its commands, writing into OUT/<member>, and its expected files under
+    <member>/; the pack depends on the member jobs outside it that its members need, and is resumable
+    when any member is. Chunk jobs pass through unchanged."""
+    import hashlib
+    cmd = [j for j in jobs if "commands" in j]
+    names = {j["name"] for j in cmd}
+    by = {j["name"]: j for j in cmd}
+    level = {}
+
+    def lev(n, seen=()):
+        if n not in level:
+            if n in seen:
+                raise ValueError(f"dependency cycle through {n}")
+            level[n] = 1 + max([lev(d, seen + (n,)) for d in by[n].get("depends_on", ()) if d in names], default=-1)
+        return level[n]
+    for j in cmd:
+        lev(j["name"])
+    packs = []
+    for lv in sorted(set(level.values())):
+        group = [j for j in cmd if level[j["name"]] == lv]
+        for a in range(0, len(group), size):
+            ms = group[a:a + size]
+            member_names = [m["name"] for m in ms]
+            name = "p3b-pk-" + hashlib.sha1("|".join(member_names).encode()).hexdigest()[:12]
+            members = [{"name": m["name"], "commands": [[_in_member(x, m["name"]) for x in c] for c in m["commands"]],
+                        "expect": [f"{m['name']}/{e}" for e in m["expect"]], "resumable": bool(m.get("resumable")),
+                        "depends_on": list(m.get("depends_on", ()))} for m in ms]
+            deps = []
+            for m in ms:
+                deps += [d for d in m.get("depends_on", ()) if d not in member_names and d not in deps]
+            packs.append({"name": name, "system": "pack", "set": name, "threads": 1, "members": members,
+                          "commands": [c for m in members for c in m["commands"]],
+                          "expect": [e for m in members for e in m["expect"]], "depends_on": deps,
+                          "resumable": any(m["resumable"] for m in members)})
+    return [j for j in jobs if "commands" not in j] + packs
+
+
+def has_file(d: str, rel: str) -> bool:
+    """Whether `rel` (a file name, or <member>/<file>) is under directory d, at any depth."""
+    rel = rel.replace("\\", "/")
+    for root, _, fs in os.walk(d):
+        for f in fs:
+            p = os.path.relpath(os.path.join(root, f), d).replace("\\", "/")
+            if p == rel or p.endswith("/" + rel):
+                return True
+    return False
+
+
+def member_dir(d: str, member: str):
+    """The folder a packed member wrote into, under a downloaded output; None when absent."""
+    for root, dirs, _ in os.walk(d):
+        if member in dirs:
+            return os.path.join(root, member)
+    return None
+
+
+def pack_continuation(k: dict, members: list, kit_slug: str, producer: dict | None = None) -> dict:
+    """The next session of a packed kernel: only `members` (each left a RESUME.json), their commands with
+    --resume-from /kaggle/input, the previous session's output and their dependencies' producers attached."""
+    n = k.get("r", 0) + 1
+    name = f"{k['base']}-r{n}"
+    d = os.path.join(BUILD, name)
+    os.makedirs(d, exist_ok=True)
+    ms = [m for m in k["members"] if m["name"] in members]
+    cmds = [list(c) + ["--resume-from", "/kaggle/input"] for m in ms for c in m["commands"]]
+    with open(os.path.join(d, "run.py"), "w") as f:
+        f.write(RUN_CMDS_PY.format(cmds=cmds, kit_name=k["kit_name"], threads=k.get("threads", 1)))
+    deps = []
+    for m in ms:
+        deps += [x for x in m["depends_on"] if x not in deps]
+    nk = {**k, "name": name, "dir": d, "r": n, "prev": k["name"], "members": ms, "commands": cmds,
+          "expect": [e for m in ms for e in m["expect"]], "depends_on": deps}
+    point_sources(nk, kit_slug, producer or {})
+    return nk
+
+
 def log(msg: str) -> None:
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}"
     print(line, flush=True)
     with open(REG, "a") as f:
         f.write(line + "\n")
+
+
+def mems(k: dict) -> list:
+    """The logical jobs a kernel runs: its packed members, or itself."""
+    return [m["name"] for m in k["members"]] if k.get("members") else [k["base"]]
+
+
+def member_deps(k: dict, m: str) -> list:
+    if k.get("members"):
+        return next(x["depends_on"] for x in k["members"] if x["name"] == m)
+    return list(k.get("depends_on", ()))
 
 
 def main(jobs_file: str) -> None:
@@ -258,6 +361,14 @@ def main(jobs_file: str) -> None:
             return all(e in names for e in k["expect"])
         return sum(f.endswith("_report.json") for f in names) >= k["expected_reports"]
 
+    def member_done(k, m, name=None):
+        """Whether logical job m's expected files are in the download of kernel `name` (default k)."""
+        d = out_dir({**k, "name": name or k["name"]})
+        if not k.get("members"):
+            return is_done({**k, "name": name or k["name"]})
+        exp = next(x["expect"] for x in k["members"] if x["name"] == m)
+        return os.path.isdir(d) and all(has_file(d, e) for e in exp)
+
     def resumed(k):
         d = out_dir(k)
         return k.get("resumable") and os.path.isdir(d) and any("RESUME.json" in fs for _, _, fs in os.walk(d))
@@ -272,10 +383,61 @@ def main(jobs_file: str) -> None:
         return k["name"] if is_done(k) else None
 
     # logical job -> the kernel whose output holds its expected files (a continuation keeps its base)
-    producer = {k["base"]: p for k in kernels for p in [replay(k)] if p}
+    producer = {k["base"]: p for k in kernels if not k.get("members") for p in [replay(k)] if p}
+    for k in kernels:                     # packed members: in the pack's download or one of its continuations
+        if k.get("members"):
+            for m in mems(k):
+                for n in [f"{k['base']}-r{i}" for i in range(MAX_CONTINUATIONS, 0, -1)] + [k["name"]]:
+                    if member_done(k, m, n):
+                        producer[m] = n
+                        break
     done = set(producer)
     attention = set()                     # kernels left for a person to look at (logged once)
+    attention_members = set()             # packed members left for a person (the rest of the pack goes on)
     misses = {}                           # COMPLETE polls of a kernel that left nothing usable
+
+    def pack_complete(i, k):
+        """A packed kernel's download: finished members are done; members that left a RESUME.json and
+        advanced continue in one continuation kernel; members with neither are flagged (after one more
+        poll, as a download can be incomplete) while the rest of the pack goes on."""
+        d = out_dir(k)
+        for m in open_members(k):
+            if member_done(k, m):
+                done.add(m)
+                producer[m] = k["name"]
+        rest = [m for m in open_members(k) if m not in attention_members]
+        if not rest:
+            log(f"{k['name']} output downloaded")
+            return
+        by = {x["name"]: x for x in k["members"]}
+        res = {m: member_dir(d, m) for m in rest}
+        res = {m: x for m, x in res.items() if x and by[m]["resumable"] and os.path.exists(os.path.join(x, "RESUME.json"))}
+        lost = [m for m in rest if m not in res]
+        if lost:
+            misses[k["name"]] = misses.get(k["name"], 0) + 1
+            if misses[k["name"]] < 2:                     # one more poll first: a download can be incomplete
+                return
+            for m in lost:
+                attention_members.add(m)
+                log(f"{m} (in {k['name']}) ended without its expected output or a usable RESUME.json: needs attention")
+        prev = k.get("progress") or {}
+        go = []
+        for m, x in res.items():
+            prog = resume_progress(x)
+            if prog is not None and prev.get(m) is not None and not prog > prev[m]:
+                attention_members.add(m)
+                log(f"{m} (in {k['name']}) ended with RESUME.json at {prog}, no further than before: needs attention")
+            elif k.get("r", 0) >= MAX_CONTINUATIONS:
+                attention_members.add(m)
+                log(f"{m} (in {k['name']}) still unfinished after {k.get('r', 0) + 1} sessions: needs attention")
+            else:
+                go.append((m, prog))
+        if go:
+            kernels[i] = {**pack_continuation(k, [m for m, _ in go], spec["kit_slug"], producer),
+                          "progress": {m: p for m, p in go}}
+            log(f"{k['name']} ended with RESUME.json for {', '.join(m for m, _ in go)}: continues as {kernels[i]['name']}")
+        elif not any(m not in attention_members for m in open_members(k)):
+            attention.add(k["name"])
 
     def flag(k, why):
         if k["name"] not in attention:
@@ -284,23 +446,27 @@ def main(jobs_file: str) -> None:
 
     def stuck() -> set:
         """Logical jobs that cannot finish without a person: flagged ones and those depending on them."""
-        out = {k["base"] for k in kernels if k["name"] in attention}
+        out = set(attention_members) | {m for k in kernels if k["name"] in attention for m in mems(k) if m not in done}
         grew = True
         while grew:
             grew = False
             for k in kernels:
-                if k["base"] not in out and any(d in out for d in k.get("depends_on", ())):
-                    out.add(k["base"])
-                    grew = True
+                for m in mems(k):
+                    if m not in out and m not in done and any(d in out for d in member_deps(k, m)):
+                        out.add(m)
+                        grew = True
         return out
 
-    while len(done) < len(kernels):
+    def open_members(k):
+        return [m for m in mems(k) if m not in done]
+
+    while any(open_members(k) for k in kernels):
         blocked = stuck()
-        if all(k["base"] in done or k["base"] in blocked for k in kernels):
-            log(f"QUEUE_STOPPED: {', '.join(sorted(attention))} need attention")
+        if all(m in blocked for k in kernels for m in open_members(k)):
+            log(f"QUEUE_STOPPED: {', '.join(sorted(attention | attention_members))} need attention")
             return
         status = {k["name"]: parse_status(run("kernels", "status", f"{OWNER}/{k['name']}"))
-                  for k in kernels if k["base"] not in done and k["name"] not in attention}
+                  for k in kernels if open_members(k) and k["name"] not in attention}
         busy = sum(s in ("RUNNING", "QUEUED") for s in status.values())
         for i, k in enumerate(kernels):
             s = status.get(k["name"])
@@ -313,7 +479,9 @@ def main(jobs_file: str) -> None:
                 if empty and download_failed(got):         # nothing learnt about the output: poll again
                     print(f"{k['name']}: download failed ({got[-120:]}), retried at the next poll", flush=True)
                     continue
-                if is_done(k):
+                if k.get("members"):
+                    pack_complete(i, k)
+                elif is_done(k):
                     done.add(k["base"])
                     producer[k["base"]] = k["name"]
                     log(f"{k['name']} output downloaded")
@@ -344,8 +512,9 @@ def main(jobs_file: str) -> None:
                     log(f"{k['name']} pushed")
                 else:
                     log(f"{k['name']} push not accepted yet: {out[-160:]}")
-        print(time.strftime("%H:%M:%S"), f"done {len(done)}/{len(kernels)}", flush=True)
-        if len(done) < len(kernels):
+        print(time.strftime("%H:%M:%S"), f"done {len(done)}, open {sum(len(open_members(k)) for k in kernels)}",
+              flush=True)
+        if any(open_members(k) for k in kernels):
             time.sleep(300)
     log("ALL_OUTPUTS_DOWNLOADED")
 
