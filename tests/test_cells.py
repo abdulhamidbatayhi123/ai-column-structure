@@ -100,3 +100,18 @@ def test_the_ceiling_is_1300_kaggle_cpu_hours_by_default():
     from p3b.train.cells import CEILING_H
     assert CEILING_H == 1300.0
     assert inspect.signature(plan_reductions).parameters["ceiling_h"].default == CEILING_H
+
+
+def test_the_autoencoder_loss_sensitivity_is_costed_and_reduced_in_its_registered_place():
+    """PREREG Section 6 (R1): U and S with a plain-MSE autoencoder, primary system, full data, 3 seeds;
+    compute_3B Section 3: removed fifth, after the latent-dimension sensitivity and before MUSCL-C."""
+    from p3b.train.cells import sensitivity_cells
+    sens = sensitivity_cells()
+    ae = [c for c in sens if c.arm.endswith("|aemse")]
+    assert sorted((c.arm, c.seed) for c in ae) == [(a, s) for a in ("S|aemse", "U|aemse") for s in range(3)]
+    assert all((c.system, c.material, c.size) == ("A", "MOF-303", "full") for c in ae)
+    assert REDUCTION_ORDER.index("autoencoder-loss sensitivity") == REDUCTION_ORDER.index("latent-dimension sensitivity") + 1
+    assert REDUCTION_ORDER.index("MUSCL-C") == REDUCTION_ORDER.index("autoencoder-loss sensitivity") + 1
+    kept = apply_reductions(sens, ["autoencoder-loss sensitivity"])
+    assert not any(c.arm.endswith("|aemse") for c in kept) and len(kept) == len(sens) - 6
+    assert job_name(ae[0]).startswith("p3b-") and len({job_name(c) for c in sens}) == len(sens)
