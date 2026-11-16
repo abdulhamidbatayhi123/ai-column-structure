@@ -56,9 +56,13 @@ def evaluation_jobs(cs, sets=GATED_SETS, kit_slug: str = KIT) -> dict:
     autoencoder job. The file carries those training and autoencoder jobs too (build_jobs): run_queue
     tracks producers within one jobs file only, and replays the finished ones from their downloads (the
     last continuation of a resumed cell) without pushing them again (T8 fix review)."""
+    from p3b.design import SET_SIZES
+    from p3b.train.cells import DESIGN_NAME
     jobs = list(build_jobs(cs, kit_slug)["jobs"])
     for c in cs:
         for set_name in sets:
+            if (DESIGN_NAME[(c.system, c.material)], set_name) not in SET_SIZES:
+                continue                                  # no such set for this system: no empty kernel
             n = f"{job_name(c)}-{set_name.replace('_', '')}"
             deps = [job_name(c)] + ([ae_job_name(c)] if c.arm in LEARNED_WITH_AE else [])
             jobs.append({"name": n, "system": "evaluate", "set": n, "threads": 4, "depends_on": deps,
