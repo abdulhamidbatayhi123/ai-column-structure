@@ -3,7 +3,7 @@ one thread, with the code after R3. It reports costs only (seconds), never an er
 
 - every latent arm, seconds per training iteration at d = 64 (the largest d of the gate's grid, so an upper
   bound for the study's d), h = 1 and 2 (scripts/time_arms.py's procedure);
-- S's rollout step at d = 64, batch 1 and 48;
+- S's rollout step at d = 64, batch 1 and 48, and every latent arm's at batch 48;
 - arm C on 16, 32, 64 and 128 cells and MUSCL-C on 32 and 64, CPU seconds per cycle, one test-set point
   per system key (p3b.solvers.coarse.run_c);
 - the reference after R3 at the registered grids (A 2048, B 1024 cells), CPU seconds per cycle;
@@ -146,6 +146,12 @@ def main(argv=None):
                             warmup=s["warmup"])
     res["train"] = t["train"]
     res["step_S"] = time_arms.time_batched(data, s["q"], list(s["batch"]))
+    res["step"] = {}
+    for arm in s["arms"]:                       # every arm's batched rollout step (the evaluation's cost)
+        try:
+            res["step"][arm] = time_arms.time_batched(data, s["q"], [max(s["batch"])], arm_name=arm)
+        except Exception as exc:                # an arm whose step this probe cannot drive: S's is used
+            res["step"][arm] = {"error": f"{type(exc).__name__}: {exc}"}
     res.update(time_solvers(s))
     res["reference"] = time_reference(s)
     res["ae"] = time_ae(data, s)

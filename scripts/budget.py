@@ -201,15 +201,18 @@ def _cl_eval_s_per_traj_cycle(t: dict, K: int) -> float:
     return per(k1) + (per(k2) - per(k1)) * (K - k1) / (k2 - k1)
 
 
-def _step_s(t: dict, h: int) -> float:
-    s1, s2 = (t["step_S"][f"h{k}|b{BATCH}"]["wall_s_per_interval"] for k in (1, 2))
+def _step_s(t: dict, h: int, arm: str = "S") -> float:
+    """An arm's measured batched rollout step (48 trajectories), linear in h through h = 1 and 2; S's step
+    where the arm's own was not measured (an upper bound for the unstructured arms)."""
+    own = t.get("step", {}).get("U" if arm == "U-long" else arm)
+    src = own if own and "error" not in own else t["step_S"]
+    s1, s2 = (src[f"h{k}|b{BATCH}"]["wall_s_per_interval"] for k in (1, 2))
     return s1 + (s2 - s1) * (h - 1)
 
 
-def latent_eval_hours(t: dict, key: str, h: int, n_arms: int) -> float:
-    """Batched rollouts (48 trajectories per tensor) of every evaluated set; S's measured batched step is
-    used for every latent arm (an upper bound: U's step is cheaper)."""
-    s = _step_s(t, h)
+def latent_eval_hours(t: dict, key: str, h: int, n_arms: int, arm: str = "S") -> float:
+    """Batched rollouts (48 trajectories per tensor) of every evaluated set at the arm's batched step."""
+    s = _step_s(t, h, arm)
     return n_arms * sum(math.ceil(n / BATCH) * cyc * N_SNAP * s for n, cyc in SETS[key].values()) / 3600
 
 
@@ -262,10 +265,12 @@ def need(t: dict, iterations: int, h: int, K: int, n_css: int = 13, startup_s: f
     ev_lat, n_eval_jobs = [], 0
     for arm, cs in runs.items():
         for key, size in cs:
-            extra = 1 if (arm == "U" and key == P_KEY and size in ("full", 32)) or arm == "U+F" else 0
-            ev_lat.append(latent_eval_hours(t, key, h, 1 + extra))
+            ev_lat.append(latent_eval_hours(t, key, h, 1, arm))
+            if (arm == "U" and key == P_KEY and size in ("full", 32)) or arm == "U+F":
+                ev_lat.append(latent_eval_hours(t, key, h, 1, "S"))   # U+proj, U+F+proj: S's projected step
             n_eval_jobs += 3                                   # one job per cell and GATED set (train_jobs)
-    blocks["evaluation, latent arms"] = {"hours": sum(ev_lat), "note": "S's batched step for every arm (upper bound)"}
+    blocks["evaluation, latent arms"] = {"hours": sum(ev_lat),
+                                         "note": "each arm's batched step; S's for the projected arms and any arm not timed"}
     ev_sol = [solver_eval_hours(t, arm, key) for arm in ("C", "MUSCL-C") for key, _, n in CELL_DESIGN[arm] for _ in range(n)]
     cl_tc = _cl_eval_s_per_traj_cycle(t, K)
     ev_sol += [_traj_cycles(key) * cl_tc / 3600 for key, _, n in CELL_DESIGN["C+L"] for _ in range(n)]
@@ -273,7 +278,7 @@ def need(t: dict, iterations: int, h: int, K: int, n_css: int = 13, startup_s: f
     blocks["evaluation, solver arms"] = {"hours": sum(ev_sol)}
     # H6: every design of every scenario rolled out to the cyclic steady state, optima and Sobol by the reference
     sc, de = H6["scenarios"], H6["designs"]
-    h6_lat = sum(H6["seeds"][a] for a in H6["latent_arms"]) * math.ceil(de / BATCH) * n_css * N_SNAP * _step_s(t, h)
+    h6_lat = sum(H6["seeds"][a] * _step_s(t, h, a) for a in H6["latent_arms"]) * math.ceil(de / BATCH) * n_css * N_SNAP
     h6_c = de * n_css * max(t["C"][f"{P_KEY}|32"]["cycle_cpu_s"])
     h6_cl = H6["seeds"]["C+L"] * de * n_css * cl_tc
     h6_ref = (H6["sobol"] + sum(H6["seeds"].values())) * n_css * _ref_s(t, P_KEY)
@@ -306,7 +311,7 @@ def load_inputs(results: str) -> dict:
     if tc:
         t["train"].update(tc["train"])
         t["step_S"] = tc["step_S"]
-        for k in ("C", "MUSCL-C", "ae", "reference"):
+        for k in ("C", "MUSCL-C", "ae", "reference", "step"):
             t[k] = tc[k]
         t["sources"]["train"] = f"timing_ceiling.json (d = {tc['settings']['q']['d']}) for its arms"
     return t
