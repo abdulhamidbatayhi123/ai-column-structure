@@ -314,6 +314,14 @@ def load_inputs(results: str) -> dict:
         for k in ("C", "MUSCL-C", "ae", "reference", "step"):
             t[k] = tc[k]
         t["sources"]["train"] = f"timing_ceiling.json (d = {tc['settings']['q']['d']}) for its arms"
+        ref = rd("timing_reference.json")
+        if ref:                                  # the probe timed one point per key: the earlier records stay a floor
+            a_max = ref["data_cost_decision"]["system_A_2048_exact_max"]
+            nz_b = ref["data_cost_decision"]["N_z_B"]
+            b_max = max([r["cpu_s"] for r in ref["records"] if r["system"] == "B" and r["N_z"] == nz_b and r.get("ok")],
+                        default=0.0)
+            t["reference"] = {k: {**v, "cycle_cpu_s": list(v["cycle_cpu_s"]) + [b_max if k == B_KEY else a_max]}
+                              for k, v in t["reference"].items()}
     return t
 
 
