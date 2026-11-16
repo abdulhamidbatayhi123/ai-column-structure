@@ -176,3 +176,8 @@ def test_the_reference_cost_is_the_slowest_of_the_r3_probe_and_the_earlier_recor
     got = budget.load_inputs(str(tmp_path))
     assert max(got["reference"]["A_MOF-303"]["cycle_cpu_s"]) == 26.0
     assert max(got["reference"]["B"]["cycle_cpu_s"]) == 1.5          # only the registered grid (1024 cells)
+
+
+def test_packed_session_hours_divide_the_work_by_the_measured_throughput():
+    # four one-thread jobs per session at 2.0 x one job's throughput; a quarter of the sessions pay the start-up
+    assert budget.packed_session_hours(100.0, sessions=40, throughput=2.0, startup_s=360.0) == pytest.approx(50.0 + 10 * 0.1)
