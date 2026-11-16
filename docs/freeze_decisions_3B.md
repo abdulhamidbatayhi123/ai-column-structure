@@ -1,6 +1,6 @@
 # Paper 3B: decisions for the author before the freeze
 
-Updated 2026-11-10. Each item says what is decided, the evidence, the options and when it must be
+Updated 2026-11-16 (R1 wording after the pre-freeze review T8). Each item says what is decided, the evidence, the options and when it must be
 decided. Numbers are from the files named.
 
 ## Decisions taken (author, 2026-11-12; "quality over everything")

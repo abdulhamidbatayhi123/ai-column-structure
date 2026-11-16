@@ -1,11 +1,12 @@
 # Pre-registration (Stage-1 draft): does thermodynamic structure help a learned reduced model of an open dissipative system through the constraint, the information, or the projection?
 
 **Status.** Draft, approved by the author on 2026-11-05, not frozen. The author asked that the
-design keep improving until the freeze. This version (2026-11-08) answers:
+design keep improving until the freeze. The Stage-1 version (2026-11-08) answers:
 - a top-journal referee round (`research/review_round3_referee_2026-11-05.md`);
 - an independent Claude Science review (hub `projects/ai-column-structure/REVIEW_cs.md`).
 
-Each change is in `docs/prereg_rationale_3B.md`, which also holds every reason, so the rules
+Revisions R1 to R3 (2026-11-12 to 2026-11-16, Section 12) followed the first pilot pass. Each change
+is in `docs/prereg_rationale_3B.md`, which also holds every reason, so the rules
 here stay operational. The freeze happens after the pilot (Section 10) and before any
 confirmatory data: this file is copied to `PREREG_P3B.md`, and its commit hash and SHA-256 are
 recorded. Values marked ⟨pilot⟩ are set by the rules in Section 10. If the study goes to a

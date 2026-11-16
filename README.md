@@ -19,21 +19,21 @@ measures what each part buys in long multi-cycle stability, data efficiency, sho
 accuracy and design decisions. Every hypothesis, metric, threshold and verdict word is fixed
 in advance, so a negative answer is as publishable as a positive one.
 
-## Status (2026-11-09)
+## Status (2026-11-16)
 
-**Design complete; the full study pipeline, including the pilot runner, is implemented, reviewed and tested; the pilot data are being generated. No confirmatory data exist yet.**
+**Design complete; the full study pipeline, including the pilot runner, is implemented, reviewed and tested. Three pre-freeze revisions (R1 to R3, pre-registration Section 12) changed the autoencoder loss, the compute ceiling and the packed-bed heat transfer, so the pilot data are being regenerated. No confirmatory data exist yet.**
 
 | step | state |
 |---|---|
 | literature review and gap | done; checked live, two reference-audit rounds plus an independent Claude Science review; Lyon prior art read in full |
 | thermodynamic formulation, both systems | done; three independent review rounds; verified numerically (`verify/`, CI on every push) |
 | materials | fitted to the published isotherms (`docs/materials_3B.md`) |
-| pre-registration | approved by the author 2026-11-05; Stage-1 revision of 2026-11-08 |
-| study code (`p3b/`) | reference simulators with an exact sparse Jacobian, latent model and every arm, training, evaluation, statistics, pilot rules, power simulation and Kaggle jobs; each plan reviewed independently; 469 tests pass (local, 2026-11-11) |
+| pre-registration | approved by the author 2026-11-05; Stage-1 revision of 2026-11-08; pre-freeze revisions R1 to R3 (2026-11-12 to 2026-11-16), each with its reason in `docs/prereg_rationale_3B.md` |
+| study code (`p3b/`) | reference simulators with an exact sparse Jacobian, latent model and every arm, training, evaluation, statistics, pilot rules, power simulation and Kaggle jobs; each plan reviewed independently, plus a pre-freeze adversarial review (33 findings, fixes tested); the full suite runs on Kaggle from clean public clones with pinned versions (`kaggle/ci.py`) |
 | reference timing on Kaggle | done: system A 18 to 26 CPU-s per cycle at 2048 cells, so the data-cost contingency is not applied (`docs/compute_3B.md`) |
-| pilot (data, learning rates, step size, variance, thresholds, decoder gate) | runner complete and independently reviewed: five Kaggle phases with a blinded collector (`kaggle/pilot_jobs.py`, `scripts/pilot_collect.py`); pilot data generation running on Kaggle |
+| pilot (data, learning rates, step size, variance, thresholds, decoder gate) | runner complete and independently reviewed: five Kaggle phases with a blinded collector (`kaggle/pilot_jobs.py`, `scripts/pilot_collect.py`); first pass superseded by R1 to R3, data being regenerated |
 | freeze | after the pilot, before any confirmatory data |
-| confirmatory study | about 750 to 1,160 CPU-hours measured in the pilot (ceiling 1,300), on Kaggle CPU |
+| confirmatory study | about 750 to 1,160 Kaggle CPU-hours estimated from pilot timings, to be re-measured before the freeze (hard ceiling 1,300) |
 
 ## The design in brief
 
@@ -55,8 +55,9 @@ in advance, so a negative answer is as publishable as a positive one.
    - **FNO:** Paper 1's strongest field model;
    - **C:** a compensated coarse consistent solver with no learning;
    - **C+L:** C with a learned non-negative closure.
-4. **Verdicts fixed in advance.** A 14-row ordered decision list maps every outcome to one
-   headline (checked over all 64 combinations by `verify/check_decision_list.py` in CI).
+4. **Verdicts fixed in advance.** A 14-row ordered decision list (rows 8 and 10 split on H3a) maps
+   every outcome to one headline (checked over all 720 combinations by `verify/check_decision_list.py`
+   in CI).
    Consistency words qualify each headline on the second isotherm and on the second system.
 5. **A decision endpoint.** Each surrogate optimises the cycle, and the reference measures
    the regret.
