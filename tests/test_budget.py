@@ -64,3 +64,85 @@ def test_session_throughput_from_the_concurrency_timing():
     t2 = {"concurrent": {"S|h2|n1": {"wall_s_per_iteration": [4.0]},
                          "S|h2|n4": {"wall_s_per_iteration": [8.0, 8.0, 8.0, 8.0]}}}
     assert budget.session_throughput(t2, "S", 4) == pytest.approx(2.0)   # 4 jobs, each twice as slow
+
+
+# ---- the whole need from a script (T8 DOC-2, DOC-7, R1-6) ---------------------------------------------
+def flat_inputs(s=1.0, step=0.1, c=2.0, ae_epoch=60.0, ref_a=30.0, ref_b=2.0):
+    """Every latent arm s s per iteration (h = 1 and 2 alike), S's batched step `step` s per interval,
+    C and MUSCL-C c CPU-s per cycle on every grid, one full-data autoencoder epoch ae_epoch s."""
+    arms = ARMS
+    keys = ("A_MOF-303", "A_Al-fumarate", "B")
+    return {
+        "train": {f"{a}|h{k}|t1": {"wall_s_per_iteration": s} for a in arms for k in (1, 2)},
+        "step_S": {f"h{k}|b48": {"wall_s_per_interval": step} for k in (1, 2)},
+        "C": {f"{key}|{g}": {"ok": True, "cycle_cpu_s": [c, c]} for key in keys for g in (16, 32, 64, 128)},
+        "MUSCL-C": {f"{key}|{g}": {"ok": True, "cycle_cpu_s": [c, c]} for key in keys for g in (32, 64)},
+        "ae": {f"{sy}|w{w}": {"epoch_s": ae_epoch} for sy in ("A", "B") for w in (0, 1)},
+        "reference": {"A_MOF-303": {"cycle_cpu_s": [ref_a]}, "A_Al-fumarate": {"cycle_cpu_s": [ref_a]},
+                      "B": {"cycle_cpu_s": [ref_b]}},
+        "cl_train": {"K1": {"wall_s_per_iter": 3.0}, "K4": {"wall_s_per_iter": 9.0}},
+        "cl_eval": {"n_traj": 16, "cycles": 2, "K1": {"wall_s": 32.0}, "K8": {"wall_s": 32.0 * 8}},
+    }
+
+
+def test_autoencoder_jobs_of_the_study_the_gate_wave_and_the_sensitivities():
+    specs = budget.ae_specs()
+    kind = lambda k: [s for s in specs if s["kind"] == k]  # noqa: E731
+    assert len(kind("study")) == 35                      # one per (system, material, size, seed) of the learned cells
+    assert len(kind("gate")) == 65                       # (5 + 3 + 5) full-data seeds x 5 d (cells.gate_specs)
+    assert len(kind("sensitivity")) == 9                 # degraded data, next d, plain MSE (R1): 3 each
+    assert sum(s["weight"] == 0 for s in specs) == 3     # only R1's sensitivity trains with plain MSE
+    assert all(s["weight"] == 1 for s in kind("study") + kind("gate"))
+
+
+def test_autoencoder_hours_scale_with_the_pool_size():
+    t = flat_inputs(ae_epoch=60.0)                       # 60 epochs x 60 s = 1 h at full data (256 trajectories)
+    full = {"kind": "study", "system": "A", "size": "full", "weight": 1}
+    assert budget.ae_hours(t, [full]) == pytest.approx(1.0)
+    assert budget.ae_hours(t, [dict(full, size=32)]) == pytest.approx(32 / 256)
+
+
+def test_c_plus_l_training_hours_come_from_the_measured_k():
+    t = flat_inputs()
+    assert budget.cplusl_run_hours(t, iterations=3600, K=1) == pytest.approx(3.0)
+    assert budget.cplusl_run_hours(t, iterations=3600, K=4) == pytest.approx(9.0)
+    with pytest.raises(KeyError):
+        budget.cplusl_run_hours(t, iterations=3600, K=2)  # not measured: never guessed
+
+
+def test_latent_evaluation_of_one_cell_counts_batches_cycles_and_intervals():
+    t = flat_inputs(step=0.1)
+    # B: validation 32 x 6, long validation 4 x 60, long test 48 x 60, each one batch of <= 48 trajectories
+    expect = (6 + 60 + 60) * 200 * 0.1 / 3600
+    assert budget.latent_eval_hours(t, "B", h=1, n_arms=1) == pytest.approx(expect)
+    # A-primary adds the OOD set (24 x 30); U+proj doubles the rollouts of a U cell
+    expect_a = (6 + 60 + 60 + 30) * 200 * 0.1 / 3600
+    assert budget.latent_eval_hours(t, "A_MOF-303", h=1, n_arms=2) == pytest.approx(2 * expect_a)
+
+
+def test_solver_evaluation_uses_the_slowest_measured_cycle():
+    t = flat_inputs(c=2.0)
+    t["C"]["B|16"]["cycle_cpu_s"] = [2.0, 5.0]
+    tc_b = 32 * 6 + 4 * 60 + 48 * 60
+    assert budget.solver_eval_hours(t, "C", "B") == pytest.approx(tc_b * (5.0 + 2.0 * 3) / 3600)
+    assert budget.solver_eval_hours(t, "MUSCL-C", "A_MOF-303") == pytest.approx(
+        (tc_b + 24 * 30) * 2.0 * 2 / 3600)
+
+
+def test_need_lists_every_block_and_sums_them_for_each_h():
+    t = flat_inputs()
+    for h in (1, 2, 4):
+        n = budget.need(t, iterations=3600, h=h, K=4, n_css=13)
+        assert set(n["blocks"]) == {"training, latent arms", "training, C+L", "autoencoders", "evaluation, latent arms",
+                                    "evaluation, solver arms", "H6 searches and reference checks",
+                                    "reference data (confirmatory sets)"}
+        assert n["total_run_hours"] == pytest.approx(sum(b["hours"] for b in n["blocks"].values()))
+        assert n["sessions"] >= n["kernels"] > 0
+    assert budget.need(t, 3600, 4, 4, 13)["total_run_hours"] == pytest.approx(
+        budget.need(t, 3600, 2, 4, 13)["total_run_hours"])   # flat timing: h does not change the cost here
+
+
+def test_session_hours_add_the_start_up_of_every_session_a_job_needs():
+    # a 23-hour job needs 3 sessions of at most 11 h of work; each pays the start-up
+    assert budget.job_sessions(23.0) == 3 and budget.job_sessions(0.5) == 1
+    assert budget.session_hours([23.0, 0.5], startup_s=360.0) == pytest.approx(23.5 + 4 * 0.1)

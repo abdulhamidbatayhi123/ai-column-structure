@@ -115,3 +115,19 @@ def test_the_autoencoder_loss_sensitivity_is_costed_and_reduced_in_its_registere
     kept = apply_reductions(sens, ["autoencoder-loss sensitivity"])
     assert not any(c.arm.endswith("|aemse") for c in kept) and len(kept) == len(sens) - 6
     assert job_name(ae[0]).startswith("p3b-") and len({job_name(c) for c in sens}) == len(sens)
+
+
+def test_ceiling_status_flags_a_core_that_alone_exceeds_the_ceiling():
+    """T8 DOC-3, PREREG Section 11: the reductions never touch the core; if the core alone exceeds the
+    ceiling the status says so (infeasible at the freeze; a reported deviation after it)."""
+    from p3b.train.cells import ceiling_status, sensitivity_cells
+    cs = cells() + sensitivity_cells()
+    cost = {c: 1.0 for c in cs}
+    ok = ceiling_status(spent_h=0.0, remaining=cs, cost_h=cost, ceiling_h=len(cs) + 1)
+    assert ok == {"steps": [], "fits": True, "projected_h": float(len(cs)), "excess_h": 0.0}
+    core_h = float(len(apply_reductions(cs, REDUCTION_ORDER)))
+    bad = ceiling_status(spent_h=0.0, remaining=cs, cost_h=cost, ceiling_h=core_h - 3)
+    assert bad["steps"] == REDUCTION_ORDER and not bad["fits"]
+    assert bad["projected_h"] == core_h and bad["excess_h"] == pytest.approx(3.0)
+    # plan_reductions keeps its contract (the list of steps)
+    assert plan_reductions(spent_h=0.0, remaining=cs, cost_h=cost, ceiling_h=core_h - 3) == REDUCTION_ORDER
