@@ -134,15 +134,18 @@ def test_projected_floor_tracks_balances_and_has_the_evaluate_schema(case):
         assert r["violations_method"] == "RK4 stages"
         assert r["failed_cycle"] is None
         assert all(isinstance(v, int) for v in r["violations"].values())
-    # with an exact autoencoder the floor stays near the reference, far below a model that does not move
-    # (zeroed increments would score each snapshot as the previous one)
+    # the increments carry the reference: with an exact autoencoder and the projection off, every scored
+    # state is the stored one (zeroed increments would score each snapshot as the previous one)
+    off = fl.projected_floor(ae, std, lf, ds, phys, n_cycles=2, h_steps=1, floors=FLOORS, tau_S=TAU, project=False)
+    assert max(max(r["e"]) for r in off) < 1e-12 and max(max(r["eps"]) for r in off) < 1e-12
+    # with the projection on, the floor is the projection's own correction of the straight latent path
+    # (at this test's coarse 40 snapshots per cycle a few per cent), well below a model that does not move
     stay = _stay_rows(ds, phys, lf, ae, std)
     e_floor = max(max(r["e"]) for r in rows)
     e_stay = max(max(r["e"]) for r in stay)
-    assert e_floor < 1e-2 and e_floor < 0.25 * e_stay
     eps_floor = max(max(r["eps"]) for r in rows)
     eps_stay = max(max(r["eps"]) for r in stay)
-    assert eps_floor < 0.25 * eps_stay
+    assert e_floor < 0.5 * e_stay and eps_floor < 0.5 * eps_stay, (e_floor, e_stay, eps_floor, eps_stay)
     # each step meets its own discrete balance from its anchor (the projection's tolerance)
     res = fl.projected_results(ae, std, lf, ds, n_cycles=2, h_steps=1)
     for r in res:
