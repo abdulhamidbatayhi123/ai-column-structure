@@ -604,7 +604,8 @@ Pilot errors by arm are never reported or used.
 
 ## 11. Budget and ceiling
 
-All compute runs on Kaggle (free CPU sessions). The need is computed by `scripts/budget.py` from
+All compute runs on Kaggle (free CPU sessions), as one-thread jobs packed four per session
+(`kaggle/run_queue.py`). The need is computed by `scripts/budget.py` from
 measured costs (`docs/compute_3B.md` §2 cites its output and the timing files).
 
 **The ceiling: 1,300 Kaggle session hours** (pre-freeze revision R2, Section 12). The counted quantity:
@@ -682,20 +683,18 @@ Revisions after the pilot and before the freeze, decided by the author blind to 
   (C+L, never timed before the pilot, about 108 hours alone). The ceiling became 1,300 Kaggle hours.
   - **Its basis.** It was sized on the need at h = 2 and 8,000 iterations (about 1,160 hours plus
     10 %), because h = 1 had failed S's rollouts in every timing run. The costs came from Kaggle timing
-    kernels run before the pilot (`results/timing_arms.json`, `results/timing_concurrency_batch.json`,
+    kernels (`results/timing_arms.json`, `results/timing_concurrency_batch.json`,
     `results/timing_cplusl_train.json`), not from the pilot itself. It was set before the pilot chose
-    h, the iterations or K, and before any error was seen.
+    h or the iterations, and before any error was seen. It was not set before K was known: the first
+    (pre-R1) pilot had set K = 4, and the sizing used C+L at K = 4. The pilot redone for R3 sets K again.
   - **Its unit (2026-11-16, T8 DOC-1).** The unit is now defined operationally as Kaggle session hours
     (Section 11).
-  - **Re-derived need (2026-11-16, T8 DOC-2).** `scripts/budget.py` now prices every block from
-    Kaggle timings taken after R3 (`results/timing_ceiling.json`): training at d = 64, C+L at a measured
-    K, every autoencoder, the evaluation of every set, arm C and MUSCL-C, H6 and the confirmatory
-    reference data. At h = 2, 8,000 iterations and K = 4 this is 1,587 one-run CPU hours: 1,659 session
-    hours with one job per session as implemented, or 816 with four one-thread jobs per session.
-    These were computed blind (h, the iterations, K and every error unknown; the pilot is being redone
-    for R3).
-  - **The ceiling is still 1,300.** The author's decision on it is open (`docs/freeze_decisions_3B.md`
-    §2) and is made before the pilot sets h.
+  - **Re-derived need and layout (2026-11-16, revised 2026-11-17, T8 DOC-2).** `scripts/budget.py`
+    prices the actual job list from Kaggle timings taken after R3 (`results/timing_ceiling.json`). The
+    jobs run on one thread, packed four per session (`kaggle/run_queue.py`). At h = 2, 8,000 iterations
+    and K = 4 the need is 1,581.5 one-run CPU hours, which is 1,047.5 session hours (843.5 with every
+    reduction). The ceiling stays 1,300. This was computed blind: h, the iterations, K and every error
+    were unknown.
 - **R3 (2026-11-15), the axial conduction of system A and the exchange coefficient of system B.**
   The registered δ = 0.5 for A is the fluid-phase value, and a constant h_v ignored the flow. Both
   systems now use one consistent packed-bed set (Vortmeyer 1989):

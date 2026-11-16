@@ -168,75 +168,97 @@ cycle (`results/timing_reference.json`, key `data_cost_decision`). The reference
 wide margin at that grid (outlet changes of 2 to 10 × 10⁻⁶ from 1024 to 2048 cells against Paper
 1's 2 % gate).
 
-## 2. Budget (re-derived 2026-11-16 by `scripts/budget.py`; T8 DOC-2, DOC-7, R1-6)
+## 2. Budget (re-derived 2026-11-16, revised 2026-11-17 by `scripts/budget.py`; T8 DOC-2, DOC-7, R1-6)
 
-Every number in this section is printed by `python scripts/budget.py` (its output is kept in
-`results/budget_output.txt`). The inputs are measured on Kaggle, one thread:
-- latent training per iteration at d = 64 and S's and every arm's batched rollout step;
+Every number in this section is printed by `python scripts/budget.py`, whose output is kept in
+`results/budget_output.txt`.
+
+**The inputs**, measured on Kaggle on one thread by kernel p3b-timing-ceiling-59499f9
+(`results/timing_ceiling.json`; script `scripts/time_ceiling.py`, kernel `results/timing_ceiling_kernel.py`):
+- latent training per iteration at d = 64, and each arm's batched rollout step;
 - arm C on 16 to 128 cells and MUSCL-C on 32 and 64, CPU seconds per cycle;
 - the reference after R3 at 2048 (A) and 1024 (B) cells;
-- one full-data autoencoder epoch at balance weight 1 (R1) and 0.
+- one full-data autoencoder epoch, at balance weight 1 (R1) and 0.
 
-These come from kernel p3b-timing-ceiling-59499f9 (`results/timing_ceiling.json`, script
-`scripts/time_ceiling.py`, kernel `results/timing_ceiling_kernel.py`). C+L comes from
-`results/timing_cplusl_train.json` and `results/timing_cplusl_eval.json`, at K = 1 or 4 (the pilot sets K;
-an unmeasured K is refused). d = 64 is the largest d of the gate's grid, so the latent training costs are
-upper bounds for the study's d.
+Other inputs:
+- C+L comes from `results/timing_cplusl_train.json` and `results/timing_cplusl_eval.json`, at K = 1 or 4.
+  The pilot sets K, and an unmeasured K is refused.
+- d = 64 is the largest d of the gate's grid, so the latent training costs are upper bounds for the
+  study's d.
+- The reference cost per cycle is the slower of the R3 probe (one point per key) and the earlier
+  exact-Jacobian records (`results/timing_reference.json`).
 
-What the script counts:
-- **Training:** every design cell and every descriptive sensitivity (U-long at S's cost).
+**The job list.** The need is the sum over the study's actual jobs, the ones `kaggle/train_jobs.py` makes:
+- **Reference data:** the confirmatory sets, in chunks of at most 11 hours. The pilot sets are made
+  before the freeze and are not counted.
 - **Autoencoders:**
   - one per (system, material, size, seed) of the learned cells: 35;
   - the full-data MLP gate wave: 65;
   - the sensitivities' autoencoders: 9, of which R1's 3 use plain MSE.
-- **Evaluation:** every cell on its validation sets and on each test set of its system, at its own
-  batched step. S's step is used for the projected arms and for FNO, whose step the probe could not
-  drive.
-- **Solver arms:** C, MUSCL-C and C+L on the same sets.
-- **H6:** the searches (180 designs × 8 scenarios, 13 cycles to the cyclic steady state, an assumption
-  until the pilot gives the cycle), plus the reference checks of 20 Sobol points and each arm's optima.
-- **Reference data:** the confirmatory sets (the pilot sets are made before the freeze and not counted).
+- **Training:** one job per design cell and descriptive-sensitivity cell (190), with its validation sets
+  scored at the end of the job.
+- **Test sets:** one evaluation job per cell and existing test set. The long test is scored everywhere;
+  OOD on A-primary only.
+  - Each arm is scored at its own batched step.
+  - The 36 projected evaluations (U+proj for U at A-primary full and 32, U+F+proj for every U+F) are
+    scored at S's step. FNO is also scored at S's step, because the probe could not drive it.
+- **The decoder-only floor** (R1; registered, never removed). Until its own cost is measured, it is
+  priced as one projected batched rollout of the long test and OOD sets per A-primary study autoencoder,
+  at S's step.
+- **H6:** per scenario:
+  - each latent model's search (180 designs, batched), C's search, and each C+L seed's search, run to
+    the cyclic steady state (13 cycles, an assumption until the pilot gives the cycle);
+  - the reference checks of the 20 Sobol points and the arms' optima.
 
-The reference cost per cycle is the slowest of the R3 probe (one point per key) and the earlier
-exact-Jacobian records (`results/timing_reference.json`).
+**Session hours** are the ceiling's unit (Section 3). Each Kaggle session pays a start-up of 300 s. This
+is a typical estimate: the first log lines of downloaded kernels came at 141 to 317 s, which includes
+start-up and the first work.
 
-Hours at 8,000 iterations, K = 4:
+**The implemented layout: one-thread jobs, four per session** (`kaggle/run_queue.py` `pack_jobs`;
+`kaggle/train_jobs.py` sets threads 1 and pack 4). The pricing:
+- Jobs are packed four to a kernel per stage, in order.
+- A kernel lasts as long as its slowest member. Each member is slowed 2.03 × by the other three (the
+  larger of U's and S's measured slowdown with four jobs, `results/timing_concurrency_batch.json`;
+  measured on d = 16 training only).
+- Past 11 hours of work, a kernel continues in a further session (the queue continues only the
+  unfinished members).
+
+The alternative, one job per session, prices latent training at the measured four-thread cost
+(`results/timing_arms.json`, d = 16). At h = 2 that cost is 0.97 to 1.13 × the one-thread cost. The
+h = 1 four-thread figures (up to 9 ×) look like warm-up outliers, so the alternative is quoted at h = 2
+only.
+
+Hours at 8,000 iterations, K = 4 (813 jobs):
 
 | block | h = 1 | h = 2 | h = 4 |
 |---|---|---|---|
-| training, latent arms | 473.4 | 956.3 | 1,922.2 |
-| training, C+L | 108.2 | 108.2 | 108.2 |
-| autoencoders | 60.1 | 60.1 | 60.1 |
-| evaluation, latent arms | 99.7 | 192.7 | 378.9 |
-| evaluation, solver arms | 70.5 | 70.5 | 70.5 |
-| H6 searches and reference checks | 106.4 | 121.3 | 151.0 |
 | reference data (confirmatory sets) | 77.6 | 77.6 | 77.6 |
-| **total, one-run CPU hours** | **995.9** | **1,586.7** | **2,768.4** |
-| **Kaggle session hours** (the ceiling's unit, Section 3), one job per session as implemented | **1,068.5** | **1,659.3** | **2,849.8** |
-| session hours if four one-thread jobs shared each session | 519.2 | 816.4 | 1,413.0 |
+| autoencoders | 60.1 | 60.1 | 60.1 |
+| training, latent arms | 473.4 | 956.3 | 1,922.2 |
+| evaluation, latent arms | 89.6 | 173.2 | 340.6 |
+| evaluation, solver arms | 70.5 | 70.5 | 70.5 |
+| training, C+L | 108.2 | 108.2 | 108.2 |
+| decoder-only floor | 7.4 | 14.3 | 28.0 |
+| H6 searches and reference checks | 106.4 | 121.3 | 151.0 |
+| **total, one-run CPU hours** | **993.2** | **1,581.5** | **2,758.1** |
+| **session hours, packed four per session (implemented)** | **708.9** | **1,047.5** | **1,726.1** |
+| the same, core after every reduction step | 607.9 | 843.5 | 1,314.5 |
+| session hours, one job per session (alternative) | – | 1,742.8 | – |
+| the same, core after every reduction step | – | 1,370.1 | – |
 
-How the session hours are formed:
-- **One job per session (as implemented).** The session hours add a start-up of 300 s to each of 871
-  to 976 sessions (865 kernels). The first log lines of downloaded kernels came at 141 to 317 s, which
-  includes start-up and the first work, so 300 s is an upper bound.
-- **Four one-thread jobs per session.** The work is divided by the measured throughput of four jobs,
-  1.99 × one job (`results/timing_concurrency_batch.json`). `kaggle/run_queue.py` does not implement
-  this layout yet.
+The packed layout uses 206 kernels and 219 to 305 sessions. One job per session would use 813 kernels.
+At K = 1 the packed h = 2 need is 991.1 session hours (core 787.1). A conv gate wave, needed only if no
+MLP d passes, would add about 229 hours of work. It is not in the totals.
 
-At K = 1, C+L training is 35.8 hours and the h = 2 total 1,484.3 one-run hours (1,556.4 session
-hours). A conv gate wave, needed only if no MLP d passes, would add about 229 hours. It is not in the
-totals.
+**Against the ceiling (1,300 session hours), as implemented:**
+- **At h = 2, K = 4:** the need is 1,047.5 session hours. That is under the ceiling with no reduction,
+  and under the 1,170 that the freeze rule (a 10 % margin, Section 3) allows.
+- **At h = 4:** the need is 1,726.1, and the core after every reduction is 1,314.5. This is above the
+  margin, so if the pilot chose h = 4 the design would be revised before the freeze (PREREG 11).
 
-**Against the ceiling (1,300 session hours):**
-- **At h = 2 and K = 4, as the jobs are now laid out**, the need is 1,659 session hours. The whole
-  reduction order saves 274.6 hours of training, which leaves at most 1,384.8. So the core alone would
-  exceed the ceiling.
-- **With four jobs per session**, the need is 816 session hours, under the ceiling with the whole
-  reduction order unused.
-- **At h = 4** neither layout fits.
+With one job per session, h = 2 would need 1,742.8 and its core 1,370.1. Neither fits 1,300.
 
-The recommendation to the author is in `docs/freeze_decisions_3B.md` §2. The pre-pilot table this
-section replaces (about 620 CPU-equivalent hours, 2026-11-08) is in git history.
+The pre-pilot table this section replaces (about 620 CPU-equivalent hours, 2026-11-08) is in git history.
 
 ## 3. Ceiling and reduction order
 
@@ -266,7 +288,8 @@ the freeze, the core completes and the excess is reported as a deviation (pre-re
 
 ## 4. Organisation
 
-- **Run layout.** One queue per block on Kaggle, after the Paper 2 pattern: a private dataset
+- **Run layout.** One-thread jobs packed four per Kaggle session (`kaggle/run_queue.py` `pack_jobs`,
+  Section 2). One queue per block on Kaggle, after the Paper 2 pattern: a private dataset
   with the code at the frozen commit, kernels per block, and a resumable downloader that
   writes each result file with the frozen commit hash.
 - **Local jobs.** They check for at least 1.5 GB of free RAM before starting, and wait
