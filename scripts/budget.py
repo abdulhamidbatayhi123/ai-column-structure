@@ -30,8 +30,9 @@ DESIGN = {
     "FNO":    {"A_full": 3, "A_32": 3},
     "C+L":    {"A_full": 3, "A_32": 3},
 }
-# descriptive sensitivities (PREREG 6): U, U+F, S, 3 seeds each
-SENSITIVITIES = {"degraded": {"U": 3, "U+F": 3, "S": 3}, "latent_dim": {"U": 3, "U+F": 3, "S": 3}}
+# descriptive sensitivities (PREREG 6): U, U+F, S, 3 seeds each; the autoencoder loss (R1): U and S, 3 seeds
+SENSITIVITIES = {"degraded": {"U": 3, "U+F": 3, "S": 3}, "latent_dim": {"U": 3, "U+F": 3, "S": 3},
+                 "ae_loss": {"U": 3, "S": 3}}
 
 
 def training_runs() -> dict:
@@ -66,6 +67,7 @@ def training_budget(timing: dict, iterations: int, h: int, c_plus_l_hours: float
         ("U-long", per_arm["U-long"]),
         ("S-Pi", per_arm["S-Pi"]),
         ("latent-dimension sensitivity", sum(n * hours[a] for a, n in SENSITIVITIES["latent_dim"].items())),
+        ("autoencoder-loss sensitivity", sum(n * hours[a] for a, n in SENSITIVITIES["ae_loss"].items())),
         ("MUSCL-C", 0.0),                                 # no training; its evaluation is in the C block
         ("learning-curve sizes 16 and 128 to 2 seeds", sum(2 * lc * hours[a] for a in ("U", "P", "S"))),
         ("System B S-L", DESIGN["S-L"]["B"] * hours["S-L"]),

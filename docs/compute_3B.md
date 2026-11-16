@@ -187,6 +187,7 @@ which is measured in the pilot.
 | A-replication: U, U+F, P, S × 3 seeds at full data and at size 32 | 38 |
 | System B: U, U+F, S × 5 seeds at full data and at size 32; S-L × 3 seeds | 67 |
 | sensitivities: next latent dimension, degraded data | 35 |
+| autoencoder-loss sensitivity (R1, added 2026-11-16): U and S × 3 seeds with plain-MSE autoencoders | not in the pre-pilot total; measured at the freeze |
 | evaluation: about 120 projected-arm rollouts (48 trajectories × 60 cycles, h = T_cycle/200), plain arms, H6 searches | 105 |
 | arm C and MUSCL-C on every test set | 5 |
 | **total** | **about 620 CPU-equivalent hours** |
