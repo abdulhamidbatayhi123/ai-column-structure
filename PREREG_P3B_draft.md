@@ -488,6 +488,13 @@ proof lies on the claim that is printed, never on its competitor (cs-org1 review
 **Descriptive sensitivity analyses:**
 - degraded data, 1 % multiplicative noise on the stored fields at size 32 (U, U+F, S);
 - the next passing latent dimension (U, U+F, S; 3 seeds; H1 and H4 statistics);
+- the decoder-only floor (R1), reported beside H1 and H5 and never removed by the reduction order. For
+  each test trajectory and cycle, ε_W and e are computed with no learned dynamics:
+  - for U-type arms, on the encoded and decoded reference states;
+  - for projected arms, on the encoded reference path with the balance projection applied at each step.
+- the autoencoder-loss sensitivity (R1): U and S (3 seeds; H1 and H5 statistics) with a plain-MSE
+  autoencoder of the same d, wherever that autoencoder passes the gate of 5.1. Where it does not, this is
+  reported as not computable;
 - the 3A potential, when available.
 
 ## 7. Replication and generality words
@@ -620,13 +627,34 @@ both analyses are reported.
 
 Revisions after the pilot and before the freeze, decided by the author blind to every arm's error
 (evidence in `docs/freeze_decisions_3B.md` and `results/decoder_diag/`):
-- **R1 (2026-11-12), the autoencoder loss.** Pilot diagnostics showed that MSE training reconstructs
-  the fields within the gate but misses the balance criteria of 5.1 by 5 to 12 times (MOF-303), the
-  error systematic and phase-locked. The loss adds 1 × the mean squared balance errors, normalised as
-  in 5.1, so the decoder is trained for what the gate checks. A rule stated before the third diagnostic
-  (the largest weight in {1, 3, 10, 30} keeping MOF-303's field error at or below 0.015) selected none;
-  1 was chosen as the only tested weight that lowered the balance errors without failing the field
-  criterion. Every autoencoder (pilot, gate and study) uses this loss.
+- **R1 (2026-11-12), the autoencoder loss.** Pilot diagnostics (MOF-303, 32 training trajectories)
+  showed that MSE training reconstructs the fields within the gate's 0.02 but misses the balance
+  criteria of 5.1 (0.01):
+  - by 5 to 12 times for the registered MLP at 60 epochs;
+  - by up to 20 times for the conv fallback and for 300 epochs.
+
+  The outlet concentration also fails at d = 16 and 32 (0.028 and 0.024), and the balance term does not
+  help it. The balance error is systematic: its per-cycle maximum repeats from cycle 8 on. The loss adds
+  λ × the mean squared balance errors, normalised as in 5.1, so the decoder is trained for what the gate
+  checks.
+
+  How λ = 1 was chosen:
+  - **The rule.** Before the third diagnostic a rule was written: the largest λ in {1, 3, 10, 30}
+    keeping MOF-303's field error at or below 0.015. When it was written, λ = 1's field error (0.018)
+    was already known, so the rule could select only a larger weight. It selected none.
+  - **The weights tested.** Of the five tested (0.1, 1, 3, 10, 30), only 0.1 and 1 kept the field error
+    under the gate's 0.02 while lowering both balance errors.
+  - **The choice.** λ = 1 was chosen against the gate's 0.02, not the rule's 0.015, because it lowered
+    the balance errors more (N 0.117 → 0.047 against 0.086 at λ = 0.1; E 0.068 → 0.028 against 0.055).
+    The choice was made after these diagnostics, with no arm trained or evaluated.
+
+  λ was tuned on the MLP and is applied untested to the conv fallback of Section 4. Every autoencoder
+  (pilot, gate and study) uses this loss.
+
+  The term targets the decoded totals Ê and N̂. These are used by the projected arms, by U+F's inputs and
+  by P's penalty, but not by U, whose released amount comes from the decoded outlet alone. So R1 can lower
+  the projected arms' ε_W floor without lowering U's. Two descriptive analyses of Section 6 are registered
+  for this reason: the decoder-only floor and the autoencoder-loss sensitivity.
 - **R2 (2026-11-12), the ceiling.** The 700 CPU-equivalent hours did not cover the measured costs
   (C+L, never timed before the pilot, about 108 hours alone). The ceiling is now 1,300 Kaggle
   CPU-hours, set before h, the iterations or any error were known.

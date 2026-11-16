@@ -19,8 +19,9 @@ def flat_timing(s1=1.0, s2=2.0):
 
 def test_training_runs_per_arm_match_the_design_table():
     # PREREG design table: A-primary full / 32 / learning curve 16, 64, 128; A-replication full / 32;
-    # B full / 32; plus the sensitivities (next latent dimension, degraded data: U, U+F, S, 3 seeds each)
-    assert budget.training_runs() == {"U": 41, "U+F": 32, "P": 25, "S": 41, "S-L": 16, "S-M": 5, "S-Pi": 5,
+    # B full / 32; plus the sensitivities (next latent dimension, degraded data: U, U+F, S, 3 seeds each;
+    # autoencoder loss, R1: U and S, 3 seeds each)
+    assert budget.training_runs() == {"U": 44, "U+F": 32, "P": 25, "S": 44, "S-L": 16, "S-M": 5, "S-Pi": 5,
                                       "FNO": 6, "U-long": 3, "C+L": 6}
 
 
@@ -41,10 +42,12 @@ def test_training_total_is_runs_times_hours_with_c_plus_l_flagged_as_unmeasured(
 def test_reduction_order_savings_are_listed_in_the_preregistered_order():
     b = budget.training_budget(flat_timing(), iterations=3600, h=1, c_plus_l_hours=1.0)
     names = [r["step"] for r in b["reductions"]]
-    assert names == ["degraded-data sensitivity", "U-long", "S-Pi", "latent-dimension sensitivity", "MUSCL-C",
-                     "learning-curve sizes 16 and 128 to 2 seeds", "System B S-L"]
+    assert names == ["degraded-data sensitivity", "U-long", "S-Pi", "latent-dimension sensitivity",
+                     "autoencoder-loss sensitivity", "MUSCL-C", "learning-curve sizes 16 and 128 to 2 seeds",
+                     "System B S-L"]
     saved = {r["step"]: r["hours"] for r in b["reductions"]}
     assert saved["degraded-data sensitivity"] == pytest.approx(9.0)
+    assert saved["autoencoder-loss sensitivity"] == pytest.approx(6.0)                  # U, S x 3 seeds
     assert saved["learning-curve sizes 16 and 128 to 2 seeds"] == pytest.approx(6.0)   # U, P, S x 2 sizes
     assert saved["System B S-L"] == pytest.approx(6.0)
 

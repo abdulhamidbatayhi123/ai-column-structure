@@ -2,7 +2,8 @@
 
 MLP: encoder n_in -> 256 -> 256 -> d, decoder d -> 256 -> 256 -> n_in, SiLU, on standardised
 state vectors (p3b.latent.data). Fallback when no d passes: the same encoder with a fixed 1-D
-convolutional decoder (4 conv layers, 32 channels) and a linear outlet head. Training: MSE,
+convolutional decoder (4 conv layers, 32 channels) and a linear outlet head. Training
+(fit_autoencoder): MSE plus BALANCE_WEIGHT x the mean squared balance errors of the gate (PREREG R1),
 Adam, learning rate 1e-3 with cosine decay to 1e-5 over all steps, batch 256, 60 epochs.
 Everything is float64.
 """

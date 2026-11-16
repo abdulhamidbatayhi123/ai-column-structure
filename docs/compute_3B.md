@@ -205,9 +205,12 @@ are removed in order (pre-registration, Section 11), all secondary or descriptiv
 2. U-long;
 3. S−Π;
 4. the latent-dimension sensitivity;
-5. MUSCL-C;
-6. the learning-curve sizes 16 and 128 drop to 2 seeds (size 64 is kept);
-7. the System B S-L arm.
+5. the autoencoder-loss sensitivity (R1);
+6. MUSCL-C;
+7. the learning-curve sizes 16 and 128 drop to 2 seeds (size 64 is kept);
+8. the System B S-L arm.
+
+The decoder-only floor (R1) costs no training and is never removed.
 
 Never reduced: the primary arms, the 5 seeds of every primary contrast, the 48-trajectory
 test sets, the second isotherm, and System B's U, U+F, U+F+proj and S.

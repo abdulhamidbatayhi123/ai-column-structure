@@ -75,9 +75,9 @@ long validation trajectories):
 
 - The maximum falls with data roughly as n^−0.55. Extrapolated to the study's 256 trajectories with
   plain MSE it is about 0.04: still four times the threshold. This is an extrapolation, not a measurement.
-- The maximum is phase-locked. After cycle 7 the worst snapshot repeats to four digits in every cycle
-  (one trajectory, mid-cycle), so it is a systematic reconstruction bias at one state of the cyclic
-  steady state, not noise. Taking the maximum over 60 cycles therefore adds little over one cycle.
+- The maximum is phase-locked. From cycle 8 on the per-cycle maximum repeats to four digits (0.1118;
+  the file stores no location per cycle), so it is a systematic reconstruction bias of the cyclic
+  steady state, not noise. The global maximum (0.1169) lies at cycle index 3, before the cyclic steady state. Taking the maximum over 60 cycles therefore adds little over one cycle.
 - The balance term at λ = 1 halves both balance errors at a small cost in field error (0.014 to 0.018,
   still under 0.02). For B it brings the energy balance under the threshold (0.0125 to 0.0064). B then
   fails only on the outlet temperature (0.022 against 0.02).
@@ -111,9 +111,11 @@ fixed before the freeze, so the decoder is trained for what the gate checks. Thi
 and every arm shares the autoencoder. (c) Relax the criterion (for example an RMS over snapshots instead of
 the maximum). This is not recommended: it changes the test after seeing the pilot. Recommended: (b) with λ = 1.
 Before diag3 I wrote down a rule (the largest λ in {1, 3, 10, 30} whose MOF-303 field error stays at or
-below 0.015). It selects none, because λ = 1 already gives 0.018. λ = 1 is proposed instead because it is
-the only tested weight that lowers the balance errors without failing the field criterion, and its errors
-fall fastest with data. This choice was made after seeing pilot-data diagnostics (no arm trained or
+below 0.015). It selects none, because λ = 1 already gives 0.018. λ = 1 is proposed instead. Of the tested weights
+(0.1, 1, 3, 10, 30), only 0.1 and 1 keep the field error under the gate's 0.02 (not the rule's 0.015) and
+lower both balance errors; 1 lowers them more (N 0.117 to 0.047 against 0.086; E 0.068 to 0.028 against
+0.055). Its learning curve, the only one run with a balance term, falls faster than plain MSE's. λ was
+tuned on the MLP and is untested on the conv fallback. This choice was made after seeing pilot-data diagnostics (no arm trained or
 evaluated), and the change log must say so. Even with (b), MOF-303 may be "not testable" at the registered
 thresholds, and the paper must be ready to report that honestly.
 

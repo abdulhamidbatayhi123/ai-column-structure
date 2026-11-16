@@ -43,7 +43,7 @@ approval on 2026-11-05. Review codes:
 
 | change | reason | evidence |
 |---|---|---|
-| R1 (2026-11-12): every autoencoder is trained on MSE + 1 × the gate's balance errors² | MSE training missed 5.1's balance criteria several times over, systematically; the decoder is trained for what the gate checks | `docs/freeze_decisions_3B.md` 1b, `results/decoder_diag/` |
+| R1 (2026-11-12): every autoencoder is trained on MSE + 1 × the gate's balance errors²; two descriptive analyses added (decoder-only floor, autoencoder-loss sensitivity) | MSE training missed 5.1's balance criteria 5 to 12 times (registered MLP; up to 20 times for the conv fallback), systematically; the decoder is trained for what the gate checks. A rule written before the third diagnostic (largest λ in {1, 3, 10, 30} with field error ≤ 0.015) could select only a weight above 1, because λ = 1's 0.018 was already known; it selected none. Of the tested 0.1, 1, 3, 10 and 30, only 0.1 and 1 stayed under the gate's 0.02 and lowered both balance errors; 1 lowered them more (N 0.047 against 0.086). λ is untested on the conv decoder. The term targets Ê and N̂, which the projected arms, U+F and P use and U does not, hence the two descriptive analyses (PREREG 6) | `docs/freeze_decisions_3B.md` 1b, `results/decoder_diag/` |
 | R2 (2026-11-12): ceiling raised from 700 CPU-equivalent hours to 1,300 Kaggle CPU-hours | C+L, never timed before the pilot, measured at about 108 h alone; set before h, the iterations or any error were known | `docs/compute_3B.md`, `results/timing_cplusl_train.json` |
 | R3 (2026-11-15): one consistent packed-bed set; h_v(\|v\|) for B, its one-temperature equivalent k_z(v) for A | δ = 0.5 is the fluid-phase value, which a one-temperature model understates; a constant h_v ignored a 2-fold change with flow; the author asked for the physically right values | hub `T9_r3_equations.md`, `p3b/packed_bed.py`, `verify/r3/` |
 
@@ -90,9 +90,10 @@ approval on 2026-11-05. Review codes:
   (rock 5 cm), the upwind truncation term is at most 1.3 % (A) and 1.9 % (B) of the physical
   conduction at the reference grids, and the hybrid scheme removes it exactly. For arm C the
   clip now bites only at 16 cells (it bit on 32 % of the A velocity box at 128 cells and
-  everywhere in B before). Numbers: `verify/clip_shares.json`. δ = 0.5 and the 5 cm rock are
-  provisional until verified in the full texts (queued). This changes the reference physics,
-  so it is the author's to confirm at the freeze.
+  everywhere in B before). Numbers: `verify/clip_shares.json`. δ = 0.5 and the 5 cm rock were
+  provisional; revision R3 (2026-11-15) replaced δ for A by the Vortmeyer-Schaefer equivalent and
+  the constant h_v of B by Wakao-Jeffreson h_v(|v|) (table above), and moved the rock from granite to
+  quartzite as registered.
 - **τ_ref measured on the gate's own statistic; exact entropy ports** (2026-11-08, final code
   review C2). The previous definition took the round-off of the algebraic entropy identity
   (about 10⁻¹⁵), but the gate compares differences of stored states, which carry the solver's
