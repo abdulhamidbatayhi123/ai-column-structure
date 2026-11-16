@@ -235,6 +235,12 @@ def session_hours(job_hours: list, startup_s: float = STARTUP_S) -> float:
     return sum(h + job_sessions(h) * startup_s / 3600 for h in job_hours)
 
 
+def packed_session_hours(run_hours: float, sessions: int, throughput: float, startup_s: float = STARTUP_S) -> float:
+    """Session time if four one-thread jobs share each session (not implemented in kaggle/run_queue.py): the
+    work divided by the measured throughput of four jobs, and a quarter of the sessions' start-ups."""
+    return run_hours / throughput + math.ceil(sessions / 4) * startup_s / 3600
+
+
 def _ref_s(t: dict, key: str) -> float:
     return max(t["reference"][key]["cycle_cpu_s"])
 
@@ -362,6 +368,9 @@ def main(argv=None):
             print(f"  {'total, one-run CPU hours':38s} {n['total_run_hours']:8.1f} h")
             print(f"  {'Kaggle session hours (the ceiling unit)':38s} {n['session_hours']:8.1f} h "
                   f"({n['sessions']} sessions, {n['kernels']} kernels)")
+            thr = min(session_throughput({"concurrent": t["concurrent"]}, arm, 4) for arm in ("U", "S"))
+            print(f"  {'  if four jobs shared each session':38s} "
+                  f"{packed_session_hours(n['total_run_hours'], n['sessions'], thr):8.1f} h (throughput {thr:.2f} x)")
     ae_g = ae_hours(t, [s for s in ae_specs() if s["kind"] == "gate"])
     f = conv_factor(a.results)
     if f:

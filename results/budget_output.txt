@@ -1,0 +1,86 @@
+inputs: latent training from timing_ceiling.json (d = 64) for its arms; batched step, C, MUSCL-C, autoencoders and the reference from timing_ceiling.json; C+L from timing_cplusl_train.json and timing_cplusl_eval.json
+8000 iterations; 13 cycles to the cyclic steady state in H6 (assumed); 300 s start-up per Kaggle session; one job per session (kaggle/train_jobs.py)
+
+h = 1, K = 1:
+  training, latent arms                     473.4 h
+  training, C+L                              35.8 h
+  autoencoders                               60.1 h
+  evaluation, latent arms                    99.7 h   (each arm's batched step; S's for the projected arms and any arm not timed)
+  evaluation, solver arms                    61.5 h
+  H6 searches and reference checks           85.4 h   (13 cycles to the cyclic steady state (assumed))
+  reference data (confirmatory sets)         77.6 h
+  total, one-run CPU hours                  893.5 h
+  Kaggle session hours (the ceiling unit)    965.6 h (865 sessions, 865 kernels)
+    if four jobs shared each session        467.6 h (throughput 1.99 x)
+
+h = 2, K = 1:
+  training, latent arms                     956.3 h
+  training, C+L                              35.8 h
+  autoencoders                               60.1 h
+  evaluation, latent arms                   192.7 h   (each arm's batched step; S's for the projected arms and any arm not timed)
+  evaluation, solver arms                    61.5 h
+  H6 searches and reference checks          100.3 h   (13 cycles to the cyclic steady state (assumed))
+  reference data (confirmatory sets)         77.6 h
+  total, one-run CPU hours                 1484.3 h
+  Kaggle session hours (the ceiling unit)   1556.4 h (865 sessions, 865 kernels)
+    if four jobs shared each session        764.8 h (throughput 1.99 x)
+
+h = 4, K = 1:
+  training, latent arms                    1922.2 h
+  training, C+L                              35.8 h
+  autoencoders                               60.1 h
+  evaluation, latent arms                   378.9 h   (each arm's batched step; S's for the projected arms and any arm not timed)
+  evaluation, solver arms                    61.5 h
+  H6 searches and reference checks          130.0 h   (13 cycles to the cyclic steady state (assumed))
+  reference data (confirmatory sets)         77.6 h
+  total, one-run CPU hours                 2666.0 h
+  Kaggle session hours (the ceiling unit)   2746.9 h (970 sessions, 865 kernels)
+    if four jobs shared each session       1361.4 h (throughput 1.99 x)
+
+h = 1, K = 4:
+  training, latent arms                     473.4 h
+  training, C+L                             108.2 h
+  autoencoders                               60.1 h
+  evaluation, latent arms                    99.7 h   (each arm's batched step; S's for the projected arms and any arm not timed)
+  evaluation, solver arms                    70.5 h
+  H6 searches and reference checks          106.4 h   (13 cycles to the cyclic steady state (assumed))
+  reference data (confirmatory sets)         77.6 h
+  total, one-run CPU hours                  995.9 h
+  Kaggle session hours (the ceiling unit)   1068.5 h (871 sessions, 865 kernels)
+    if four jobs shared each session        519.2 h (throughput 1.99 x)
+
+h = 2, K = 4:
+  training, latent arms                     956.3 h
+  training, C+L                             108.2 h
+  autoencoders                               60.1 h
+  evaluation, latent arms                   192.7 h   (each arm's batched step; S's for the projected arms and any arm not timed)
+  evaluation, solver arms                    70.5 h
+  H6 searches and reference checks          121.3 h   (13 cycles to the cyclic steady state (assumed))
+  reference data (confirmatory sets)         77.6 h
+  total, one-run CPU hours                 1586.7 h
+  Kaggle session hours (the ceiling unit)   1659.3 h (871 sessions, 865 kernels)
+    if four jobs shared each session        816.4 h (throughput 1.99 x)
+
+h = 4, K = 4:
+  training, latent arms                    1922.2 h
+  training, C+L                             108.2 h
+  autoencoders                               60.1 h
+  evaluation, latent arms                   378.9 h   (each arm's batched step; S's for the projected arms and any arm not timed)
+  evaluation, solver arms                    70.5 h
+  H6 searches and reference checks          151.0 h   (13 cycles to the cyclic steady state (assumed))
+  reference data (confirmatory sets)         77.6 h
+  total, one-run CPU hours                 2768.4 h
+  Kaggle session hours (the ceiling unit)   2849.8 h (976 sessions, 865 kernels)
+    if four jobs shared each session       1413.0 h (throughput 1.99 x)
+
+contingency, not in the totals: a conv gate wave (65 autoencoders) at 5.2 x the MLP's time adds about 229 h
+
+reduction order at h = 2, K = 4, training hours saved:
+  degraded-data sensitivity: 47.4
+  U-long: 25.0
+  S-Pi: 42.3
+  latent-dimension sensitivity: 47.4
+  autoencoder-loss sensitivity: 28.5
+  MUSCL-C: 0.0
+  learning-curve sizes 16 and 128 to 2 seeds: 24.4
+  System B S-L: 59.5
