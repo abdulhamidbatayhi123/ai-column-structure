@@ -150,6 +150,18 @@ def plan_reductions(spent_h: float, remaining: list, cost_h: dict, ceiling_h: fl
     return steps
 
 
+def ceiling_status(spent_h: float, remaining: list, cost_h: dict, ceiling_h: float = CEILING_H,
+                   fixed_h: float = 0.0) -> dict:
+    """plan_reductions with its outcome made explicit (PREREG Section 11, T8 DOC-3): the steps, whether
+    spent + fixed + the projected remaining cost fits under the ceiling after them, the projection and the
+    excess. A core that alone exceeds the ceiling gives fits False with every step: at the freeze the
+    design is then revised; after it the core completes and the excess is reported as a deviation."""
+    steps = plan_reductions(spent_h, remaining, cost_h, ceiling_h, fixed_h)
+    projected = spent_h + fixed_h + sum(cost_h[c] for c in apply_reductions(remaining, steps))
+    return {"steps": steps, "fits": projected <= ceiling_h, "projected_h": float(projected),
+            "excess_h": float(max(0.0, projected - ceiling_h))}
+
+
 # ---- one cell ------------------------------------------------------------------------------------------
 DESIGN_NAME = {("A", "MOF-303"): "A_primary", ("A", "Al-fumarate"): "A_replication", ("B", None): "B"}
 LEARNED_WITH_AE = ("U", "U+F", "U-long", "P", "S", "S-L", "S-M", "S-Pi")
