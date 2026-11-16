@@ -526,6 +526,7 @@ def evaluate_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot:
     meta.update({"arm": cell.arm, "system": cell.system, "material": cell.material, "size": cell.size,
                  "seed": cell.seed, "set": set_name, "pilot": pilot,
                  "weights": {"file": _weights_file(cell), "sha256": _sha(wpath)}})
+    os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"{job_name(cell)}_{set_name}.json")
     write_results(path, rows, meta)
     return Path(path)
