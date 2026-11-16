@@ -186,7 +186,8 @@ def _step_s(t: dict, h: int, arm: str = "S") -> float:
     """An arm's measured batched rollout step (48 trajectories), linear in h through h = 1 and 2; S's step
     where the arm's own was not measured (an upper bound for the unstructured arms)."""
     own = t.get("step", {}).get("U" if arm == "U-long" else arm)
-    src = own if own and "error" not in own else t["step_S"]
+    ok = own and "error" not in own and all(own[f"h{k}|b{BATCH}"].get("intervals", 1) > 0 for k in (1, 2))
+    src = own if ok else t["step_S"]
     s1, s2 = (src[f"h{k}|b{BATCH}"]["wall_s_per_interval"] for k in (1, 2))
     return s1 + (s2 - s1) * (h - 1)
 
