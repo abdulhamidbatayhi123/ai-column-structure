@@ -22,7 +22,8 @@ def _train_jobs(monkeypatch):
 def test_every_evaluation_job_names_a_set_its_system_has(monkeypatch):
     tj = _train_jobs(monkeypatch)
     cs = cells() + sensitivity_cells()
-    ev = [j for j in tj.evaluation_jobs(cs, kit_slug="o/kit")["jobs"] if j["system"] == "evaluate"]
+    ev = [j for j in tj.evaluation_jobs(cs, kit_slug="o/kit")["jobs"] if "--evaluate" in j["commands"][0]]
+    # (the decoder-only floor jobs, one per autoencoder, are checked in tests/test_floor_wiring.py)
     by_name = {job_name(c): c for c in cs}
     seen = set()
     for j in ev:
