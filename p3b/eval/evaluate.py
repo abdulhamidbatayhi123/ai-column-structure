@@ -21,10 +21,13 @@ from p3b.latent.metrics import field_nrmse
 from p3b.provenance import git_commit
 
 
-def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: float, seed: int) -> list:
+def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: float, seed: int,
+             results: list | None = None) -> list:
     """One row per test trajectory. Violations: latent arms by their own RK4 stages (they need
     LatentFunctionals, else ValueError); the FNO by the trapezoid on its own snapshots
-    (violations_method says which); None where not computed, never a silent 0."""
+    (violations_method says which); None where not computed, never a silent 0. `results`: precomputed
+    RolloutResults, one per trajectory of ds, scored instead of rolling the arm out (the decoder-only
+    floor of p3b.eval.floor uses it, so floors and arms share this code)."""
     A = ds.system == "A"
     if arm.kind != "FNO" and arm.lf is None:
         raise ValueError("a latent arm needs its LatentFunctionals (lf) for the violation counts")
@@ -33,7 +36,8 @@ def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: fl
     norm = normalisers(ds)
     ns = ds.X.shape[2]
     rows = []
-    results = ro.rollouts(arm, ds, n_cycles, h_steps, track=arm.lf is not None)   # batched (PREREG 5)
+    if results is None:
+        results = ro.rollouts(arm, ds, n_cycles, h_steps, track=arm.lf is not None)   # batched (PREREG 5)
     for j, r in enumerate(results):
         ref = ds.X[j, :n_cycles]
         pred = torch.where(torch.isfinite(r.X), r.X, ref)              # failed snapshots: capped below

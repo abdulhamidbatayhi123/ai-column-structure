@@ -21,7 +21,7 @@ import types
 
 import pytest
 
-from test_cplusl_resume import pilot_root  # noqa: F401  (fixture)
+from test_cplusl_resume import ds, pilot_root  # noqa: F401  (fixtures; pilot_root needs ds)
 from test_pilot_collect import _phase0
 from test_t8_queue import BASE, LQ, OWNER, ROOT, _kaggle, _load, _main, _sessions, _spec, _stage, ae_root, rq  # noqa: F401
 

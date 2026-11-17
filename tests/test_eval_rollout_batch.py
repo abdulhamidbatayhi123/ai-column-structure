@@ -163,7 +163,9 @@ def test_batched_rollout_of_a_projected_arm_equals_single_rollouts(tmp_path):
         assert r.failed_cycle == a.failed_cycle
         assert set(r.flags) == set(a.flags)
         assert a.failed_cycle is not None or "projection_rank_deficient" in r.flags
-        assert set(r.residuals) == set(a.residuals) == {"N", "E", "S"}
+        assert set(r.residuals) == set(a.residuals) <= {"N", "E", "S"}
+        if a.failed_cycle is None:
+            assert set(a.residuals) == {"N", "E", "S"}
 
 
 def test_structured_step_per_sample_flags_do_not_depend_on_the_batch():

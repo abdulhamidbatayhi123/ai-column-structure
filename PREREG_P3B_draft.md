@@ -489,10 +489,13 @@ proof lies on the claim that is printed, never on its competitor (cs-org1 review
 **Descriptive sensitivity analyses:**
 - degraded data, 1 % multiplicative noise on the stored fields at size 32 (U, U+F, S);
 - the next passing latent dimension (U, U+F, S; 3 seeds; H1 and H4 statistics);
-- the decoder-only floor (R1), reported beside H1 and H5 and never removed by the reduction order. For
+- the decoder-only floor (R1; `p3b/eval/floor.py`), reported beside H1 and H5 and never removed by the reduction order. For
   each test trajectory and cycle, ε_W and e are computed with no learned dynamics:
   - for U-type arms, on the encoded and decoded reference states;
-  - for projected arms, on the encoded reference path with the balance projection applied at each step.
+  - for projected arms, per snapshot interval and independently (no state carried between intervals):
+    one projected step from the encoded reference state enc(x_i), with the constant latent field
+    (enc(x_{i+1}) − enc(x_i))/Δt_i and the projection of the projected arms, decoded and scored at
+    snapshot i+1. Only the intervals between stored snapshots are stepped.
 - the autoencoder-loss sensitivity (R1): U and S (3 seeds; H1 and H5 statistics) with a plain-MSE
   autoencoder of the same d, wherever that autoencoder passes the gate of 5.1. Where it does not, this is
   reported as not computable;

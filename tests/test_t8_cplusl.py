@@ -366,10 +366,14 @@ def test_cl2_a_c_failure_in_cycle_3_keeps_cycles_1_and_2(four_cycles, tmp_path, 
 
 def test_cl2_a_cplusl_cell_scores_a_cycle_3_failure_from_cycle_3_and_records_why(four_cycles, tmp_path,
                                                                                   monkeypatch):
-    from p3b.train.cells import Cell, _solver_cell, _weights_file
+    from p3b.train.cells import Cell, _sha, _solver_cell, _weights_file, job_name
     d, _ = four_cycles
     cell = Cell("C+L", "A", "MOF-303", "full", 0)
     torch.save(Multipliers(n_out=3).state_dict(), tmp_path / _weights_file(cell))   # every multiplier 1
+    # the training results file that recorded the weights' sha256, as evaluation requires since T8 RS-3
+    (tmp_path / "train").mkdir()
+    (tmp_path / "train" / f"{job_name(cell)}.json").write_text(
+        json.dumps({"meta": {"weights": {"sha256": _sha(tmp_path / _weights_file(cell))}}}))
     _fail_in_cycle(monkeypatch, 3)
     pilot = {"K": 8, "floors": {"N": 1e-6, "E": 1e-6}, "tau_S": 1e-6}
     out = _solver_cell(cell, str(d), str(tmp_path), pilot, {"n_coarse": 4}, ("validation",), train=False)
