@@ -71,6 +71,20 @@ def evaluation_jobs(cs, sets=GATED_SETS, kit_slug: str = KIT) -> dict:
             jobs.append({"name": n, "system": "evaluate", "set": n, "threads": 1, "depends_on": deps,
                          "commands": [["kaggle/train_chunk.py", "--evaluate", job_name(c), set_name, "--out", "OUT"]],
                          "expect": [f"{job_name(c)}_{set_name}.json"]})
+    # the decoder-only floor (PREREG 6, R1; never removed): one job per A-primary study autoencoder (every size)
+    # and test set, after its autoencoder job (scripts/budget.py prices the same jobs)
+    floors = {}
+    for c in cs:
+        if c.arm in LEARNED_WITH_AE and DESIGN_NAME[(c.system, c.material)] == "A_primary":
+            floors.setdefault(ae_job_name(c), c)
+    for ae, c in floors.items():
+        for set_name in sets:
+            if (DESIGN_NAME[(c.system, c.material)], set_name) not in SET_SIZES:
+                continue
+            jobs.append({"name": f"{ae}-floor-{set_name.replace('_', '')}", "system": "evaluate",
+                         "set": f"{ae}-floor-{set_name.replace('_', '')}", "threads": 1, "depends_on": [ae],
+                         "commands": [["kaggle/train_chunk.py", "--floor", ae, set_name, "--out", "OUT"]],
+                         "expect": [f"{ae}_floor_{set_name}.json"]})
     return {"kit_slug": kit_slug, "nz": 0, "pack": PACK, "jobs": jobs}
 
 

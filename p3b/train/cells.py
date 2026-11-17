@@ -544,6 +544,52 @@ def evaluate_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot:
     return Path(path)
 
 
+def floor_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot: dict, gate: dict,
+               quick: dict | None = None):
+    """The decoder-only floor (PREREG 6, R1; p3b.eval.floor) of the study autoencoder `cell` uses (its
+    system, material, size and seed) on one test set: the round-trip floor and the projected floor, with the
+    LatentFunctionals the projected arms build, the pilot's h_steps, floors and tau_S. The autoencoder comes
+    from its own job (kernel inputs, `ae_input_root`) and is never trained here, quick runs included. Test
+    sets open only after H3a passed, as in evaluate_cell. Writes out_dir/<autoencoder job>_floor_<set>.json."""
+    from pathlib import Path
+
+    from p3b.eval.floor import decoder_floor, write_floor
+    from p3b.latent.data import Standardiser, load_set
+    from p3b.latent.functionals import LatentFunctionals
+    from p3b.pilot.rules import pilot_key
+    q = dict(quick or {}, require_ae=True)
+    key = pilot_key(cell.system, cell.material)
+    if set_name in GATED_SETS and gate.get(key) != "pass":
+        raise PermissionError(f"H3a has not passed for {key}: the {set_name} set stays closed")
+    files = _set_files(data_dir, set_name)
+    if not files:
+        raise FileNotFoundError(f"no {set_name} trajectories under {data_dir}")
+    n_ch, n_out = (3, 2) if cell.system == "A" else (2, 1)
+    train_files, _ = _train_files(data_dir, cell.size, _pool_size(cell, q))
+    train = load_set(train_files)
+    std = Standardiser.fit(train.X, train.n_cells, n_ch, n_out, features=train.features)   # as _build
+    torch.manual_seed(cell.seed)
+    ae = _autoencoder_for(pilot, train.X.shape[-1], int(pilot["d"]), train.n_cells, cell.system, q)
+    ae_meta = _load_ae(cell, ae, out_dir, pilot, q, std, train)
+    phys = _physics(cell.system, cell.material, train)
+    lf = LatentFunctionals(ae.decode, std, phys, cell.system, train.n_cells)
+    ds = load_set(files)
+    n_cycles = q.get("n_cycles", ds.X.shape[1])
+    both = decoder_floor(ae, std, lf, ds, phys, n_cycles, pilot["h_steps"], pilot["floors"], pilot["tau_S"],
+                         seed=cell.seed)
+    from p3b.gates import load_meta
+    for rows in both.values():
+        for r in rows:
+            r.update(set=set_name, design_index=int(load_meta(files[r["trajectory"]])["point"]["index"]))
+    meta = {"autoencoder": ae_meta, "autoencoder_job": ae_job_name(cell), "system": cell.system,
+            "material": cell.material, "size": cell.size, "seed": cell.seed, "set": set_name, "pilot": pilot,
+            "n_cycles": n_cycles}
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{ae_job_name(cell)}_floor_{set_name}.json")
+    write_floor(path, both, meta)
+    return Path(path)
+
+
 def _solver_cell(cell, data_dir, out_dir, pilot, q, sets, train: bool, deadline: float | None = None,
                  resume_from: str | None = None, weights_from: str | None = None):
     """C (16-128 cells) and MUSCL-C (32, 64): deterministic runs on each set's trajectories. C+L:

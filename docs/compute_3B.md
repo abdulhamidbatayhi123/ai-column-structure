@@ -204,7 +204,8 @@ Other inputs:
     scored at S's step. FNO is also scored at S's step, because the probe could not drive it.
 - **The decoder-only floor** (R1; registered, never removed). Until its own cost is measured, it is
   priced as one projected batched rollout of the long test and OOD sets per A-primary study autoencoder,
-  at S's step.
+  at S's step. These are the floor jobs `kaggle/train_jobs.py` adds to the evaluation phase (one per A-primary
+  study autoencoder and test set, `kaggle/train_chunk.py --floor`, `p3b.train.cells.floor_cell`).
 - **H6:** per scenario:
   - each latent model's search (180 designs, batched), C's search, and each C+L seed's search, run to
     the cyclic steady state (13 cycles, an assumption until the pilot gives the cycle);
