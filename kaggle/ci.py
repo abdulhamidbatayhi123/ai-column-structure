@@ -103,7 +103,10 @@ def push(commit: str, args: list, wait: int = 300) -> str:
         if "Maximum batch CPU session count" not in out:
             break
         time.sleep(wait)
-    print((out.strip().splitlines() or [""])[-1])
+    last = (out.strip().splitlines() or [""])[-1]
+    print(last)
+    if "successfully pushed" not in out:
+        raise RuntimeError(f"push failed: {last}")
     return os.path.basename(d)
 
 
@@ -113,6 +116,9 @@ def fetch(name: str, poll: int = 60) -> int:
         s = _cli("kernels", "status", ref)
         if "COMPLETE" in s or "ERROR" in s or "CANCEL" in s:
             break
+        if "404" in s or "Not Found" in s:
+            print(f"{ref}: Kaggle does not know this kernel ({s.strip().splitlines()[-1]})")
+            return 2
         time.sleep(poll)
     out = os.path.join(HERE, "build", "ci", name, "out")
     os.makedirs(out, exist_ok=True)
