@@ -47,3 +47,23 @@ def test_the_full_suite_and_a_subset_get_different_kernel_names(tmp_path):
     sub = json.load(open(os.path.join(ci.write_kernel("abcdef0123", ["tests/test_a.py"], str(tmp_path / "b")),
                                       "kernel-metadata.json")))
     assert full["id"].endswith("-full") and full["id"] != sub["id"]
+
+
+def test_a_failed_push_raises_instead_of_returning_a_kernel_name(tmp_path, monkeypatch):
+    """A push Kaggle rejected for another reason (e.g. an API error) must not hand fetch a name that waits
+    forever on a 404 (seen 2026-11-16)."""
+    import pytest
+    ci = _ci()
+    monkeypatch.setattr(ci, "_cli", lambda *a, **k: "Kernel push error: 500 Internal Server Error")
+    monkeypatch.setattr(ci.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ci, "HERE", str(tmp_path))
+    with pytest.raises(RuntimeError, match="push failed"):
+        ci.push("abcdef0123", [])
+
+
+def test_fetch_gives_up_on_a_kernel_kaggle_does_not_know(tmp_path, monkeypatch):
+    ci = _ci()
+    monkeypatch.setattr(ci, "_cli", lambda *a, **k: "404 Client Error: Not Found for url")
+    monkeypatch.setattr(ci.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ci, "HERE", str(tmp_path))
+    assert ci.fetch("p3b-ci-abcdef0-full") == 2
