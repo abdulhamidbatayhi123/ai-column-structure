@@ -117,6 +117,7 @@ def test_kit_carries_the_pilot_runner_its_stage_and_autoencoders(tmp_path, monke
         shutil.copytree(mk.ROOT / d, root / d, dirs_exist_ok=True)
     monkeypatch.setattr(mk, "ROOT", root)
     kit = mk.make_kit(tmp_path / "kit", "abc1234", paper1_src=_paper1.PAPER1_DIR)
-    for rel in ("kaggle/pilot_chunk.py", "results/pilot_stage.json", "results/pilot_ae/ae_A_MOF-303_pilot_s0.pt",
-                "data/pilot/A_MOF-303/train/A_primary_pilot_train_0000.npz"):
+    for rel in ("kaggle/pilot_chunk.py", "results/pilot_stage.json", "results/pilot_ae/ae_A_MOF-303_pilot_s0.pt"):
         assert (kit / rel).exists(), rel
+    # the pilot data reach the kernels as the generating kernels' outputs (tests/test_pilot_data_inputs.py)
+    assert not (kit / "data" / "pilot").exists()

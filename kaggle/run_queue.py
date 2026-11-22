@@ -147,12 +147,14 @@ def write_kernels(spec: dict) -> list[dict]:
                 f.write(RUN_CMDS_PY.format(cmds=job["commands"], kit_name=spec["kit_slug"].split("/")[-1],
                                            threads=job.get("threads", 1)))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
-                json.dump(_metadata(job["name"], spec["kit_slug"], job.get("depends_on", ())), f, indent=1)
+                json.dump(_metadata(job["name"], spec["kit_slug"],
+                                    list(job.get("depends_on", ())) + list(spec.get("kernel_inputs", ()))), f, indent=1)
             kernels.append({"name": job["name"], "base": job["name"], "dir": d, "system": job.get("system", "timing"),
                             "set": job.get("set", job["name"]), "expect": job["expect"],
                             "depends_on": list(job.get("depends_on", ())), "commands": job["commands"],
                             "threads": job.get("threads", 1), "resumable": bool(job.get("resumable", False)),
                             "kit_name": spec["kit_slug"].split("/")[-1], "r": 0,
+                            "inputs": list(spec.get("kernel_inputs", ())),   # finished kernels every session mounts
                             **({"members": job["members"]} if job.get("members") else {})})
             continue
         with open(os.path.join(ROOT, "data", "design", f"{job['system']}_{job['set']}.json")) as f:
@@ -182,7 +184,8 @@ def sources(k: dict, producer: dict | None = None) -> list:
     """The kernels whose outputs k mounts: for each dependency the kernel that produced its expected
     output (its last continuation, T8 RS-3), and for a continuation the session it continues."""
     producer = producer or {}
-    return [producer.get(d, d) for d in k.get("depends_on", ())] + ([k["prev"]] if k.get("prev") else [])
+    return ([producer.get(d, d) for d in k.get("depends_on", ())] + ([k["prev"]] if k.get("prev") else [])
+            + [i for i in k.get("inputs", ()) if i not in k.get("depends_on", ())])
 
 
 def point_sources(k: dict, kit_slug: str, producer: dict) -> None:

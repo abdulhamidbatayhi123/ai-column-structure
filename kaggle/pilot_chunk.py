@@ -29,6 +29,14 @@ ARMS = {pieces._tag(a): a for a in pieces.LR_ARMS}
 PHASE = {"data": 0, "cplk": 0, "ae": 1, "lr": 1, "curve": 2, "s": 3, "wall": 3, "two": 4, "pcq": 4}
 
 
+def stage_mounted(mounted: str, dest: str) -> str:
+    """Lay the pilot npz under `mounted` (the data kernels' outputs) out by key and split under `dest`, as
+    scripts/pilot_collect.py data does locally, with symlinks (copies where links are not allowed)."""
+    from p3b.pilot import collect
+    collect.stage_data([mounted], dest, link=True)
+    return dest
+
+
 def phase_of(name: str) -> int:
     kind = name.partition("-")[0]
     if kind not in PHASE:
@@ -76,12 +84,17 @@ def main(argv=None):
                     help="resumable pieces (lr-*, curve-*, s-*, two-*, pcq-*) checkpoint after so many hours "
                          "(Kaggle sessions end at 12)")
     ap.add_argument("--resume-from", default=None, help="an earlier session's output (Kaggle kernel input)")
+    ap.add_argument("--data-from", default=None,
+                    help="lay the pilot data out from these mounted data-kernel outputs instead of --data")
     a = ap.parse_args(argv)
     import time
     deadline = time.monotonic() + a.hours * 3600
     # phase 0 reads no stage; later phases refuse a stage file of another pilot revision (R1-4)
     stage = pieces.load_stage(a.stage, phase_of(a.piece))
     q = json.loads(a.quick) if a.quick else {}
+    if a.data_from:
+        import tempfile
+        a.data = stage_mounted(a.data_from, tempfile.mkdtemp(prefix="p3b_pilot_data_"))
     if not os.path.isdir(a.data):
         raise SystemExit(f"no pilot data at {a.data}: stage it with scripts/pilot_collect.py data and rebuild the kit")
     print(os.path.basename(run_piece(a.piece, a.data, stage, a.out, q, deadline, a.resume_from)), flush=True)

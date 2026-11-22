@@ -39,6 +39,20 @@ def _job(piece: str, expect: str, suffix: str, depends_on=None, threads: int = 1
     return job
 
 
+def data_kernels() -> list:
+    """The kernels that generated the current pilot data (kaggle/jobs_pilot_r3.json, named as run_queue names
+    them): every pilot kernel mounts their outputs and lays them out itself (pilot_chunk --data-from), so the
+    kit carries no data."""
+    import importlib.util
+    spec_ = importlib.util.spec_from_file_location("run_queue", os.path.join(ROOT, "kaggle", "run_queue.py"))
+    rq = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(rq)
+    kernel_name = rq.kernel_name
+    with open(os.path.join(ROOT, "kaggle", "jobs_pilot_r3.json")) as f:
+        spec = json.load(f)
+    return [kernel_name(j, i) for j in spec["jobs"] for i in range(j["of"])]
+
+
 def _ae(key: str, seed: int, suffix: str) -> dict:
     sys_, mat = KEYS[key]
     return _job(f"ae-{key}-s{seed}", f"ae_{sys_}_{mat}_pilot_s{seed}.pt", suffix, threads=4)
@@ -67,7 +81,8 @@ def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> di
     for j in jobs:          # the sweeps and the S and two-seed runs span sessions (structured arms at the pilot d,
         # C+L; T8 RS-8): run_queue continues them
         j["resumable"] = j["set"].startswith(("lr-", "curve-", "s-", "two-", "pcq-"))
-    return {"kit_slug": kit_slug, "nz": 0, "jobs": jobs}
+        j["commands"] = [list(c) + ["--data-from", "/kaggle/input"] for c in j["commands"]]
+    return {"kit_slug": kit_slug, "nz": 0, "kernel_inputs": data_kernels(), "jobs": jobs}
 
 
 def main(argv) -> None:

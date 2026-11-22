@@ -37,7 +37,7 @@ def _phase(name: str) -> int:
     raise ValueError(f"unknown piece {name!r}")
 
 
-def stage_data(gen_dirs, data_root) -> dict:
+def stage_data(gen_dirs, data_root, link: bool = False) -> dict:
     """Copy every pilot npz under gen_dirs into data_root/<key>/<split>/; returns counts per key and split."""
     from p3b.gates import load_meta
     counts, seen = {}, {}
@@ -60,7 +60,14 @@ def stage_data(gen_dirs, data_root) -> dict:
                 split = "train" if int(load_meta(p)["point"]["index"]) < SPLIT_TRAIN else "validation"
             dst = os.path.join(str(data_root), key, split)
             os.makedirs(dst, exist_ok=True)
-            shutil.copy2(p, os.path.join(dst, name))
+            target = os.path.join(dst, name)
+            if link:
+                try:
+                    os.symlink(os.path.abspath(p), target)
+                except OSError:                       # no symlink right (e.g. Windows without developer mode)
+                    shutil.copy2(p, target)
+            else:
+                shutil.copy2(p, target)
             counts[(key, split)] = counts.get((key, split), 0) + 1
     return {f"{k}/{s}": n for (k, s), n in sorted(counts.items())}
 
