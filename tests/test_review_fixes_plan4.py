@@ -21,7 +21,7 @@ def test_kernel_runs_read_only_from_the_kit_and_writes_only_outputs(tmp_path):
     (kit / "data").mkdir()
     (kit / "data" / "big.npz").write_text("x" * 1000)
     (kit / "w.py").write_text("import sys, os\nopen(os.path.join(sys.argv[1], 'r.json'), 'w').write('{}')\n")
-    script = run_queue.RUN_CMDS_PY.format(cmds=[["w.py", "OUT"]], kit_name="p3b-reference-kit", threads=4)
+    script = run_queue.RUN_CMDS_PY.format(cmds=[["w.py", "OUT"]], kit_name="p3b-reference-kit", threads=4, env=None)
     base = str(tmp_path).replace("\\", "/")
     script = script.replace("/kaggle/input", base + "/input").replace("/kaggle/working", base + "/working")
     (tmp_path / "run.py").write_text(script)

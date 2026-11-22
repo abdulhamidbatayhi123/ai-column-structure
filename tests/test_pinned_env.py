@@ -61,8 +61,12 @@ def test_ensure_refuses_a_mismatch_but_records_it(tmp_path):
 
 
 def test_wheel_kernel_downloads_the_pins_with_internet(tmp_path):
-    import env_wheels
+    import importlib.util
     from p3b import envcheck
+    # loaded by path: a late plain import depended on sys.path state and failed in the full CI run (bd2ed5f)
+    sp = importlib.util.spec_from_file_location("env_wheels", os.path.join(ROOT, "kaggle", "env_wheels.py"))
+    env_wheels = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(env_wheels)
     d = env_wheels.write(str(tmp_path))
     meta = json.load(open(os.path.join(d, "kernel-metadata.json")))
     assert meta["enable_internet"] is True and meta["id"].endswith("/" + envcheck.env_kernel_name(PINS))
