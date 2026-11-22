@@ -53,7 +53,7 @@ MAX_CONTINUATIONS = 10
 
 RUN_PY = r'''import glob, os, subprocess, sys
 # the kit is used read-only where Kaggle mounts it; nothing of it is copied into the outputs
-hits = glob.glob("/kaggle/input/{kit_name}/**/kaggle/generate_chunk.py", recursive=True)
+hits = glob.glob("/kaggle/input/**/{kit_name}/**/kaggle/generate_chunk.py", recursive=True)  # flat or datasets/<owner>/
 kit = os.path.dirname(os.path.dirname(hits[0]))
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -93,7 +93,7 @@ def kernel_name(job: dict, chunk: int) -> str:
 
 RUN_CMDS_PY = r'''import glob, os, subprocess, sys
 # the kit is used read-only where Kaggle mounts it; nothing of it is copied into the outputs
-hits = glob.glob("/kaggle/input/{kit_name}/**/kaggle/generate_chunk.py", recursive=True)
+hits = glob.glob("/kaggle/input/**/{kit_name}/**/kaggle/generate_chunk.py", recursive=True)  # flat or datasets/<owner>/
 kit = os.path.dirname(os.path.dirname(hits[0]))
 os.environ["OMP_NUM_THREADS"] = "{threads}"
 os.environ["OPENBLAS_NUM_THREADS"] = "{threads}"
