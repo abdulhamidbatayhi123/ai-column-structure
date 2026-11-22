@@ -75,7 +75,8 @@ def test_r14_pilot_jobs_refuses_a_stage_without_the_current_revision(tmp_path, m
     assert json.loads((tmp_path / "jobs1.json").read_text())["jobs"]
     _pilot_jobs_main(monkeypatch, 0, tmp_path / "jobs0.json", stale)              # phase 0 needs no stage
     names = [j["name"] for j in json.loads((tmp_path / "jobs0.json").read_text())["jobs"]]
-    assert all(n.endswith(pieces.stage_sha({})[:6]) for n in names)
+    # names end in the stage hash, then the pinned environment's tag (test_pinned_env)
+    assert all(f"-{pieces.stage_sha({})[:6]}-e" in n for n in names)
 
 
 def _chunk(monkeypatch):

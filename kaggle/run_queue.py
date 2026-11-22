@@ -101,6 +101,11 @@ os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 os.environ["P3B_PAPER1_DIR"] = os.path.join(kit, "paper1")
 out = "/kaggle/working/out"
 os.makedirs(out, exist_ok=True)
+ENV = {env!r}
+if ENV:     # the pinned environment, installed offline before anything is computed (p3b/envcheck.py)
+    sys.path.insert(0, kit)
+    from p3b import envcheck
+    envcheck.ensure(ENV, "/kaggle/input", out)
 
 
 def m(x):
@@ -139,22 +144,24 @@ def write_kernels(spec: dict) -> list[dict]:
         raise ValueError(f"jobs depend on {', '.join(outside)}, which are not in this jobs file; queue them "
                          f"together (kaggle/train_jobs.py evaluation_jobs carries its training jobs)")
     kernels = []
+    # finished kernels every command kernel mounts: the jobs file's inputs and the pinned environment's wheels
+    inputs = list(spec.get("kernel_inputs", ())) + ([spec["env"]["kernel"]] if spec.get("env") else [])
     for job in spec["jobs"]:
         if "commands" in job:
             d = os.path.join(BUILD, job["name"])
             os.makedirs(d, exist_ok=True)
             with open(os.path.join(d, "run.py"), "w") as f:
                 f.write(RUN_CMDS_PY.format(cmds=job["commands"], kit_name=spec["kit_slug"].split("/")[-1],
-                                           threads=job.get("threads", 1)))
+                                           threads=job.get("threads", 1), env=spec.get("env")))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
-                json.dump(_metadata(job["name"], spec["kit_slug"],
-                                    list(job.get("depends_on", ())) + list(spec.get("kernel_inputs", ()))), f, indent=1)
+                json.dump(_metadata(job["name"], spec["kit_slug"], list(job.get("depends_on", ())) + inputs), f, indent=1)
             kernels.append({"name": job["name"], "base": job["name"], "dir": d, "system": job.get("system", "timing"),
                             "set": job.get("set", job["name"]), "expect": job["expect"],
                             "depends_on": list(job.get("depends_on", ())), "commands": job["commands"],
                             "threads": job.get("threads", 1), "resumable": bool(job.get("resumable", False)),
                             "kit_name": spec["kit_slug"].split("/")[-1], "r": 0,
-                            "inputs": list(spec.get("kernel_inputs", ())),   # finished kernels every session mounts
+                            "inputs": inputs,   # finished kernels every session mounts
+                            "env": spec.get("env"),
                             **({"members": job["members"]} if job.get("members") else {})})
             continue
         with open(os.path.join(ROOT, "data", "design", f"{job['system']}_{job['set']}.json")) as f:
@@ -204,7 +211,7 @@ def continuation(k: dict, kit_slug: str, producer: dict | None = None) -> dict:
     os.makedirs(d, exist_ok=True)
     cmds = [list(c) + ["--resume-from", "/kaggle/input"] for c in k["commands"]]
     with open(os.path.join(d, "run.py"), "w") as f:
-        f.write(RUN_CMDS_PY.format(cmds=cmds, kit_name=k["kit_name"], threads=k.get("threads", 1)))
+        f.write(RUN_CMDS_PY.format(cmds=cmds, kit_name=k["kit_name"], threads=k.get("threads", 1), env=k.get("env")))
     nk = {**k, "name": name, "dir": d, "r": n, "prev": k["name"]}
     point_sources(nk, kit_slug, producer or {})
     return nk
@@ -310,7 +317,7 @@ def pack_continuation(k: dict, members: list, kit_slug: str, producer: dict | No
     ms = [m for m in k["members"] if m["name"] in members]
     cmds = [list(c) + ["--resume-from", "/kaggle/input"] for m in ms for c in m["commands"]]
     with open(os.path.join(d, "run.py"), "w") as f:
-        f.write(RUN_CMDS_PY.format(cmds=cmds, kit_name=k["kit_name"], threads=k.get("threads", 1)))
+        f.write(RUN_CMDS_PY.format(cmds=cmds, kit_name=k["kit_name"], threads=k.get("threads", 1), env=k.get("env")))
     deps = []
     for m in ms:
         deps += [x for x in m["depends_on"] if x not in deps]

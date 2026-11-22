@@ -18,6 +18,7 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
+from p3b import envcheck  # noqa: E402
 from p3b.pilot.pieces import (KEYS, LR_ARMS, PILOT_REVISION, PRIMARY_KEY, TWO_SEEDS, _tag, load_stage,  # noqa: E402
                               restrict, stage_sha)
 
@@ -59,7 +60,9 @@ def _ae(key: str, seed: int, suffix: str) -> dict:
 
 
 def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> dict:
-    x = f"{PILOT_REVISION}-{stage_sha(restrict(stage or {}, phase))[:6]}"
+    env = envcheck.env_spec(os.path.join(ROOT, "requirements.txt"))
+    # pilot revision, stage and pinned environment (p3b/envcheck.py) in the name: a rerun under any of them is new
+    x = f"{PILOT_REVISION}-{stage_sha(restrict(stage or {}, phase))[:6]}-e{env['kernel'][-4:]}"
     jobs = []
     if phase == 0:
         jobs += [_job(f"data-{k}", f"data_{k}.json", x) for k in KEYS]
@@ -82,7 +85,7 @@ def phase_jobs(phase: int, stage: dict | None = None, kit_slug: str = KIT) -> di
         # C+L; T8 RS-8): run_queue continues them
         j["resumable"] = j["set"].startswith(("lr-", "curve-", "s-", "two-", "pcq-"))
         j["commands"] = [list(c) + ["--data-from", "/kaggle/input"] for c in j["commands"]]
-    return {"kit_slug": kit_slug, "nz": 0, "kernel_inputs": data_kernels(), "jobs": jobs}
+    return {"kit_slug": kit_slug, "nz": 0, "kernel_inputs": data_kernels(), "env": env, "jobs": jobs}
 
 
 def main(argv) -> None:
