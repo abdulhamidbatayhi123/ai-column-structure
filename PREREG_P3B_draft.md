@@ -611,6 +611,15 @@ All compute runs on Kaggle (free CPU sessions), as one-thread jobs packed four p
 (`kaggle/run_queue.py`). The need is computed by `scripts/budget.py` from
 measured costs (`docs/compute_3B.md` §2 cites its output and the timing files).
 
+**The runtime environment.** Every pilot and study kernel runs the exact versions pinned in
+`requirements.txt` (Python 3.13 of the Kaggle image; numpy 2.4.6, scipy 1.17.1, torch 2.12.0+cpu), the
+versions the test suite runs under, not whatever the Kaggle image carries (on 2026-11-22 it carried
+torch 2.11.0, and it can change during the runs). A wheel kernel (`kaggle/env_wheels.py`) downloads the
+pinned wheels once; every kernel mounts them, installs them offline before computing anything
+(`p3b/envcheck.py`), writes the versions it runs and its full `pip freeze` to `ENV.json` among its outputs,
+and stops if any pinned version differs. Kernel names carry the environment's tag, so a change of pins
+can never reuse an earlier result.
+
 **The ceiling: 1,300 Kaggle session hours** (pre-freeze revision R2, Section 12). The counted quantity:
 - every kernel version pushed for the study from the freeze commit on, as logged in
   `kaggle/registry.txt`;
