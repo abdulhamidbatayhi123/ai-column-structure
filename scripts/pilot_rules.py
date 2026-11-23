@@ -60,7 +60,7 @@ def main(results_dir: str, out_path: str) -> dict:
     h_steps = {key: rules.choose_h_steps({int(k): v["viol_rate"] for k, v in hs.items()},
                                          {int(k): v["stiff_ok"] for k, v in hs.items()})
                for key, hs in data["h_check.json"].items()}
-    th = {key: rules.thresholds(t["floors"], t["ref_production"], t["g2"], t["defects_per_step"], t["tau_ref"])
+    th = {key: rules.thresholds(t["floors"], t["ref_production"], t["g2"], t["defects_per_step"], t["tau_ref"], t["tau_floor"])
           for key, t in data["threshold_inputs.json"].items()}
     ulong = rules.iterations_ulong(iters, data["wall_per_iter.json"]) if iters is not None else None
     K = {key: rules.choose_K({int(k): v for k, v in e.items()}) for key, e in data["cplusl_K.json"].items()}

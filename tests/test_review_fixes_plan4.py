@@ -61,7 +61,7 @@ def _pilot_values():
     return {"lr": {"U": 1e-3, "U-long": 1e-3, "S": 1e-3, "C+L": 1e-3}, "iterations": 2, "iterations_ulong": 4,
             "h_steps": {"A_MOF-303": 1, "B": 1}, "d": {"A_MOF-303": 4, "B": 4}, "K": {"A_MOF-303": 1},
             "thresholds": {"A_MOF-303": {"violation_N": 1e-5, "violation_E": 1e-5, "tau_S": 1e-6, "kappa": 1e-3,
-                                         "defect_bound": 1e-3, "tau_ref": 1e-3}},
+                                         "defect_bound": 1e-3, "tau_ref": 1e-3, "tau_floor": 0.0}},
             "widths": {}}
 
 
@@ -142,11 +142,11 @@ def test_widths_match_s_within_five_percent():
 def test_tau_s_comes_from_reference_noise_and_raises_on_empty():
     from p3b.pilot.rules import thresholds
     th = thresholds(floors={"N": 1e-6, "E": 1e-6}, ref_production=np.array([0.5, -1e-6, 2.0, -3e-6]),
-                    g2=np.ones(10), defects_per_step=np.zeros(5), tau_ref=1e-3)
+                    g2=np.ones(10), defects_per_step=np.zeros(5), tau_ref=1e-3, tau_floor=0.0)
     assert th["tau_S"] == pytest.approx(10 * np.percentile([1e-6, 3e-6], 99.9))   # negative part only
     with pytest.raises(ValueError):
         thresholds(floors={"N": 1, "E": 1}, ref_production=np.array([]), g2=np.ones(3),
-                   defects_per_step=np.zeros(2), tau_ref=1.0)
+                   defects_per_step=np.zeros(2), tau_ref=1.0, tau_floor=0.0)
 
 
 # ---- Important 6 and 7: H4 power, conservative seed sharing, one power number ----------------------

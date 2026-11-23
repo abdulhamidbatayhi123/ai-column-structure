@@ -32,19 +32,21 @@ def _physics(ds):
 
 def reference_noise(paths) -> dict:
     from p3b import gates
-    from p3b.eval.violations import reference_floor, trapezoid_residuals
+    from p3b.eval.violations import reference_floor, reversal_mask, trapezoid_residuals
     from p3b.latent.data import load_set
     from p3b.simulate_a import RTOL
     ds = load_set(paths)
     phys = _physics(ds)
     floors = reference_floor(ds, phys)
-    prod = []
+    prod, excluded = [], 0
     for j in range(ds.X.shape[0]):
         X = ds.X[j].reshape(-1, ds.X.shape[-1])
         R = ds.raw_inputs[j].reshape(X.shape[0], -1)
         t = ds.t[j].reshape(-1)
         r = trapezoid_residuals(X, R, t, phys, ds.system, ds.n_cells)
-        prod.append((r["S"] / (t[1:] - t[:-1])).numpy())
+        keep = ~reversal_mask(R, ds.system)                 # R4: reversal intervals left out
+        excluded += int((~keep).sum())
+        prod.append((r["S"] / (t[1:] - t[:-1]))[keep].numpy())
     neg, turnover = [], []
     for p in paths:
         meta = gates.load_meta(p)
@@ -54,9 +56,12 @@ def reference_noise(paths) -> dict:
             neg.append(np.maximum(0.0, -f))
         turnover.append(e["turnover_rate"])
     neg = np.concatenate(neg) if neg else np.zeros(1)
-    tau_ref = max(10.0 * float(np.percentile(neg, 99.9)), 10.0 * RTOL * float(np.median(np.concatenate(turnover))))
+    # the floor of tau_ref, and of tau_S from R4 on: 10 x rtol x the median entropy turnover rate
+    tau_floor = 10.0 * RTOL * float(np.median(np.concatenate(turnover)))
+    tau_ref = max(10.0 * float(np.percentile(neg, 99.9)), tau_floor)
     return {"floors": {k: v for k, v in floors.items() if k in ("N", "E")},
-            "ref_production": np.concatenate(prod).tolist(), "tau_ref": tau_ref}
+            "ref_production": np.concatenate(prod).tolist(), "tau_ref": tau_ref, "tau_floor": tau_floor,
+            "excluded_intervals": excluded}
 
 
 def css_cycles(paths) -> list:

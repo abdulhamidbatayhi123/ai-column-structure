@@ -161,7 +161,8 @@ def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS), da
             # the pilot's working d (PREREG 10 does not set d; the full-data gate does, PREREG 4)
             s["decoder"][key], s["d"][key] = pilot_working_decoder(data["decoder_gate"],
                                                                    data.get("decoder_gate_conv", {}))
-            s["tau_S"][key] = rules.tau_S_from(data["reference_noise"]["ref_production"])
+            s["tau_S"][key] = rules.tau_S_from(data["reference_noise"]["ref_production"],
+                                                 data["reference_noise"]["tau_floor"])
         k = _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", s, data_root, env_pins)
         s["K"] = {PRIMARY_KEY: rules.choose_K({int(a): v for a, v in k.items()})}
         if s["K"][PRIMARY_KEY] is None:
@@ -223,6 +224,7 @@ def final(pieces_dir, inputs_dir, stage: dict, keys=tuple(KEYS), hyp_stat: dict 
         "threshold_inputs.json": {key: {"floors": data[key]["reference_noise"]["floors"],
                                         "ref_production": data[key]["reference_noise"]["ref_production"],
                                         "tau_ref": data[key]["reference_noise"]["tau_ref"],
+                                        "tau_floor": data[key]["reference_noise"]["tau_floor"],
                                         "g2": s_[key]["g2"], "defects_per_step": defects[key]}
                                   for key in keys},
         "cplusl_K.json": {PRIMARY_KEY: _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", stage, data_root, env_pins)},

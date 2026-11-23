@@ -125,6 +125,43 @@ tuned on the MLP and is untested on the conv fallback. This choice was made afte
 evaluated), and the change log must say so. Even with (b), MOF-303 may be "not testable" at the registered
 thresholds, and the paper must be ready to report that honestly.
 
+## 1c. The residual statistics: B's flow-reversal intervals and the floor of τ_S (R4, 2026-11-23)
+
+**What.** The R3 pilot's phase 0 (pinned environment, kernels `*-r3-bca4ed-e1caa`) gave τ_S = 0 (MOF-303),
+2.70 (Al-fumarate) and 8,661 (B). τ_S is 10 × the 99.9th percentile of the negative part of the model-style
+entropy production on the stored pilot data (`p3b/pilot/rules.py`, `p3b/pilot/runs.py::reference_noise`).
+
+**Diagnosis** (every pilot file, train and validation, model-style trapezoid residuals per snapshot interval;
+switch intervals = the last interval of each half-cycle; no arm involved):
+
+| key | residual | 99.9th pct of abs, all | same, switch intervals left out | top 0.1 % on switch intervals | negatives (on switch) | minimum off switch |
+|---|---|---|---|---|---|---|
+| B | E | 255,000 | 280.5 | 100 % | 59,238 (472) | -401 |
+| B | S | 769.8 | 69.9 | 100 % | 472 (472) | +1.60 |
+| A, MOF-303 | S | 4.00 | 4.03 | 0 % | 161 (5) | -0.87 |
+| A, Al-fumarate | S | 3.15 | 3.15 | 0 % | 119 (0) | -0.27 |
+| A, MOF-303 | E | 339 | 339 | 0 % | | -897 |
+
+- B reverses its flow at each half-cycle. The outlet channel is the temperature at the current outflow end, so
+  it changes end across the reversal interval (in the first B training file the stored outlet goes from
+  322.0 K to 294.8 K, the temperature of the other end). A residual over that interval mixes the old direction's inputs with the new end's
+  outlet. Every negative entropy residual of B, and the whole top 0.1 % of its energy residual, are these
+  intervals. As registered, B's energy threshold was set by this artifact (about 900 times too loose), and
+  τ_S = 8,661 against a median production of 12.8 made B's entropy check empty.
+- A has no reversal. Its negative residuals lie inside smooth segments, near the ends of the half-cycles (the
+  breakthrough fronts): quadrature noise of the model-style functional, which τ_S exists to absorb.
+  MOF-303's piece used the 16 long validation trajectories, which have none, hence τ_S = 0; the negatives
+  above are in the 6-cycle training files.
+- With τ_S = 0, S's regularised projection, which leaves a positive deficit δκ/(|P∇Ŝ|² + κ) whenever it acts
+  (formulation 5.3), would count every corrected step as a violation, and the pilot's h check could not pass.
+
+**Decision (R4; PREREG Sections 5 and 12).** (1) B's reversal intervals are left out of every residual-based
+statistic (reference floors, τ_S, every arm's violation counts; `p3b/eval/violations.py::reversal_mask`,
+`violation_counts`), and their number is reported with each count. RK4 arms are included: their decoded outlet
+over a reversal step faces the same change of end. (2) τ_S = max(10 × the 99.9th percentile of the negative
+part, 10 × rtol × the median entropy turnover rate), the floor τ_ref already has. The pilot is redone under
+revision r4. Decided on reference data only, before any arm was trained or evaluated on the R3 data.
+
 ## 2. The compute ceiling: needed at the freeze
 
 **What.** PREREG Section 11: a hard ceiling of 700 CPU-equivalent hours, with a reduction order that

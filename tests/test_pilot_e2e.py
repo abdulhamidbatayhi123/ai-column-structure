@@ -53,7 +53,7 @@ def test_pilot_dry_run_end_to_end(gen, tmp_path):
     run(f"data-{KEY}", {})
     run(f"cplk-{KEY}", {})
     noise = collect.load_piece(pieces, f"data_{KEY}.json", {}, data_root=data)["reference_noise"]   # T8 RS-4
-    stage = {"d": {KEY: 8}, "K": {KEY: 1}, "tau_S": {KEY: rules.tau_S_from(noise["ref_production"])},
+    stage = {"d": {KEY: 8}, "K": {KEY: 1}, "tau_S": {KEY: rules.tau_S_from(noise["ref_production"], noise["tau_floor"])},
              "ae_input_root": str(pieces)}
     for s in TWO_SEEDS:
         run(f"ae-{KEY}-s{s}", stage)

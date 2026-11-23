@@ -35,7 +35,7 @@ def _w(d, name, obj):
 
 def _phase0(d, gate, gate_conv=None):
     v = {"css": [3, 4], "decoder_gate": gate,
-         "reference_noise": {"floors": {"N": 1e-6, "E": 1e-7}, "tau_ref": 1e-9,
+         "reference_noise": {"floors": {"N": 1e-6, "E": 1e-7}, "tau_ref": 1e-9, "tau_floor": 0.0,
                              "ref_production": [-2e-6, 1e-5, -1e-7, 3e-6]}}
     if gate_conv is not None:
         v["decoder_gate_conv"] = gate_conv

@@ -37,13 +37,13 @@ def test_thresholds():
     g2 = rng.lognormal(0, 1, 1000)
     defects = rng.poisson(2.0, 200) / 1e4                 # defect steps per step, per trajectory
     th = thresholds(floors={"N": 1e-6, "E": 2e-6}, ref_production=-rng.exponential(1e-4, 500), g2=g2,
-                    defects_per_step=defects, tau_ref=1e-3)
+                    defects_per_step=defects, tau_ref=1e-3, tau_floor=0.0)
     assert th["violation_N"] == pytest.approx(1e-5) and th["violation_E"] == pytest.approx(2e-5)
     assert th["kappa"] == pytest.approx(1e-3 * np.median(g2))
     assert th["defect_bound"] <= 1e-3
     assert th["tau_ref"] == 1e-3 and th["tau_S"] > 0
     capped = thresholds(floors={"N": 1, "E": 1}, ref_production=-np.ones(5), g2=g2,
-                        defects_per_step=np.full(10, 0.01), tau_ref=1.0)
+                        defects_per_step=np.full(10, 0.01), tau_ref=1.0, tau_floor=0.0)
     assert capped["defect_bound"] == pytest.approx(1e-3)
 
 
@@ -71,5 +71,5 @@ def test_h4_margin_rule():
 def test_tau_S_alone_equals_the_thresholds_value():
     from p3b.pilot import rules
     prod = [-3e-6, 1e-5, -1e-7, 2e-6, -5e-8]
-    th = rules.thresholds({"N": 1e-6, "E": 1e-7}, prod, [1.0, 2.0], [0.0, 1e-5], 1e-9)
-    assert rules.tau_S_from(prod) == th["tau_S"]
+    th = rules.thresholds({"N": 1e-6, "E": 1e-7}, prod, [1.0, 2.0], [0.0, 1e-5], 1e-9, 0.0)
+    assert rules.tau_S_from(prod, 0.0) == th["tau_S"]

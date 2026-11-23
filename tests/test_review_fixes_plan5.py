@@ -246,7 +246,7 @@ def _write_all(d, stage, rows_skipped=0):
     from p3b.pilot.pieces import LR_ARMS, TWO_SEEDS, _tag
     w = pieces._write
     w(d, f"data_{KEY}.json", {"css": [3], "decoder_gate": {"16": True},
-                              "reference_noise": {"floors": {"N": 1e-6, "E": 1e-7}, "tau_ref": 1e-9,
+                              "reference_noise": {"floors": {"N": 1e-6, "E": 1e-7}, "tau_ref": 1e-9, "tau_floor": 0.0,
                                                   "ref_production": [-1e-7, 1e-6]}}, stage=collect.restrict(stage, 0))
     w(d, f"cplusl_K_{KEY}.json", {"1": 0.0}, stage=collect.restrict(stage, 0))
     for a in LR_ARMS:

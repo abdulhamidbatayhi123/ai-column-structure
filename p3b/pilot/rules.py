@@ -72,17 +72,19 @@ def choose_h(viol_rates: dict, stiff_ok: dict):
     return max(ok) if ok else None
 
 
-def tau_S_from(ref_production) -> float:
+def tau_S_from(ref_production, floor: float) -> float:
     """10 x the 99.9th percentile of the negative part of the reference's model-style production
-    rates (see thresholds); needed alone before S is trained (the pilot's h check)."""
+    rates (see thresholds), but at least `floor` (R4: the floor tau_ref has, 10 x rtol x the median
+    entropy turnover rate, so tau_S is never exactly 0); needed alone before S is trained (the
+    pilot's h check)."""
     prod = np.asarray(ref_production, dtype=float)
     if prod.size == 0:
         raise ValueError("tau_S needs the reference production rates; none given")
     neg = -prod[prod < 0]
-    return 10.0 * float(np.percentile(neg, 99.9)) if neg.size else 0.0
+    return max(10.0 * float(np.percentile(neg, 99.9)) if neg.size else 0.0, float(floor))
 
 
-def thresholds(floors: dict, ref_production, g2, defects_per_step, tau_ref: float) -> dict:
+def thresholds(floors: dict, ref_production, g2, defects_per_step, tau_ref: float, tau_floor: float) -> dict:
     """Per system and material: violation thresholds (10 x the reference floors), tau_S, kappa (1e-3 x
     the median |P grad S|^2), the projection-defect bound (10 x the 99.9th percentile of defect steps
     per step, capped at 1e-3 of steps) and tau_ref (from the reference gate, passed through).
@@ -93,7 +95,7 @@ def thresholds(floors: dict, ref_production, g2, defects_per_step, tau_ref: floa
     quadrature and storage noise every arm also sees). Calibrating on S itself would make S's
     entropy check tautological and circular with h (plan 4 review)."""
     out = {f"violation_{k}": 10.0 * v for k, v in floors.items()}
-    out["tau_S"] = tau_S_from(ref_production)
+    out["tau_S"] = tau_S_from(ref_production, tau_floor)
     out["kappa"] = 1e-3 * float(np.median(np.asarray(g2, dtype=float)))
     out["defect_bound"] = min(10.0 * float(np.percentile(np.asarray(defects_per_step, float), 99.9)), DEFECT_CAP)
     out["tau_ref"] = float(tau_ref)

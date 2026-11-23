@@ -25,7 +25,7 @@ def pilot_dir(tmp_path_factory):
 
 def test_reference_noise_gives_floors_production_and_a_pilot_wide_tau_ref(pilot_dir):
     out = runs.reference_noise(sorted((pilot_dir / "validation").glob("*.npz")))
-    assert set(out) == {"floors", "ref_production", "tau_ref"}
+    assert set(out) == {"floors", "ref_production", "tau_ref", "tau_floor", "excluded_intervals"}   # R4
     assert {"N", "E"} <= set(out["floors"]) and all(v > 0 for v in out["floors"].values())
     assert len(out["ref_production"]) > 0 and np.isfinite(out["ref_production"]).all()
     assert out["tau_ref"] > 0

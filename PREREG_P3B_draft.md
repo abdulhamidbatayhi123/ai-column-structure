@@ -333,7 +333,12 @@ hyperparameters of Section 4.
   - threshold: 10 × the reference's own floor, the 99.9th percentile of the same residual on
     stored pilot data with ports computed as the models compute them;
   - entropy: total production below −τ_S;
-  - projection defects: rank or κ binding.
+  - projection defects: rank or κ binding;
+  - system B's flow-reversal intervals (the snapshot interval across which the flow changes direction,
+    two per cycle) are left out of every residual-based statistic: the reference floors, τ_S and every
+    arm's violation counts. The outlet channel is the temperature at the current outflow end, so it
+    changes end across that interval, and no residual over it is defined. Their number is reported with
+    each count (pre-freeze revision R4, Section 12).
 - **Cost:** single-trajectory latency (CPU-seconds per simulated cycle, batch 1) and batched
   throughput (trajectory-cycles per CPU-second at batch 48), both measured as CPU time on an
   idle Kaggle CPU session with 4 threads, the same session type for every arm, never on the
@@ -727,6 +732,28 @@ Revisions after the pilot and before the freeze, decided by the author blind to 
   The paper cites the restatement beside each primary. One point stays open: whether Wakao et al.'s fit
   covered liquids (one restatement gives 0.7 < Pr < 1, and B's water has Pr ≈ 3.9). B's h_v is therefore
   an extrapolation in Pr, and the paper states this. The pilot data and phases are redone with R3.
+- **R4 (2026-11-23), the residual statistics: B's flow-reversal intervals, and the floor of τ_S.**
+  The R3 pilot's phase 0 (pinned environment) gave τ_S = 0 for MOF-303, 2.70 for Al-fumarate and 8,661
+  for B, whose median production rate is 12.8. A diagnosis on the pilot data (no arm trained; the
+  numbers are in `docs/freeze_decisions_3B.md` §1c) found:
+  - **B.** Every negative model-style entropy residual lay on a flow-reversal interval, and so did the
+    top 0.1 % of the energy residual. Across that interval the stored (and decoded) outlet channel
+    changes end, so the residual mixes the old direction's inputs with the new end's outlet. Leaving
+    those intervals out, B has no negative entropy residual, and the 99.9th percentile of its energy
+    residual falls from 255,000 to 280.5. As registered, B's energy threshold would have been set about
+    900 times too loose, and its entropy check could flag nothing. The reversal intervals are now left
+    out of every residual-based statistic, for the reference and every arm alike (Section 5).
+  - **A.** The negative residuals lie inside smooth segments, near the ends of the half-cycles, at the
+    breakthrough fronts: this is the quadrature noise that τ_S is meant to absorb, and A has no reversal.
+    MOF-303's long validation data had none at all, so τ_S was exactly 0, and S's regularised projection
+    leaves a small positive deficit whenever it acts (formulation 5.3). Every such step would have counted
+    as a violation, and the h check could not have passed.
+  - **The change.** τ_S gets the floor τ_ref already has: τ_S = max(10 × the 99.9th percentile of the
+    negative part, 10 × rtol × the median entropy turnover rate). The floors, τ_S and the pilot are redone
+    under revision r4.
+
+  Both changes were decided before any arm was trained or evaluated on the R3 data (phase 1 was stopped
+  before any of its results were collected or seen), and they use only the reference data.
 
 AI declaration for the paper: "During the preparation of this work the author used a
 generative AI assistant (Claude, Anthropic) as a tool to assist with drafting and language

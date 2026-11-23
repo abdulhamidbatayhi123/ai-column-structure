@@ -73,6 +73,30 @@ def trapezoid_residuals(X, raw, t, phys, system: str, n_cells: int) -> dict:
     return {q: vals[q][1:] - vals[q][:-1] - 0.5 * (left[i] + right[i]) * dt for q, i in idx.items()}
 
 
+def reversal_mask(raw, system: str):
+    """Per snapshot interval (raw: (T, k) inputs of one trajectory): True where system B's flow reverses
+    between the interval's two snapshots (PREREG revision R4). The outlet channel is the temperature at the
+    current outflow end, so it changes end there, and a residual over that interval mixes the old direction's
+    inputs with the new end's outlet. System A never reverses."""
+    raw = torch.as_tensor(raw)
+    if system != "B":
+        return torch.zeros(raw.shape[0] - 1, dtype=torch.bool)
+    s = torch.sign(raw[:, 0])
+    return s[1:] != s[:-1]
+
+
+def violation_counts(res: dict, norm_j: dict, floors: dict, tau_S: float, dt, mask) -> dict:
+    """Violation counts of one trajectory's per-interval residuals (normalisers already indexed per interval),
+    with the reversal intervals (`mask`) left out and counted (R4)."""
+    keep = ~torch.as_tensor(mask, dtype=torch.bool)
+    viol = {"N": None, "E": None, "S": None}
+    if "N" in res and floors.get("N") is not None:
+        viol["N"] = int((((res["N"] / norm_j["feed_water"]).abs() > FACTOR * floors["N"]) & keep).sum())
+    viol["E"] = int((((res["E"] / norm_j["energy_scale"]).abs() > FACTOR * floors["E"]) & keep).sum())
+    viol["S"] = int((((res["S"] / dt) < -tau_S) & keep).sum())
+    return {"violations": viol, "excluded_intervals": int((~keep).sum())}
+
+
 def reference_floor(ds, phys, pct: float = PCT) -> dict:
     """99.9th percentiles of the normalised model-style residuals of the stored data: by the
     trapezoid of model-style ports ("N", "E"), and against the exact cumulative ports stored with
@@ -87,10 +111,11 @@ def reference_floor(ds, phys, pct: float = PCT) -> dict:
         raw = ds.raw_inputs[j].reshape(X.shape[0], -1)
         t = ds.t[j].reshape(-1)
         cyc = torch.arange(X.shape[0] - 1) // ns
+        keep = ~reversal_mask(raw, ds.system)              # R4: reversal intervals left out
         r = trapezoid_residuals(X, raw, t, phys, ds.system, ds.n_cells)
-        acc["E"].append((r["E"] / norm["energy_scale"][j, cyc]).abs())
+        acc["E"].append((r["E"] / norm["energy_scale"][j, cyc]).abs()[keep])
         if A:
-            acc["N"].append((r["N"] / norm["feed_water"][j, cyc]).abs())
+            acc["N"].append((r["N"] / norm["feed_water"][j, cyc]).abs()[keep])
         P = torch.tensor(_np.load(ds.paths[j])["ports_cum"], dtype=torch.float64).reshape(X.shape[0], -1)
         n_ch = 3 if A else 2
         ch = X[:, :ds.n_cells * n_ch].reshape(-1, ds.n_cells, n_ch)
@@ -99,10 +124,10 @@ def reference_floor(ds, phys, pct: float = PCT) -> dict:
             net_E = P[:, 2] - P[:, 3] - P[:, 4]
             N = phys.N(ch)
             net_N = P[:, 0] - P[:, 1]
-            acc["N_exact"].append(((N[1:] - N[:-1]) - (net_N[1:] - net_N[:-1])).abs() / norm["feed_water"][j, cyc])
+            acc["N_exact"].append((((N[1:] - N[:-1]) - (net_N[1:] - net_N[:-1])).abs() / norm["feed_water"][j, cyc])[keep])
         else:
             net_E = P[:, 0] - P[:, 1] - P[:, 2]
-        acc["E_exact"].append(((E[1:] - E[:-1]) - (net_E[1:] - net_E[:-1])).abs() / norm["energy_scale"][j, cyc])
+        acc["E_exact"].append((((E[1:] - E[:-1]) - (net_E[1:] - net_E[:-1])).abs() / norm["energy_scale"][j, cyc])[keep])
     return {k: float(np.percentile(torch.cat(v).numpy(), pct)) for k, v in acc.items() if v}
 
 

@@ -36,7 +36,7 @@ def _inputs(d):
                                                       "ref_production": (-rng.exponential(1e-4, 100)).tolist(),
                                                       "g2": rng.lognormal(0, 1, 100).tolist(),
                                                       "defects_per_step": (rng.poisson(1, 50) / 1e4).tolist(),
-                                                      "tau_ref": 1e-3}})
+                                                      "tau_ref": 1e-3, "tau_floor": 0.0}})
     _write(d, "cplusl_K.json", {"A_MOF-303": {"1": 0.03, "2": 0.008, "4": 0.004, "8": 0.002}})
     _write(d, "sds.json", {"H1": rng.normal(0, 0.3, (16, 3)).tolist(), "H2": rng.normal(0, 0.3, (16, 3)).tolist(),
                            "H5": rng.normal(0, 0.3, (16, 3)).tolist()})

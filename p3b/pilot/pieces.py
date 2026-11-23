@@ -37,7 +37,7 @@ PHASE_KEYS = (("d", "decoder", "K", "tau_S"), ("lr",), ("iterations",), ("h_step
 # name and every piece's recorded stage change with it, and outputs of an earlier revision are never
 # reused or collected. "r3": after R1 (the autoencoder's balance loss) and R3 (the regenerated pilot data).
 # Bump it whenever a revision changes what a piece computes.
-PILOT_REVISION = "r3"
+PILOT_REVISION = "r4"
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 

@@ -16,7 +16,7 @@ def _w(d, name, obj, stage=None):
 
 def _phase0(d, gate=None, K=None):
     _w(d, f"data_{KEY}.json", {"css": [3, 4], "decoder_gate": gate or {"16": False, "24": True, "32": True},
-                               "reference_noise": {"floors": {"N": 1e-6, "E": 1e-7}, "tau_ref": 1e-9,
+                               "reference_noise": {"floors": {"N": 1e-6, "E": 1e-7}, "tau_ref": 1e-9, "tau_floor": 0.0,
                                                    "ref_production": [-2e-6, 1e-5, -1e-7, 3e-6]}})
     _w(d, f"cplusl_K_{KEY}.json", K or {"1": 0.03, "2": 0.004, "4": 0.001, "8": 0.0})
 
@@ -26,7 +26,7 @@ def test_stage0_chooses_d_K_and_tau_S(tmp_path):
     _phase0(tmp_path)
     s = collect.stage(0, tmp_path, keys=(KEY,))
     assert s["d"] == {KEY: 24} and s["K"] == {KEY: 2}
-    assert s["tau_S"][KEY] == tau_S_from([-2e-6, 1e-5, -1e-7, 3e-6])
+    assert s["tau_S"][KEY] == tau_S_from([-2e-6, 1e-5, -1e-7, 3e-6], 0.0)
 
 
 def test_stage0_cannot_rank_boolean_gates_when_no_d_passes(tmp_path):
