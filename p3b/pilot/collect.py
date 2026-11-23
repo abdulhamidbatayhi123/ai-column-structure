@@ -95,17 +95,38 @@ def _stale_data(obj: dict, data_root) -> list:
     return sorted(f for f, sha in used.items() if _current_sha(data_root, f) != sha)
 
 
-def load_piece(pieces_dir, name: str, stage: dict, data_root=None):
+def _env_of(path, top) -> dict | None:
+    """The versions recorded by the nearest ENV.json at or above `path`'s folder, up to `top`; None if none."""
+    d, top = Path(path).resolve().parent, Path(top).resolve()
+    while True:
+        e = d / "ENV.json"
+        if e.is_file():
+            with open(e) as f:
+                return json.load(f).get("got")
+        if d == top or d == d.parent:
+            return None
+        d = d.parent
+
+
+def _pinned(path, top, env_pins) -> bool:
+    return env_pins is None or _env_of(path, top) == env_pins
+
+
+def load_piece(pieces_dir, name: str, stage: dict, data_root=None, env_pins=None):
     """The value of piece `name` run under `stage` (already restricted to the piece's phase), searched
     recursively; FileNotFoundError if absent, RuntimeError if no copy or more than one copy matches.
     With `data_root` (the current data/pilot), a copy whose recorded data files differ from the current
-    ones does not match."""
+    ones does not match. With `env_pins` ({package: version}), only a copy whose nearest ENV.json records
+    exactly those versions matches (PREREG 11, the pinned environment)."""
     found = sorted(Path(pieces_dir).rglob(name))
     if not found:
         raise FileNotFoundError(f"piece {name} not found under {pieces_dir}")
     want = stage_sha(stage)
-    match, stale = [], []
+    match, stale, other_env = [], [], 0
     for p in found:
+        if not _pinned(p, pieces_dir, env_pins):
+            other_env += 1
+            continue
         with open(p) as f:
             obj = json.load(f)
         if obj.get("meta", {}).get("stage_sha256") != want:
@@ -118,15 +139,17 @@ def load_piece(pieces_dir, name: str, stage: dict, data_root=None):
     if len(match) != 1:
         raise RuntimeError(f"piece {name}: {len(match)} of {len(found)} copies ran under the current stage "
                            f"(sha256 {want[:12]}) and data; rerun or remove the stale ones"
-                           + (f"; other data: {'; '.join(stale)}" if stale else ""))
+                           + (f"; other data: {'; '.join(stale)}" if stale else "")
+                           + (f"; {other_env} ran outside the pinned environment {env_pins}" if other_env else ""))
     return match[0]
 
 
-def _load(pieces_dir, name, stage, data_root=None):
-    return load_piece(pieces_dir, name, restrict(stage, _phase(name)), data_root)
+def _load(pieces_dir, name, stage, data_root=None, env_pins=None):
+    return load_piece(pieces_dir, name, restrict(stage, _phase(name)), data_root, env_pins)
 
 
-def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS), data_root=None) -> dict:
+def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS), data_root=None,
+          env_pins=None) -> dict:
     """The stage after phase n (0 to 3): the previous stage's values of phases before n, plus phase n's.
     `data_root`: the current pilot data, against which every piece's data files are checked."""
     from p3b.latent.autoencoder import pilot_working_decoder
@@ -134,30 +157,30 @@ def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS), da
     if n == 0:
         s["d"], s["decoder"], s["tau_S"] = {}, {}, {}
         for key in keys:
-            data = _load(pieces_dir, f"data_{key}.json", s, data_root)
+            data = _load(pieces_dir, f"data_{key}.json", s, data_root, env_pins)
             # the pilot's working d (PREREG 10 does not set d; the full-data gate does, PREREG 4)
             s["decoder"][key], s["d"][key] = pilot_working_decoder(data["decoder_gate"],
                                                                    data.get("decoder_gate_conv", {}))
             s["tau_S"][key] = rules.tau_S_from(data["reference_noise"]["ref_production"])
-        k = _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", s, data_root)
+        k = _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", s, data_root, env_pins)
         s["K"] = {PRIMARY_KEY: rules.choose_K({int(a): v for a, v in k.items()})}
         if s["K"][PRIMARY_KEY] is None:
             raise RuntimeError("no admissible K: the pilot stops here (PREREG 10)")
     elif n == 1:
         s["lr"] = rules.choose_lr({arm: {float(k): v for k, v in
-                                         _load(pieces_dir, f"lr_{_tag(arm)}.json", s, data_root).items()}
+                                         _load(pieces_dir, f"lr_{_tag(arm)}.json", s, data_root, env_pins).items()}
                                    for arm in LR_ARMS})
         if any(v is None for v in s["lr"].values()):
             raise RuntimeError("an arm finished none of its learning-rate runs: the pilot stops here")
     elif n == 2:
         s["iterations"] = rules.choose_iterations(
-            {arm: [tuple(x) for x in _load(pieces_dir, f"curve_{_tag(arm)}.json", s, data_root)] for arm in LR_ARMS})
+            {arm: [tuple(x) for x in _load(pieces_dir, f"curve_{_tag(arm)}.json", s, data_root, env_pins)] for arm in LR_ARMS})
         if s["iterations"] is None:
             raise RuntimeError("no checkpoint where every arm's improvement fell below 2 %: the pilot stops here")
     elif n == 3:
         s["h_steps"] = {}
         for key in keys:
-            hc = _load(pieces_dir, f"s_{key}.json", s, data_root)["h_check"]
+            hc = _load(pieces_dir, f"s_{key}.json", s, data_root, env_pins)["h_check"]
             s["h_steps"][key] = rules.choose_h_steps({int(k): v["viol_rate"] for k, v in hc.items()},
                                                      {int(k): v["stiff_ok"] for k, v in hc.items()})
         missing = [key for key in keys if s["h_steps"][key] is None]
@@ -170,13 +193,13 @@ def stage(n: int, pieces_dir, previous: dict | None = None, keys=tuple(KEYS), da
 
 
 def final(pieces_dir, inputs_dir, stage: dict, keys=tuple(KEYS), hyp_stat: dict | None = None,
-          draws: int = 10_000, data_root=None) -> list:
+          draws: int = 10_000, data_root=None, env_pins=None) -> list:
     """The ten input files of scripts/pilot_rules.py, written into inputs_dir; returns their paths.
     The defects are those of the chosen h of each key (review I4); a two-seed run with more than 5 %
     of its iterations skipped stops the pilot here (review I5). `data_root` as for stage."""
-    data = {key: _load(pieces_dir, f"data_{key}.json", stage, data_root) for key in keys}
-    s_ = {key: _load(pieces_dir, f"s_{key}.json", stage, data_root) for key in keys}
-    two = {(a, sd): _load(pieces_dir, f"rows_{a}_s{sd}.json", stage, data_root)
+    data = {key: _load(pieces_dir, f"data_{key}.json", stage, data_root, env_pins) for key in keys}
+    s_ = {key: _load(pieces_dir, f"s_{key}.json", stage, data_root, env_pins) for key in keys}
+    two = {(a, sd): _load(pieces_dir, f"rows_{a}_s{sd}.json", stage, data_root, env_pins)
            for a in ("U", "S", "Uq") for sd in TWO_SEEDS}
     for (a, sd), piece in two.items():
         t = piece["train"]
@@ -194,21 +217,21 @@ def final(pieces_dir, inputs_dir, stage: dict, keys=tuple(KEYS), hyp_stat: dict 
             raise RuntimeError(f"{key}: no defect counts at the chosen h ({h}); the pilot stops here")
         defects[key] = d
     out = {
-        "lr_runs.json": {arm: _load(pieces_dir, f"lr_{_tag(arm)}.json", stage, data_root) for arm in LR_ARMS},
-        "curves.json": {arm: _load(pieces_dir, f"curve_{_tag(arm)}.json", stage, data_root) for arm in LR_ARMS},
+        "lr_runs.json": {arm: _load(pieces_dir, f"lr_{_tag(arm)}.json", stage, data_root, env_pins) for arm in LR_ARMS},
+        "curves.json": {arm: _load(pieces_dir, f"curve_{_tag(arm)}.json", stage, data_root, env_pins) for arm in LR_ARMS},
         "h_check.json": {key: s_[key]["h_check"] for key in keys},
         "threshold_inputs.json": {key: {"floors": data[key]["reference_noise"]["floors"],
                                         "ref_production": data[key]["reference_noise"]["ref_production"],
                                         "tau_ref": data[key]["reference_noise"]["tau_ref"],
                                         "g2": s_[key]["g2"], "defects_per_step": defects[key]}
                                   for key in keys},
-        "cplusl_K.json": {PRIMARY_KEY: _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", stage, data_root)},
+        "cplusl_K.json": {PRIMARY_KEY: _load(pieces_dir, f"cplusl_K_{PRIMARY_KEY}.json", stage, data_root, env_pins)},
         "sds.json": sds,
         "css.json": {key: data[key]["css"] for key in keys},
         "decoder_gate.json": {key: data[key]["decoder_gate"] for key in keys},
         "decoder_gate_conv.json": {key: data[key].get("decoder_gate_conv", {}) for key in keys},
         "positive_control.json": pc,
-        "wall_per_iter.json": _load(pieces_dir, "wall_per_iter.json", stage, data_root),
+        "wall_per_iter.json": _load(pieces_dir, "wall_per_iter.json", stage, data_root, env_pins),
     }
     os.makedirs(str(inputs_dir), exist_ok=True)
     paths = []
@@ -250,7 +273,7 @@ def notes(u_rows: dict, s_rows: dict, hyp_stat: dict | None = None) -> dict:
     return {"capped_pairs": capped, "caveats": CAVEATS}
 
 
-def collect_ae(pieces_dir, dst) -> list:
+def collect_ae(pieces_dir, dst, env_pins=None) -> list:
     """The phase-1 autoencoders (ae_*_pilot_s*.pt) from the downloaded pieces into dst
     (results/pilot_ae/, which kaggle/make_kit.py puts in the kit for phases 2 to 4)."""
     dst = Path(dst)
@@ -258,6 +281,8 @@ def collect_ae(pieces_dir, dst) -> list:
     from p3b.pilot.pieces import _sha_file
     by_name = {}
     for p in sorted(Path(pieces_dir).rglob("ae_*_pilot_s*.pt")):
+        if not _pinned(p, pieces_dir, env_pins):          # PREREG 11: only the pinned environment's autoencoders
+            continue
         by_name.setdefault(p.name, set()).add((_sha_file(p), p))
     out = []
     for name, copies in sorted(by_name.items()):

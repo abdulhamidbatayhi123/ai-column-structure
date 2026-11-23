@@ -55,7 +55,7 @@ def test_the_cli_always_passes_the_pinned_versions(tmp_path, monkeypatch):
     monkeypatch.setattr(pilot_collect.collect, "stage", lambda *a, **k: seen.setdefault("stage", k) or {})
     monkeypatch.setattr(pilot_collect.collect, "collect_ae", lambda *a, **k: seen.setdefault("ae", k) and [])
     monkeypatch.setattr(pilot_collect.collect, "final", lambda *a, **k: seen.setdefault("final", k) and [])
-    monkeypatch.setattr(pilot_collect, "load_stage", lambda p: {})
+    monkeypatch.setattr(pilot_collect, "load_stage", lambda *a, **k: {})
     pilot_collect.main(["stage", "0", str(tmp_path), str(tmp_path / "st.json")])
     pilot_collect.main(["ae", str(tmp_path), str(tmp_path / "ae")])
     pilot_collect.main(["final", str(tmp_path), str(tmp_path), str(tmp_path / "st.json")])

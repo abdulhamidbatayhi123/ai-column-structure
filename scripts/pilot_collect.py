@@ -18,9 +18,12 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
+from p3b import envcheck  # noqa: E402
 from p3b.pilot import collect  # noqa: E402
 from p3b.pilot.pieces import load_stage  # noqa: E402
 
+# every piece and autoencoder collected must have run under requirements.txt's pins (PREREG 11)
+ENV_PINS = envcheck.pins_from_requirements(os.path.join(ROOT, "requirements.txt"))
 DATA_ROOT = os.environ.get("P3B_PILOT_DATA", os.path.join(ROOT, "data", "pilot"))
 
 
@@ -33,19 +36,19 @@ def main(argv):
         path = argv[3] if len(argv) > 3 else os.path.join(ROOT, "results", "pilot_stage.json")
         # after phase n > 0 the previous stage must be of the current pilot revision (T8 fix review, R1-4)
         prev = load_stage(path, n, required=True)
-        s = collect.stage(n, pieces_dir, prev, data_root=DATA_ROOT)
+        s = collect.stage(n, pieces_dir, prev, data_root=DATA_ROOT, env_pins=ENV_PINS)
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w") as f:
             json.dump(s, f, indent=1, sort_keys=True)
         print(json.dumps(s, sort_keys=True))
     elif cmd == "ae":
         dst = argv[2] if len(argv) > 2 else os.path.join(ROOT, "results", "pilot_ae")
-        for p in collect.collect_ae(argv[1], dst):
+        for p in collect.collect_ae(argv[1], dst, env_pins=ENV_PINS):
             print(p.name)
     elif cmd == "final":
         path = argv[3] if len(argv) > 3 else os.path.join(ROOT, "results", "pilot_stage.json")
         st = load_stage(path, 4, required=True)
-        for p in collect.final(argv[1], argv[2], st, data_root=DATA_ROOT):
+        for p in collect.final(argv[1], argv[2], st, data_root=DATA_ROOT, env_pins=ENV_PINS):
             print(os.path.basename(p))
     else:
         raise SystemExit(__doc__)
