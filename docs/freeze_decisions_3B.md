@@ -102,6 +102,12 @@ long validation trajectories):
   about 0.003, under the gate. This rests on three points and one seed: it is a reason for hope, not evidence.
 - B (6 trajectories): λ = 10 gives balance E 0.0045 and outlet T 0.021, against the threshold 0.02.
 
+**R3 pilot, phase 0 (2026-11-23; MLP gate at d = 32, λ = 1).** MOF-303: field 0.017, outlet c 0.024,
+balance N 0.049, balance E 0.032; no d in the grid passes with either decoder. This repeats the second
+diagnostic (0.018, 0.024, 0.047, 0.028) under the R3 physics. B passes at d = 32 only (outlet T 0.0198).
+Al-fumarate (6 trajectories) fails every criterion, as before. The same phase run under torch 2.11.0 (the
+Kaggle image) and 2.12.0 (the pinned environment, PREREG 11) agrees to 3 or 4 digits on every gate value.
+
 **The pilot no longer stops on this.** The pilot gate is a risk report (PREREG 10). d is set at full data
 by `scripts/decoder_choice.py` (PREREG 4, 5.1).
 

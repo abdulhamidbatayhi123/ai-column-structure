@@ -213,7 +213,9 @@ Other inputs:
 
 **Session hours** are the ceiling's unit (Section 3). Each Kaggle session pays a start-up of 300 s. This
 is a typical estimate: the first log lines of downloaded kernels came at 141 to 317 s, which includes
-start-up and the first work.
+start-up and the first work. The offline install of the pinned environment (PREREG 11, `p3b/envcheck.py`)
+fits inside it: in the first pinned kernel (p3b-pilot-data-amof-303-r3-bca4ed-e1caa, 2026-11-23) the
+install's own output came 48 s into the session, container start included.
 
 **The implemented layout: one-thread jobs, four per session** (`kaggle/run_queue.py` `pack_jobs`;
 `kaggle/train_jobs.py` sets threads 1 and pack 4). The pricing:
