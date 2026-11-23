@@ -28,6 +28,7 @@ import torch
 from torch import nn
 
 from p3b.eval import rollout as ro
+from p3b.latent.data import layout  # noqa: E402
 from p3b.eval.evaluate import evaluate, write_results
 from p3b.eval.metrics import release
 from p3b.train.trainer import Arm
@@ -156,7 +157,7 @@ def _round_trip(ae, std, ds, j, n_cycles):
 
 def _release_of(X, ds, j, n_cycles, phys):
     """W_k (A) or Q_k (B) of a predicted state sequence, by the evaluation's rule."""
-    n_out = 2 if ds.system == "A" else 1
+    n_out = layout(ds.system)[1]
     rhoc = None if ds.system == "A" else phys.rhoc
     return [float(x) for x in release(X[..., -n_out:], ds.raw_inputs[j, :n_cycles], ds.t[j, :n_cycles],
                                       ds.system, rhoc)]

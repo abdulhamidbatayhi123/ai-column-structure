@@ -48,7 +48,8 @@ def release(outlet, raw, t, system: str, rhoc: float | None = None, closing=None
     if system == "A":
         f = lambda o, r: r[..., 3] * (torch.exp(o[..., 0]) - r[..., 0])  # noqa: E731
     else:
-        f = lambda o, r: r[..., 0].abs() * rhoc * (o[..., 0] - r[..., 1])  # noqa: E731
+        from p3b.latent.data import outflow_temperature
+        f = lambda o, r: r[..., 0].abs() * rhoc * (outflow_temperature(o, r) - r[..., 1])  # noqa: E731
     vals = []
     for k in range(nc):
         i0, i1 = k * ns + half, (k + 1) * ns            # the half's snapshots are i0 .. i1 - 1

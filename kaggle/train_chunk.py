@@ -25,6 +25,7 @@ if os.path.isdir(os.path.join(ROOT, "paper1")):            # inside the kit
     os.environ.setdefault("P3B_PAPER1_DIR", os.path.join(ROOT, "paper1"))
 
 from p3b.pilot.rules import pilot_key  # noqa: E402
+from p3b.latent.data import layout  # noqa: E402
 from p3b.train.cells import (LEARNED_WITH_AE, SOLVER_ARMS, _pool_size, _train_files, ae_job_name, cells,  # noqa: E402
                              evaluate_cell, floor_cell, gate_ae, gate_specs, job_name, train_cell)
 
@@ -53,7 +54,7 @@ def train_ae(c, out: str, choice: dict) -> str:
     from p3b.latent.data import Standardiser, load_set
     files, _ = _train_files(data_dir(c), c.size, _pool_size(c, {}))
     ds = load_set(files)
-    n_ch, n_out = (3, 2) if c.system == "A" else (2, 1)
+    n_ch, n_out = layout(c.system)
     std = Standardiser.fit(ds.X, ds.n_cells, n_ch, n_out, features=ds.features)
     torch.manual_seed(c.seed)
     kind, d = decoder_for(c, choice)

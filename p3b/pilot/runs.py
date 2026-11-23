@@ -20,6 +20,8 @@ import os
 import numpy as np
 import torch
 
+from p3b.latent.data import layout
+
 
 def _physics(ds):
     from p3b.latent.physics import ColumnPhysics, StorePhysics
@@ -32,21 +34,19 @@ def _physics(ds):
 
 def reference_noise(paths) -> dict:
     from p3b import gates
-    from p3b.eval.violations import reference_floor, reversal_mask, trapezoid_residuals
+    from p3b.eval.violations import reference_floor, trapezoid_residuals
     from p3b.latent.data import load_set
     from p3b.simulate_a import RTOL
     ds = load_set(paths)
     phys = _physics(ds)
     floors = reference_floor(ds, phys)
-    prod, excluded = [], 0
+    prod = []
     for j in range(ds.X.shape[0]):
         X = ds.X[j].reshape(-1, ds.X.shape[-1])
         R = ds.raw_inputs[j].reshape(X.shape[0], -1)
         t = ds.t[j].reshape(-1)
         r = trapezoid_residuals(X, R, t, phys, ds.system, ds.n_cells)
-        keep = ~reversal_mask(R, ds.system)                 # R4: reversal intervals left out
-        excluded += int((~keep).sum())
-        prod.append((r["S"] / (t[1:] - t[:-1]))[keep].numpy())
+        prod.append((r["S"] / (t[1:] - t[:-1])).numpy())
     neg, turnover = [], []
     for p in paths:
         meta = gates.load_meta(p)
@@ -60,8 +60,7 @@ def reference_noise(paths) -> dict:
     tau_floor = 10.0 * RTOL * float(np.median(np.concatenate(turnover)))
     tau_ref = max(10.0 * float(np.percentile(neg, 99.9)), tau_floor)
     return {"floors": {k: v for k, v in floors.items() if k in ("N", "E")},
-            "ref_production": np.concatenate(prod).tolist(), "tau_ref": tau_ref, "tau_floor": tau_floor,
-            "excluded_intervals": excluded}
+            "ref_production": np.concatenate(prod).tolist(), "tau_ref": tau_ref, "tau_floor": tau_floor}
 
 
 def css_cycles(paths) -> list:
@@ -78,7 +77,7 @@ def decoder_gate_grid(train_paths, val_paths, d_grid=(16, 24, 32, 48, 64), epoch
     from p3b.latent.autoencoder import decoder_gate, fit_autoencoder, make_autoencoder
     from p3b.latent.data import Standardiser, load_set
     ds, val = load_set(train_paths), load_set(val_paths)
-    n_ch, n_out = (3, 2) if ds.system == "A" else (2, 1)
+    n_ch, n_out = layout(ds.system)
     std = Standardiser.fit(ds.X, ds.n_cells, n_ch, n_out, features=ds.features)
     phys, phys_train = _physics(val), _physics(ds)
     out = {}

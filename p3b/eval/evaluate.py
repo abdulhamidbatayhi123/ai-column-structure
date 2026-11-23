@@ -14,18 +14,12 @@ import os
 import torch
 
 from p3b._paper1 import PAPER1_SHA256
+from p3b.latent.data import layout  # noqa: E402
 from p3b.eval.metrics import apply_failure, cycle_errors, relative_error, release
 from p3b.eval import rollout as ro
-from p3b.eval.violations import FACTOR, normalisers, reversal_mask, trapezoid_residuals, violation_counts
+from p3b.eval.violations import FACTOR, normalisers, trapezoid_residuals, violation_counts
 from p3b.latent.metrics import field_nrmse
 from p3b.provenance import git_commit
-
-
-def _interval_mask(raw, t_flat, system: str, n_int: int):
-    """The R4 reversal mask for n_int residual entries: entry k is the interval k -> k+1 (as dt is), and any
-    entry past the last interval (the RK4 rollouts carry one) is never a reversal."""
-    m = reversal_mask(raw.reshape(t_flat.shape[0], -1), system)[:n_int]
-    return torch.cat([m, torch.zeros(n_int - m.shape[0], dtype=torch.bool)]) if m.shape[0] < n_int else m
 
 
 def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: float, seed: int,
@@ -38,7 +32,7 @@ def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: fl
     A = ds.system == "A"
     if arm.kind != "FNO" and arm.lf is None:
         raise ValueError("a latent arm needs its LatentFunctionals (lf) for the violation counts")
-    n_out, n_ch = (2, 3) if A else (1, 2)
+    n_ch, n_out = layout(ds.system)
     rhoc = None if A else phys.rhoc
     norm = normalisers(ds)
     ns = ds.X.shape[2]
@@ -69,20 +63,17 @@ def evaluate(arm, ds, phys, n_cycles: int, h_steps: int, floors: dict, tau_S: fl
             method = "trapezoid on own snapshots"
         elif res:
             method = "RK4 stages"
-        excluded = None
         if res:
             n_int = len(res["E"])
             cyc = torch.arange(n_int) // ns
             dt = torch.cat([t_flat[1:] - t_flat[:-1], (t_flat[-1:] - t_flat[-2:-1])])[:n_int]
-            mask = _interval_mask(raw, t_flat, ds.system, n_int)                            # R4
-            vc = violation_counts({k: v for k, v in res.items() if A or k != "N"},
-                                  {"feed_water": norm["feed_water"][j, cyc] if A else None,
-                                   "energy_scale": norm["energy_scale"][j, cyc]},
-                                  floors if A else {**floors, "N": None}, tau_S, dt, mask)
-            viol, excluded = vc["violations"], vc["excluded_intervals"]
+            viol = violation_counts({k: v for k, v in res.items() if A or k != "N"},
+                                    {"feed_water": norm["feed_water"][j, cyc] if A else None,
+                                     "energy_scale": norm["energy_scale"][j, cyc]},
+                                    floors if A else {**floors, "N": None}, tau_S, dt)
         rows.append({"trajectory": j, "seed": int(seed), "e": [float(x) for x in e_c],
                      "eps": [float(x) for x in eps_c], "failed_cycle": failed, "violations": viol,
-                     "violations_method": method, "violations_excluded_reversal_intervals": excluded, "flags": {k: int(v) for k, v in r.flags.items()},
+                     "violations_method": method, "flags": {k: int(v) for k, v in r.flags.items()},
                      "cpu_s": float(r.cpu_s), "e_fields": e_fields, "failure_reason": r.error,
                      "e_uncapped": [float(x) for x in e], "eps_uncapped": [float(x) for x in eps_raw],
                      "W_pred": [float(x) for x in W_p], "W_ref": [float(x) for x in W_r],
@@ -112,7 +103,7 @@ def evaluate_files(files_by_arm: dict, ds, phys, n_cycles: int, seed: int, floor
     the reference padding a partial run is never counted, and a run with no stored cycle has None."""
     from p3b.latent.data import load_set
     A = ds.system == "A"
-    n_out, n_ch = (2, 3) if A else (1, 2)
+    n_ch, n_out = layout(ds.system)
     rhoc = None if A else phys.rhoc
     norm = normalisers(ds)
     ns, nc = ds.X.shape[2], ds.n_cells
@@ -143,17 +134,15 @@ def evaluate_files(files_by_arm: dict, ds, phys, n_cycles: int, seed: int, floor
             res = {q: r[:n_int] for q, r in res.items()}
             cyc = torch.arange(n_int) // ns
             dt = (t_flat[1:] - t_flat[:-1])[:n_int]
-            viol, excluded = {"N": None, "E": None, "S": None}, None
+            viol = {"N": None, "E": None, "S": None}
             if floors is not None and n_int > 0:
-                mask = _interval_mask(raw, t_flat, ds.system, n_int)                            # R4
-                vc = violation_counts(res, {"feed_water": norm["feed_water"][j, cyc] if A else None,
-                                            "energy_scale": norm["energy_scale"][j, cyc]},
-                                      floors if A else {**floors, "N": None}, tau_S, dt, mask)
-                viol, excluded = vc["violations"], vc["excluded_intervals"]
+                viol = violation_counts(res, {"feed_water": norm["feed_water"][j, cyc] if A else None,
+                                              "energy_scale": norm["energy_scale"][j, cyc]},
+                                        floors if A else {**floors, "N": None}, tau_S, dt)
             rows.append({"arm": arm_name, "trajectory": j, "seed": int(seed), "e": [float(x) for x in e_c],
                          "eps": [float(x) for x in eps_c], "failed_cycle": failed,
                          "violations": viol, "violations_method": "trapezoid on own snapshots",
-                         "violations_intervals": n_int, "violations_excluded_reversal_intervals": excluded,
+                         "violations_intervals": n_int,
                          "residuals_normalised": {
                              "E": [float(x) for x in (res["E"] / norm["energy_scale"][j, cyc])],
                              **({"N": [float(x) for x in (res["N"] / norm["feed_water"][j, cyc])]} if A else {}),

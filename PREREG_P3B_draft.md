@@ -296,7 +296,7 @@ hyperparameters of Section 4.
 
 | item | value |
 |---|---|
-| autoencoder | MLP; encoder 386 → 256 → 256 → d, decoder d → 256 → 256 → 386 (128 cells × 3 channels + 2 outlet channels; system B: 128 × 2 + 1), SiLU; standardised channels; MSE loss plus 1 × the mean squared balance errors of 5.1 (normalised as there; pre-freeze revision R1, Section 12); Adam, learning rate 10⁻³ with cosine decay to 10⁻⁵, batch 256 snapshots, 60 epochs |
+| autoencoder | MLP; encoder 386 → 256 → 256 → d, decoder d → 256 → 256 → 386 (128 cells × 3 channels + 2 outlet channels; system B: 128 × 2 + 2, its outlet channels being T_f at both ends, pre-freeze revision R4), SiLU; standardised channels; MSE loss plus 1 × the mean squared balance errors of 5.1 (normalised as there; pre-freeze revision R1, Section 12); Adam, learning rate 10⁻³ with cosine decay to 10⁻⁵, batch 256 snapshots, 60 epochs |
 | latent dimension d | the smallest in {16, 24, 32, 48, 64} that passes the decoder gate (Section 5.1) at full data, then fixed for every size and arm of that system and material. If none passes, a fixed 1-D convolutional decoder (4 layers, 32 channels) is tried on the same grid before "not testable" is declared |
 | dynamics networks | U: f_θ is an MLP (d + inputs) → 128 → 128 → 128 → d, SiLU. S: G_θ the same; A(z) an MLP d → 128 → d·d (rank d). S-L: E_θ and S_θ are MLPs d → 64 → 64 → 1. Widths of U, U+F, P and FNO are adjusted so that the trainable dynamics parameters match S's within ±5 % (counts printed in every results file) |
 | cycle inputs | log c_in, T_in, T_w, v, and the flow direction (system B), standardised |
@@ -334,11 +334,9 @@ hyperparameters of Section 4.
     stored pilot data with ports computed as the models compute them;
   - entropy: total production below −τ_S;
   - projection defects: rank or κ binding;
-  - system B's flow-reversal intervals (the snapshot interval across which the flow changes direction,
-    two per cycle) are left out of every residual-based statistic: the reference floors, τ_S and every
-    arm's violation counts. The outlet channel is the temperature at the current outflow end, so it
-    changes end across that interval, and no residual over it is defined. Their number is reported with
-    each count (pre-freeze revision R4, Section 12).
+  - system B's outlet temperature in every port and metric is the outflow end of the two end channels
+    (T_f at z = 0 and z = L) by the flow direction of the interval (or, for a snapshot metric, of the
+    snapshot); both channels are continuous through the flow reversals (pre-freeze revision R4, Section 12).
 - **Cost:** single-trajectory latency (CPU-seconds per simulated cycle, batch 1) and batched
   throughput (trajectory-cycles per CPU-second at batch 48), both measured as CPU time on an
   idle Kaggle CPU session with 4 threads, the same session type for every arm, never on the
@@ -732,28 +730,37 @@ Revisions after the pilot and before the freeze, decided by the author blind to 
   The paper cites the restatement beside each primary. One point stays open: whether Wakao et al.'s fit
   covered liquids (one restatement gives 0.7 < Pr < 1, and B's water has Pr ≈ 3.9). B's h_v is therefore
   an extrapolation in Pr, and the paper states this. The pilot data and phases are redone with R3.
-- **R4 (2026-11-23), the residual statistics: B's flow-reversal intervals, and the floor of τ_S.**
+- **R4 (2026-11-23), system B's outlet channels, and the floor of τ_S.**
   The R3 pilot's phase 0 (pinned environment) gave τ_S = 0 for MOF-303, 2.70 for Al-fumarate and 8,661
-  for B, whose median production rate is 12.8. A diagnosis on the pilot data (no arm trained; the
-  numbers are in `docs/freeze_decisions_3B.md` §1c) found:
-  - **B.** Every negative model-style entropy residual lay on a flow-reversal interval, and so did the
-    top 0.1 % of the energy residual. Across that interval the stored (and decoded) outlet channel
-    changes end, so the residual mixes the old direction's inputs with the new end's outlet. Leaving
-    those intervals out, B has no negative entropy residual, and the 99.9th percentile of its energy
-    residual falls from 255,000 to 280.5. As registered, B's energy threshold would have been set about
-    900 times too loose, and its entropy check could flag nothing. The reversal intervals are now left
-    out of every residual-based statistic, for the reference and every arm alike (Section 5).
-  - **A.** The negative residuals lie inside smooth segments, near the ends of the half-cycles, at the
-    breakthrough fronts: this is the quadrature noise that τ_S is meant to absorb, and A has no reversal.
-    MOF-303's long validation data had none at all, so τ_S was exactly 0, and S's regularised projection
-    leaves a small positive deficit whenever it acts (formulation 5.3). Every such step would have counted
-    as a violation, and the h check could not have passed.
-  - **The change.** τ_S gets the floor τ_ref already has: τ_S = max(10 × the 99.9th percentile of the
-    negative part, 10 × rtol × the median entropy turnover rate). The floors, τ_S and the pilot are redone
-    under revision r4.
+  for B, whose median production rate is 12.8. A diagnosis on the pilot reference data (no arm trained;
+  `docs/freeze_decisions_3B.md` §1c, `results/r4_diag/`) found:
+  - **B.** B reverses its flow at every half-cycle, and its single outlet channel was the temperature at the
+    current outflow end, so it changed end across the last interval of each half-cycle. A residual over that
+    interval mixed the old direction's inputs with the other end's temperature. Every negative model-style
+    entropy residual of B lay on those intervals, and so did the whole top 0.1 % of its energy residual,
+    whose 99.9th percentile was 255,000 against 280.5 on the other intervals. As registered, B's energy
+    threshold would have been set by this artifact, about 900 times too loose, and its entropy check could
+    flag nothing. Worse, the same wrong balance would have driven S's port projection and P's penalty at
+    every reversal, while U is unconstrained: a bias in B's structured-against-unstructured comparison.
+    B's outlet is now carried as both end temperatures (the stored T_f at z = 0 and z = L, continuous in
+    time), and every port and metric takes the outflow end by the flow direction (Sections 4 and 5). At every
+    snapshot the end chosen by the snapshot's own direction is the old outlet, so the registered outlet metrics
+    are unchanged. With it, no B interval stands out (top 0.1 % on the reversal intervals: 0 %; 99.9th
+    percentile of the energy residual 280.5 over all intervals), B has no negative entropy residual, and no
+    interval has to be left out of anything. The data are not regenerated: both end temperatures were
+    already stored. An earlier form of R4 (the same day) left the reversal intervals out of the statistics
+    instead; an independent review showed that this treated only the symptom.
+  - **A.** A never reverses; its outlet is always at z = L. Its negative residuals lie inside smooth
+    segments, near the ends of the half-cycles, at the breakthrough fronts: the quadrature noise that τ_S is
+    meant to absorb. MOF-303's long validation data had none at all, so τ_S was exactly 0.
+  - **The floor of τ_S.** τ_S gets the floor τ_ref already has: τ_S = max(10 × the 99.9th percentile of the
+    negative values, 10 × rtol × the median entropy turnover rate), so it is never exactly 0. The floor does
+    not make S's step check easier to pass: whether S's entropy residual stays above −τ_S at the chosen h is
+    what the pilot's h check measures. With R4, B's τ_S is also the floor.
 
-  Both changes were decided before any arm was trained or evaluated on the R3 data (phase 1 was stopped
-  before any of its results were collected or seen), and they use only the reference data.
+  Both changes were decided on the reference data only, before any arm was trained or evaluated on the R3
+  data (phase 1 was stopped before any of its results were collected or seen). The pilot is redone under
+  revision r4.
 
 AI declaration for the paper: "During the preparation of this work the author used a
 generative AI assistant (Claude, Anthropic) as a tool to assist with drafting and language

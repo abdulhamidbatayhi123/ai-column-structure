@@ -432,7 +432,10 @@ does not depend on cost.
 
 `D: z ∈ ℝ^d → (log c, log x, log T)` on 128 coarse cells, **plus two outlet channels
 `(log c_out, log T_out)`**. This gives `c > 0`, `q = Q(x) ∈ (0, q_max)` and `T > 0` by
-construction, and no inverse-isotherm root is ever needed. For a general potential (3A),
+construction, and no inverse-isotherm root is ever needed. System B's decoder gives `(T_f, T_s)` on the cells plus **two end
+channels, T_f at z = 0 and at z = L**; its ports and metrics take the outflow end by the flow direction. B
+reverses its flow, so a single outflow-temperature channel would change end at every reversal; both end
+temperatures are continuous (pre-freeze revision R4). For a general potential (3A),
 `log x` is replaced by `ln c_eq`, the log of the vapour concentration in equilibrium with the
 adsorbed phase (INTERFACE_3A.md).
 
@@ -501,8 +504,7 @@ What the reference stores per snapshot, and why:
   `p3b/gates.py::entropy_gate`. It is a property of the data. Arm S's tolerance τ_S is a
   separate quantity. It is 10 × the 99.9th percentile of the negative part of the model-style production on
   the stored pilot data, with the floor τ_ref has (10 × rtol × the median entropy turnover rate), so it is
-  never exactly 0; system B's flow-reversal intervals, across which the outlet channel changes end, are left
-  out of it and of every other residual statistic (pre-freeze revision R4).
+  never exactly 0 (pre-freeze revision R4).
 - **Reference constants are fixed at e_0 = 0 and s_0 = 0** in all code. Their values cancel
   in exact arithmetic, but a large e_0 makes the cell entropy's Hessian ill-conditioned, and
   any coarse-port residual picks up e_0 and s_0 multiples.

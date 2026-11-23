@@ -1,0 +1,138 @@
+{
+ "A_MOF-303": {
+  "N": {
+   "n": 230352,
+   "p99.9|x| all": 0.00507769240829195,
+   "p99.9|x| non-switch": 0.00507769874657718,
+   "top0.1% on switch": 0.0,
+   "n_neg": 112212,
+   "neg on switch": 757,
+   "neg positions (non-switch, most common)": [
+    105,
+    104,
+    106,
+    107,
+    108
+   ],
+   "min non-switch": -0.007714016115765654,
+   "min switch": -7.5917111197003945e-06
+  },
+  "E": {
+   "n": 230352,
+   "p99.9|x| all": 339.0045956625779,
+   "p99.9|x| non-switch": 339.05161988265087,
+   "top0.1% on switch": 0.0,
+   "n_neg": 132734,
+   "neg on switch": 1654,
+   "neg positions (non-switch, most common)": [
+    103,
+    104,
+    105,
+    106,
+    196
+   ],
+   "min non-switch": -897.26292107835,
+   "min switch": -0.34730154563798565
+  },
+  "S": {
+   "n": 230352,
+   "p99.9|x| all": 4.003490606469555,
+   "p99.9|x| non-switch": 4.030683394074607,
+   "top0.1% on switch": 0.0,
+   "n_neg": 161,
+   "neg on switch": 5,
+   "neg positions (non-switch, most common)": [
+    198,
+    197,
+    193,
+    194,
+    192
+   ],
+   "min non-switch": -0.8677562453470505,
+   "min switch": -1.1897305812460268e-05
+  }
+ },
+ "A_Al-fumarate": {
+  "N": {
+   "n": 95992,
+   "p99.9|x| all": 0.013813636372259479,
+   "p99.9|x| non-switch": 0.013813643316819934,
+   "top0.1% on switch": 0.0,
+   "n_neg": 49637,
+   "neg on switch": 286,
+   "neg positions (non-switch, most common)": [
+    17,
+    21,
+    28,
+    33,
+    30
+   ],
+   "min non-switch": -0.03920359924776618,
+   "min switch": -2.771896808014102e-07
+  },
+  "E": {
+   "n": 95992,
+   "p99.9|x| all": 447.18218244675785,
+   "p99.9|x| non-switch": 447.18218426992564,
+   "top0.1% on switch": 0.0,
+   "n_neg": 54277,
+   "neg on switch": 715,
+   "neg positions (non-switch, most common)": [
+    193,
+    184,
+    186,
+    185,
+    187
+   ],
+   "min non-switch": -447.20879568265383,
+   "min switch": -0.09662287591720156
+  },
+  "S": {
+   "n": 95992,
+   "p99.9|x| all": 3.151654544532288,
+   "p99.9|x| non-switch": 3.1516549040364614,
+   "top0.1% on switch": 0.0,
+   "n_neg": 119,
+   "neg on switch": 0,
+   "neg positions (non-switch, most common)": [
+    101,
+    1,
+    199,
+    198,
+    195
+   ],
+   "min non-switch": -0.26983003379711085,
+   "min switch": 4.375275799784889e-05
+  }
+ },
+ "B": {
+  "E": {
+   "n": 95992,
+   "p99.9|x| all": 280.5324414906489,
+   "p99.9|x| non-switch": 280.5324656869328,
+   "top0.1% on switch": 0.0,
+   "n_neg": 59718,
+   "neg on switch": 710,
+   "neg positions (non-switch, most common)": [
+    0,
+    94,
+    134,
+    171,
+    147
+   ],
+   "min non-switch": -401.46847488944104,
+   "min switch": -7.396254623324064
+  },
+  "S": {
+   "n": 95992,
+   "p99.9|x| all": 69.61171035743175,
+   "p99.9|x| non-switch": 69.94519404769532,
+   "top0.1% on switch": 0.0,
+   "n_neg": 0,
+   "neg on switch": 0,
+   "neg positions (non-switch, most common)": [],
+   "min non-switch": 1.6022573634076898,
+   "min switch": 1.5769726978154668
+  }
+ }
+}

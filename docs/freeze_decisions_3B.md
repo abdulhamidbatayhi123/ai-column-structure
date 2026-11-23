@@ -125,7 +125,7 @@ tuned on the MLP and is untested on the conv fallback. This choice was made afte
 evaluated), and the change log must say so. Even with (b), MOF-303 may be "not testable" at the registered
 thresholds, and the paper must be ready to report that honestly.
 
-## 1c. The residual statistics: B's flow-reversal intervals and the floor of τ_S (R4, 2026-11-23)
+## 1c. System B's outlet channels and the floor of τ_S (R4, 2026-11-23)
 
 **What.** The R3 pilot's phase 0 (pinned environment, kernels `*-r3-bca4ed-e1caa`) gave τ_S = 0 (MOF-303),
 2.70 (Al-fumarate) and 8,661 (B). τ_S is 10 × the 99.9th percentile of the negative part of the model-style
@@ -155,12 +155,32 @@ switch intervals = the last interval of each half-cycle; no arm involved):
 - With τ_S = 0, S's regularised projection, which leaves a positive deficit δκ/(|P∇Ŝ|² + κ) whenever it acts
   (formulation 5.3), would count every corrected step as a violation, and the pilot's h check could not pass.
 
-**Decision (R4; PREREG Sections 5 and 12).** (1) B's reversal intervals are left out of every residual-based
-statistic (reference floors, τ_S, every arm's violation counts; `p3b/eval/violations.py::reversal_mask`,
-`violation_counts`), and their number is reported with each count. RK4 arms are included: their decoded outlet
-over a reversal step faces the same change of end. (2) τ_S = max(10 × the 99.9th percentile of the negative
-part, 10 × rtol × the median entropy turnover rate), the floor τ_ref already has. The pilot is redone under
-revision r4. Decided on reference data only, before any arm was trained or evaluated on the R3 data.
+**Decision (R4; PREREG Sections 4, 5 and 12).**
+1. B's outlet is carried as both end temperatures, the stored fine-cell T_f at z = 0 and z = L (`ends`,
+   float64, continuous in time); every port and metric takes the outflow end by the flow direction
+   (`p3b/latent/data.py::layout`, `outflow_temperature`; `StorePhysics.ports`; `release`; `decoder_gate`). At
+   every snapshot the end chosen by its own direction is the old stored outlet (to float32 rounding), so the
+   registered outlet metrics are unchanged. No data are regenerated.
+2. τ_S = max(10 × the 99.9th percentile of the negative values, 10 × rtol × the median entropy turnover
+   rate), the floor τ_ref already has. It only prevents an exact 0; it does not make S's h check easier.
+
+The same diagnosis with both end temperatures (`results/r4_diag/after_two_end_outlet.json`; script
+`results/r4_diag/residual_positions.py`, before: `before_single_outlet.json`):
+
+| key | residual | 99.9th pct of abs, all | top 0.1 % on reversal intervals | negatives | minimum on reversal intervals |
+|---|---|---|---|---|---|
+| B | E | 280.5 | 0 % | 59,718 (signs of a two-sided residual) | -7.4 |
+| B | S | 69.6 | 0 % | 0 | +1.58 |
+
+A is unchanged (A never reverses).
+
+**History.** The first form of R4 (commit c696e66) left B's reversal intervals out of the floors, τ_S and the
+violation counts. An independent adversarial review the same day found that (i) the pilot's h check, the one place
+τ_S is used before the freeze, was not masked; (ii) the RK4 rollouts' closing interval was padded as "not a
+reversal"; and, decisively, (iii) the undefined outlet also drove S's port projection and P's penalty at every
+reversal, which no exclusion can fix. The two-end outlet removes the cause, so nothing is left out. The review also
+noted that the evidence was not reproducible from the repository: the script and both outputs are now in
+`results/r4_diag/`.
 
 ## 2. The compute ceiling: needed at the freeze
 

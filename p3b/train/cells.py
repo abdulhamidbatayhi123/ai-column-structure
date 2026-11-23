@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 import torch
 
+from p3b.latent.data import layout
+
 PRIMARY = ("A", "MOF-303")
 REPL = ("A", "Al-fumarate")
 SYS_B = ("B", None)
@@ -262,7 +264,7 @@ def gate_ae(spec: dict, data_dir: str, out_dir: str, css_cycle: int, q: dict | N
     c = Cell("gate", spec["system"], spec["material"], "full", spec["seed"])
     files, _ = _train_files(data_dir, "full", _pool_size(c, q))
     ds = load_set(files)
-    n_ch, n_out = (3, 2) if c.system == "A" else (2, 1)
+    n_ch, n_out = layout(c.system)
     std = Standardiser.fit(ds.X, ds.n_cells, n_ch, n_out, features=ds.features)
     torch.manual_seed(c.seed)
     ae = make_autoencoder(spec["kind"], ds.n_cells, n_ch, n_out, int(spec["d"]), width=q.get("ae_width", 256))
@@ -288,7 +290,7 @@ def gate_ae(spec: dict, data_dir: str, out_dir: str, css_cycle: int, q: dict | N
 def _autoencoder_for(pilot: dict, n_state: int, d: int, n_cells: int, system: str, q: dict):
     """The cell's autoencoder of the kind the pilot recorded for its system and material (PREREG 4)."""
     from p3b.latent.autoencoder import make_autoencoder
-    n_ch, n_out = (3, 2) if system == "A" else (2, 1)
+    n_ch, n_out = layout(system)
     assert n_state == n_cells * n_ch + n_out, (n_state, n_cells, n_ch, n_out)
     return make_autoencoder(pilot.get("decoder", "mlp"), n_cells, n_ch, n_out, d, width=q.get("ae_width", 256))
 
@@ -392,7 +394,7 @@ def _build(cell, pilot, q, ds, out_dir):
     from p3b.latent.functionals import LatentFunctionals
     from p3b.train.trainer import Arm, TermsStandardiser, time_scale
     A = cell.system == "A"
-    n_ch, n_out = (3, 2) if A else (2, 1)
+    n_ch, n_out = layout(cell.system)
     nc, n_state, k = ds.n_cells, ds.X.shape[-1], ds.features.shape[-1]
     std = Standardiser.fit(ds.X, nc, n_ch, n_out, features=ds.features)
     d = int(pilot["d"])
@@ -564,7 +566,7 @@ def floor_cell(cell: Cell, set_name: str, data_dir: str, out_dir: str, pilot: di
     files = _set_files(data_dir, set_name)
     if not files:
         raise FileNotFoundError(f"no {set_name} trajectories under {data_dir}")
-    n_ch, n_out = (3, 2) if cell.system == "A" else (2, 1)
+    n_ch, n_out = layout(cell.system)
     train_files, _ = _train_files(data_dir, cell.size, _pool_size(cell, q))
     train = load_set(train_files)
     std = Standardiser.fit(train.X, train.n_cells, n_ch, n_out, features=train.features)   # as _build

@@ -21,6 +21,7 @@ import numpy as np
 import torch
 
 from p3b.pilot import runs
+from p3b.latent.data import layout  # noqa: E402
 from p3b.pilot.rules import pilot_key
 
 KEYS = {k: v for k, v in ((pilot_key(*sm), sm) for sm in (("A", "MOF-303"), ("A", "Al-fumarate"), ("B", None)))}
@@ -173,7 +174,7 @@ def _cell(arm: str, key: str, seed: int):
 
 def _std(ds):
     from p3b.latent.data import Standardiser
-    n_ch, n_out = (3, 2) if ds.system == "A" else (2, 1)
+    n_ch, n_out = layout(ds.system)
     return Standardiser.fit(ds.X, ds.n_cells, n_ch, n_out, features=ds.features)
 
 
@@ -203,7 +204,7 @@ def _decoder(stage, key) -> str:
 
 def _ae(ds, stage, key, q):
     from p3b.latent.autoencoder import make_autoencoder
-    n_ch, n_out = (3, 2) if ds.system == "A" else (2, 1)
+    n_ch, n_out = layout(ds.system)
     return make_autoencoder(_decoder(stage, key), ds.n_cells, n_ch, n_out, int(stage["d"][key]),
                             width=q.get("ae_width", 256))
 

@@ -40,7 +40,8 @@ def test_b_outlet_channels_are_the_stored_ends_and_the_outflow_end_is_the_old_ou
     assert X.shape[-1] == ds.n_cells * 2 + 2
     assert torch.allclose(X[:, -2:], torch.tensor(d["ends"].reshape(-1, 2)))
     raw = ds.raw_inputs[0].reshape(X.shape[0], -1)
-    assert torch.allclose(outflow_temperature(X[:, -2:], raw), torch.tensor(d["outlet"].reshape(-1)))
+    old = torch.tensor(d["outlet"].reshape(-1), dtype=torch.float64)         # stored as float32; ends as float64
+    assert torch.allclose(outflow_temperature(X[:, -2:], raw), old, rtol=1e-6, atol=0)
 
 
 def test_store_ports_take_the_outflow_end_by_direction(b_path):
@@ -87,9 +88,9 @@ def test_release_is_unchanged(b_path):
     ds = load_set([b_path])
     phys = _physics(ds)
     d = np.load(b_path)
-    old = torch.tensor(d["outlet"]).reshape(ds.X.shape[1], ds.X.shape[2], 1).expand(-1, -1, 2)
+    old = torch.tensor(d["outlet"], dtype=torch.float64).reshape(ds.X.shape[1], ds.X.shape[2], 1).expand(-1, -1, 2)
     new = release(ds.X[0][..., -2:], ds.raw_inputs[0], ds.t[0], "B", phys.rhoc)
-    assert torch.allclose(new, release(old, ds.raw_inputs[0], ds.t[0], "B", phys.rhoc))
+    assert torch.allclose(new, release(old, ds.raw_inputs[0], ds.t[0], "B", phys.rhoc), rtol=1e-5)   # float32 outlet
 
 
 def test_the_gate_judges_the_outflow_end(b_path):

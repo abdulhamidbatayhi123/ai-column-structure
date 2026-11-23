@@ -189,7 +189,8 @@ def decoder_gate(model, ds, std, phys) -> dict:
     Balances are the largest |N^ - N| / W_ref and |E^ - E| / (|dH| W_ref + int |wall| dt) over all
     snapshots (B: |E^ - E| / (|Q_ref| + int |wall loss| dt)); each must be <= 0.01."""
     A = ds.system == "A"
-    n_ch, n_out = (3, 2) if A else (2, 1)
+    from p3b.latent.data import layout, outflow_temperature
+    n_ch, n_out = layout(ds.system)
     nc = ds.n_cells
     nr, nr_ch, oc, ot, bN, bE = [], [], [], [], [], []
     for j in range(ds.X.shape[0]):
@@ -212,7 +213,8 @@ def decoder_gate(model, ds, std, phys) -> dict:
                 bN.append(float((phys.N(ch_r) - ds.N_true[j, k]).abs().max()) / W)
                 bE.append(float((phys.E(ch_r) - ds.E_true[j, k]).abs().max()) / (abs(phys.dH) * W + wall))
             else:
-                ot.append(((out_r[:, 0] - out_t[:, 0]) / (hi - lo)).pow(2))
+                r_in = ds.raw_inputs[j, k]                  # each snapshot's own direction: the outflow end (R4)
+                ot.append(((outflow_temperature(out_r, r_in) - outflow_temperature(out_t, r_in)) / (hi - lo)).pow(2))
                 bE.append(float((phys.E(ch_r) - ds.E_true[j, k]).abs().max()) / (W + wall))
     per_field = torch.stack(nr).mean(0)
     res = dict(field_nrmse=float(per_field.max()), field_nrmse_per_field=per_field.tolist(),

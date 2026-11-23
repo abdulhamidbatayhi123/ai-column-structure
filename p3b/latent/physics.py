@@ -139,8 +139,9 @@ class StorePhysics:
 
     def ports(self, ch, out, inp):
         """(P_E, Phi_S) with inp = (v, T_in); |v| carries the stream, the outlet is the decoded T_out."""
+        from p3b.latent.data import outflow_temperature
         v, T_in = inp[..., 0].abs(), inp[..., 1]
-        T_out = out[..., 0]
+        T_out = outflow_temperature(out, inp)          # the outflow end by the interval's direction (R4)
         wall = (self.h_a * (ch[..., 0] - self.T_amb)).sum(-1) * self._dz(ch)
         P_E = v * self.rhoc * (T_in - T_out) - wall
         Phi_S = v * self.rhoc * (torch.log(T_in / T0_B) - torch.log(T_out / T0_B)) - wall / self.T_amb

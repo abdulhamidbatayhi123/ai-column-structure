@@ -2,7 +2,9 @@
 
 A state vector is the stored coarse channels, flattened cell-major ((cell, channel) order), followed
 by the outlet channels: system A 128 x (log c, log x, log T) + (log c_out, log T_out) = 386; system
-B 128 x (T_f, T_s) + T_out = 257. Each snapshot carries the inputs of the interval that starts at
+B 128 x (T_f, T_s) + (T_f at z = 0, T_f at z = L) = 258 (pre-freeze revision R4: B reverses its flow, so the
+single outflow temperature changed end at every reversal; both ends are continuous, and the outflow end is
+chosen by the flow direction, `outflow_temperature`). Each snapshot carries the inputs of the interval that starts at
 it (the half-cycle containing t_i; inputs are piecewise constant per interval):
   * raw inputs (what the physics needs): A (c_in, T_in, T_w, v); B (signed v, T_in);
   * model features (PREREG Section 4): A (log c_in, T_in, T_w, v); B (T_in, T_w, |v|, direction),
@@ -52,6 +54,18 @@ def _inputs(meta: dict, n_cycles: int, n_snap: int):
     return np.broadcast_to(raw, (n_cycles,) + raw.shape), np.broadcast_to(feat, (n_cycles,) + feat.shape)
 
 
+def layout(system: str) -> tuple:
+    """(channels per cell, outlet channels): A (log c, log x, log T) and (log c_out, log T_out); B (T_f, T_s)
+    and (T_f at z = 0, T_f at z = L) (R4)."""
+    return (3, 2) if system == "A" else (2, 2)
+
+
+def outflow_temperature(out, raw):
+    """System B's outflow temperature from its two end channels (T_f at z = 0, T_f at z = L) and the raw
+    inputs whose first column is the signed velocity: z = L while v > 0, z = 0 while v < 0 (R4)."""
+    return torch.where(raw[..., 0] > 0, out[..., 1], out[..., 0])
+
+
 def load_set(paths) -> Dataset:
     """Load equally shaped npz files of one system into float64 tensors."""
     X, raw, feat, t, metas, Nt, Et, W, wall = [], [], [], [], [], [], [], [], []
@@ -59,7 +73,9 @@ def load_set(paths) -> Dataset:
     for p in paths:
         d = np.load(p, allow_pickle=False)
         meta = load_meta(d)
-        ch, out = d["channels"].astype(float), d["outlet"].astype(float)
+        ch = d["channels"].astype(float)
+        # B: both end temperatures (R4); A: the outlet (always at z = L)
+        out = (d["ends"] if meta["system"] == "B" else d["outlet"]).astype(float)
         nc, ns = ch.shape[:2]
         X.append(np.concatenate([ch.reshape(nc, ns, -1), out.reshape(nc, ns, -1)], axis=-1))
         r, f = _inputs(meta, nc, ns)
