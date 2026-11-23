@@ -27,7 +27,7 @@ def test_shapes(files):
     assert a.X.shape == (1, 2, NS, NC * 3 + 2) and a.X.dtype == torch.float64
     assert a.raw_inputs.shape == (1, 2, NS, 4) and a.features.shape == (1, 2, NS, 4)
     b = load_set([files["B"]])
-    assert b.X.shape == (1, 2, NS, NC * 2 + 1)
+    assert b.X.shape == (1, 2, NS, NC * 2 + 2)                  # B: T_f at both ends (R4)
     assert b.raw_inputs.shape == (1, 2, NS, 2) and b.features.shape == (1, 2, NS, 4)
 
 

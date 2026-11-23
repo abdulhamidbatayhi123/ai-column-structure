@@ -80,7 +80,7 @@ def test_store_functionals_and_ports_match_numpy(v):
     b = st.budget(y, (v, T_in, T_AMB))
     ph = StorePhysics(st, T_AMB)
     ch = torch.tensor(np.stack([Tf, Ts], axis=-1), dtype=torch.float64)
-    out = torch.tensor([Tf[-1] if v > 0 else Tf[0]], dtype=torch.float64)
+    out = torch.tensor([Tf[0], Tf[-1]], dtype=torch.float64)       # both ends (R4); the ports pick the outflow end
     inp = torch.tensor([v, T_in], dtype=torch.float64)
     assert rel(ph.E(ch), np.sum(y) * st.dz) <= 1e-12
     S_np = np.sum(st.Cf * np.log(Tf / 293.15) + st.Cs * np.log(Ts / 293.15)) * st.dz

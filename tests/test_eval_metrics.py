@@ -48,7 +48,7 @@ def test_release_by_trapezoid_matches_the_exact_ports(files):
         W_exact = gates.cycle_release(d)
         X = ds.X[0]
         n_state = X.shape[-1]
-        W = release(X[..., n_state - (2 if sys_ == "A" else 1):], ds.raw_inputs[0], ds.t[0], sys_,
+        W = release(X[..., n_state - 2:], ds.raw_inputs[0], ds.t[0], sys_,
                     rhoc=None if sys_ == "A" else phys.rhoc)
         assert W.shape == (2,)                          # last interval by the left rectangle
         for k in range(W.shape[0]):

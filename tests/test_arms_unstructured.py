@@ -48,7 +48,7 @@ def test_latent_functionals_match_the_decoded_physics():
 
 def test_store_functionals_have_no_water_terms():
     st = make_store(NC)
-    n = NC * 2 + 1
+    n = NC * 2 + 2                    # B: two end channels (R4)
     std = Standardiser(torch.full((n,), 320.0, dtype=F64), torch.full((n,), 5.0, dtype=F64))
     lf = LatentFunctionals(MLPAutoencoder(n, 4).decode, std, StorePhysics(st, T_AMB), "B", NC)
     out = lf.evaluate(torch.zeros(2, 4, dtype=F64), torch.tensor([[2e-3, 353.15]] * 2, dtype=F64))
