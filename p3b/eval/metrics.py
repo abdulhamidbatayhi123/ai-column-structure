@@ -7,8 +7,10 @@ W_k (A) = integral over the desorption half of v (c_out - c_in,des) dt, and Q_k 
 over the discharge half of |v| rho_f c_f (T_out - T_cold) dt, from an arm's own outlet channel at
 its snapshots: the trapezoid over the half's snapshots. System A closes the half with the next
 cycle's first snapshot (or a given closing state); the outlet is at z = L in both halves. In
-system B the outlet channel follows the flow direction, so the next cycle's first snapshot is
-already the other end: the last interval of the discharge is taken by the left rectangle. The
+system B the outflow temperature is the end channel chosen by each snapshot's own direction
+(both ends are carried, pre-freeze revision R4); the next cycle's first snapshot belongs to the
+other direction, so the last interval of the discharge is taken by the left rectangle, as
+registered before R4 (R4 leaves Q_k unchanged). The
 reference W used in epsilon comes from the same quadrature on the stored outlet, so a
 quadrature error never counts as model error; the exact-port W is reported beside it.
 
