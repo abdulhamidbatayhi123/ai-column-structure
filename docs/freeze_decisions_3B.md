@@ -174,6 +174,15 @@ The same diagnosis with both end temperatures (`results/r4_diag/after_two_end_ou
 
 A is unchanged (A never reverses).
 
+**R4 pilot, phase 0 (2026-11-24; kernels `*-r4-56bc30-e1caa`, stage 0 in `results/pilot_stage.json`).** B with both
+end channels: outlet T 0.005 to 0.008 (it was about 0.02 with one channel), balance E 0.012 for the MLP, and the conv
+decoder passes at d = 16 (field 0.0055, outlet T 0.0071, balance E 0.0099); B's energy floor is 8.4 × 10⁻⁶ (it was 0.0021,
+set by the artifact). τ_S: MOF-303 3.3 × 10⁻⁴ (the floor; 0.1 % of its median production), B 0.027 (the floor; 0.2 %),
+Al-fumarate 2.70 (21 times its median production of 0.127). Al-fumarate's τ_S comes from 119 of 96,000 intervals with
+negative production near the fronts, where the registered rule (10 × the 99.9th percentile of the negative values) gives
+about 10 times the worst of them, so its entropy check is lenient. This is the rule as registered, on a replication
+material, and the paper reports it; it is not changed after seeing the value. A is otherwise unchanged by R4.
+
 **History.** The first form of R4 (commit c696e66) left B's reversal intervals out of the floors, τ_S and the
 violation counts. An independent adversarial review the same day found that (i) the pilot's h check, the one place
 τ_S is used before the freeze, was not masked; (ii) the RK4 rollouts' closing interval was padded as "not a
