@@ -1,0 +1,34 @@
+{
+ "1": {
+  "skipped": 18,
+  "skipped_grad": 0,
+  "too_many_skipped": true,
+  "val_rollouts_failed": 5,
+  "val_rollouts": 16,
+  "fail_reasons": [
+   "_LinAlgError: linalg.svd: (Batch element 0): The algorithm failed to converge be"
+  ],
+  "val_loss_finite": false,
+  "minutes": 5.9
+ },
+ "2": {
+  "skipped": 0,
+  "skipped_grad": 0,
+  "too_many_skipped": false,
+  "val_rollouts_failed": 0,
+  "val_rollouts": 16,
+  "fail_reasons": [],
+  "val_loss_finite": true,
+  "minutes": 12.5
+ },
+ "4": {
+  "skipped": 0,
+  "skipped_grad": 0,
+  "too_many_skipped": false,
+  "val_rollouts_failed": 0,
+  "val_rollouts": 16,
+  "fail_reasons": [],
+  "val_loss_finite": true,
+  "minutes": 25.2
+ }
+}

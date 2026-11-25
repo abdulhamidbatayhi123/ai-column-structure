@@ -60,6 +60,11 @@ def choose_h_steps(viol_rates: dict, stiff_ok: dict):
     return min(ok) if ok else None
 
 
+def iterations_ulong_at(iterations: int, wall_by_h: dict, h_steps: int) -> int:
+    """U-long's iterations from the wall-clock measured at the chosen h ({str(h): {arm: s per iteration}}; R5)."""
+    return iterations_ulong(iterations, wall_by_h[str(int(h_steps))])
+
+
 def iterations_ulong(iterations: int, wall_per_iter: dict) -> int:
     """U-long: U trained for the iterations that fit S's measured wall-clock (PREREG Section 3)."""
     return int(round(iterations * wall_per_iter["S"] / wall_per_iter["U"]))

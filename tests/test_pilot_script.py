@@ -31,7 +31,7 @@ def _inputs(d):
                               "S": [[1000, 0.7222], [2000, 0.7122], [3000, 0.7102]]})
     _write(d, "h_check.json", {"A_MOF-303": {"1": {"viol_rate": 5e-5, "stiff_ok": True},
                                              "2": {"viol_rate": 1e-5, "stiff_ok": True}}})
-    _write(d, "wall_per_iter.json", {"S": 2.0, "U": 0.5})
+    _write(d, "wall_per_iter.json", {h: {"S": 2.0, "U": 0.5} for h in ("1", "2", "4")})   # per h (R5)
     _write(d, "threshold_inputs.json", {"A_MOF-303": {"floors": {"N": 1e-7, "E": 2e-7},
                                                       "ref_production": (-rng.exponential(1e-4, 100)).tolist(),
                                                       "g2": rng.lognormal(0, 1, 100).tolist(),

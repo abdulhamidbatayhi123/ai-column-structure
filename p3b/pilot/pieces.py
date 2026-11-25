@@ -38,7 +38,10 @@ PHASE_KEYS = (("d", "decoder", "K", "tau_S"), ("lr",), ("iterations",), ("h_step
 # name and every piece's recorded stage change with it, and outputs of an earlier revision are never
 # reused or collected. "r3": after R1 (the autoencoder's balance loss) and R3 (the regenerated pilot data).
 # Bump it whenever a revision changes what a piece computes.
-PILOT_REVISION = "r4"
+PILOT_REVISION = "r5"
+# every pilot training run before h is chosen (phases 1 to 3): at 1 RK4 step per snapshot interval S's training
+# skips more than 5 % of its windows and its rollouts fail; 2 is the value the ceiling was sized on (R2, R5)
+PILOT_H_STEPS = 2
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
@@ -354,7 +357,7 @@ def piece_lr(arm: str, data_root, stage: dict, out, q: dict | None = None, deadl
                                    checkpoint_dir=str(out), deadline=deadline, state=state)
     else:                       # checkpoints lr_<tag>_<lr>_ckpt.pt, which _session_in copies (T8 RS-1)
         res = runs.lr_sweep(lambda: _arm_checked(prev, arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, rates,
-                            its, h_steps=1, seed=0, n_windows=nw, n_steps=ns, checkpoint_dir=str(out),
+                            its, h_steps=PILOT_H_STEPS, seed=0, n_windows=nw, n_steps=ns, checkpoint_dir=str(out),
                             deadline=deadline, state=state, tag=_tag(arm))
     if "stopped_at" in res:
         return _session_out(out, prefix, f"lr-{_tag(arm)}", res, fp, prev, used)
@@ -403,7 +406,7 @@ def piece_curve(arm: str, data_root, stage: dict, out, q: dict | None = None, de
         state = _session_in(resume_from, out, prefix, fp)
         prev = _prev_autoencoders(resume_from, prefix)
         curve = runs.train_curve(_arm_checked(prev, arm, PRIMARY_KEY, 0, stage, ds, out, q, used), ds, val, lr, its,
-                                 every, 1, 0, nw, ns, checkpoint=os.path.join(str(out), f"{prefix}_ckpt.pt"),
+                                 every, PILOT_H_STEPS, 0, nw, ns, checkpoint=os.path.join(str(out), f"{prefix}_ckpt.pt"),
                                  deadline=deadline, state=state)
         if isinstance(curve, dict):
             return _session_out(out, prefix, f"curve-{_tag(arm)}", curve, fp, prev, used)
@@ -427,7 +430,7 @@ def _train_in_sessions(out, prefix: str, resume_from, fingerprint: dict):
 
 def piece_s(key: str, data_root, stage: dict, out, q: dict | None = None, deadline: float | None = None,
             resume_from: str | None = None) -> str:
-    """S trained at its pilot lr and iterations with one RK4 step per snapshot interval on the key's
+    """S trained at its pilot lr and iterations with PILOT_H_STEPS RK4 steps per snapshot interval on the key's
     pilot training data; the h check on its validation data with the reference's tau_S; the raw
     |P grad S|^2 values and the projection defects per step and h (threshold inputs). An S whose
     training skipped more than 5 % of its iterations is not checked: the piece stops (review I5).
@@ -445,7 +448,7 @@ def piece_s(key: str, data_root, stage: dict, out, q: dict | None = None, deadli
     prev = _prev_autoencoders(resume_from, prefix)
     arm = _arm_checked(prev, "S", key, 0, stage, ds, out, q, used)
     its = int(q.get("iterations", stage["iterations"]))
-    hist = trainer.train(arm, ds, trainer.TrainConfig(lr=stage["lr"]["S"], iterations=its, seed=0, h_steps=1,
+    hist = trainer.train(arm, ds, trainer.TrainConfig(lr=stage["lr"]["S"], iterations=its, seed=0, h_steps=PILOT_H_STEPS,
                                                       n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20),
                                                       checkpoint=ckpt, deadline=deadline))
     if "stopped_at" in hist:                             # the session ends; a later one resumes
@@ -472,11 +475,12 @@ def piece_wall(data_root, stage: dict, out, q: dict | None = None) -> str:
     makers = {a: (lambda a=a: make_arm(a, PRIMARY_KEY, 0, stage, ds, out, q, used)) for a in LATENT_ARMS}
     kw = dict(iterations=q.get("wall_iterations", 50), warmup=q.get("wall_warmup", 5),
               n_windows=q.get("n_windows", 8), n_steps=q.get("n_steps", 20))
-    res = runs.wall_per_iter(makers, ds, **kw)                  # at the session's threads (the rule input)
+    # at the session's threads (the rule input), at every h of the grid: U-long uses the chosen h (R5)
+    res = {str(k): runs.wall_per_iter(makers, ds, h_steps=k, **kw) for k in q.get("h_steps_grid", (1, 2, 4))}
     threads = torch.get_num_threads()
     try:                                                        # one thread: whether four 1-thread jobs per
         torch.set_num_threads(1)                                # session beat one 4-thread job (job layout)
-        used["timing_1_thread"] = runs.wall_per_iter(makers, ds, **kw)
+        used["timing_1_thread"] = runs.wall_per_iter(makers, ds, h_steps=PILOT_H_STEPS, **kw)
     finally:
         torch.set_num_threads(threads)
     return _write(out, "wall_per_iter.json", res, stage, q, used, seeds=[0])

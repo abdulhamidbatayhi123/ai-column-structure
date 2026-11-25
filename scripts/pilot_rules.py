@@ -9,7 +9,7 @@ Inputs (JSON, written by the pilot runs):
   curves.json             {arm: [[iteration, pooled validation loss], ...]}
   h_check.json            {key: {steps per snapshot interval (1, 2, 4): {"viol_rate", "stiff_ok"}}}
   threshold_inputs.json   {key: {"floors", "ref_production", "g2", "defects_per_step", "tau_ref"}}
-  wall_per_iter.json      {arm: training seconds per iteration} (U-long's iteration count)
+  wall_per_iter.json      {h: {arm: training seconds per iteration}} (U-long's iteration count, at the chosen h)
   cplusl_K.json           {system_material: {K: epsilon_W of C+L with unit multipliers against C}}
   sds.json                {hypothesis: [[log ratio per seed] per trajectory]}
   css.json                {system_material: [CSS cycle per pilot trajectory]}
@@ -31,6 +31,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 from p3b.latent.autoencoder import _passed, gate_ratio, pilot_working_decoder  # noqa: E402
 from p3b.pilot import rules  # noqa: E402
+from p3b.pilot.pieces import PRIMARY_KEY  # noqa: E402
 
 FILES = ("lr_runs.json", "curves.json", "h_check.json", "threshold_inputs.json", "cplusl_K.json",
          "sds.json", "css.json", "decoder_gate.json", "positive_control.json", "wall_per_iter.json")
@@ -62,7 +63,9 @@ def main(results_dir: str, out_path: str) -> dict:
                for key, hs in data["h_check.json"].items()}
     th = {key: rules.thresholds(t["floors"], t["ref_production"], t["g2"], t["defects_per_step"], t["tau_ref"], t["tau_floor"])
           for key, t in data["threshold_inputs.json"].items()}
-    ulong = rules.iterations_ulong(iters, data["wall_per_iter.json"]) if iters is not None else None
+    # U-long on A-primary, at its chosen h (the wall-clock is measured at every h of the grid; R5)
+    ulong = (rules.iterations_ulong_at(iters, data["wall_per_iter.json"], h_steps[PRIMARY_KEY])
+             if iters is not None and h_steps.get(PRIMARY_KEY) is not None else None)
     K = {key: rules.choose_K({int(k): v for k, v in e.items()}) for key, e in data["cplusl_K.json"].items()}
     sds = {}
     for hyp, vals in data["sds.json"].items():

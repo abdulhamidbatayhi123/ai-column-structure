@@ -255,7 +255,7 @@ def _write_all(d, stage, rows_skipped=0):
     w(d, f"s_{KEY}.json", {"h_check": {"2": {"viol_rate": 0.0, "stiff_ok": True, "h_rho": 1.0, "failed": 0}},
                            "g2": [1.0], "defects_per_step": {"1": [float("nan")], "2": [0.0, 1e-5]}},
       stage=collect.restrict(stage, 3))
-    w(d, "wall_per_iter.json", {"U": 1.0, "S": 2.0}, stage=collect.restrict(stage, 3))
+    w(d, "wall_per_iter.json", {h: {"U": 1.0, "S": 2.0} for h in ("1", "2", "4")}, stage=collect.restrict(stage, 3))
     rng = np.random.default_rng(0)
     for a in ("U", "S", "Uq"):
         for s in TWO_SEEDS:
@@ -312,8 +312,8 @@ def test_wall_piece_also_times_one_thread_for_the_job_layout(monkeypatch, tmp_pa
     torch.set_num_threads(4)
     p = pieces.piece_wall(tmp_path, {}, tmp_path, {})
     obj = json.loads(open(p).read())
-    assert calls == [4, 1] and torch.get_num_threads() == 4
-    assert all(v == 4.0 for v in obj["value"].values())
+    assert calls == [4, 4, 4, 1] and torch.get_num_threads() == 4      # each h of the grid, then one thread (R5)
+    assert set(obj["value"]) == {"1", "2", "4"} and all(v == 4.0 for by in obj["value"].values() for v in by.values())
     assert all(v == 1.0 for v in obj["meta"]["used"]["timing_1_thread"].values())
 
 

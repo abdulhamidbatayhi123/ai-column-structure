@@ -1,0 +1,27 @@
+{
+ "id": "abdulhamidbatayhi/p3b-diag-s-h",
+ "title": "p3b-diag-s-h",
+ "code_file": "run.py",
+ "language": "python",
+ "kernel_type": "script",
+ "is_private": true,
+ "enable_gpu": false,
+ "enable_internet": false,
+ "dataset_sources": [
+  "abdulhamidbatayhi/p3b-reference-kit"
+ ],
+ "competition_sources": [],
+ "kernel_sources": [
+  "abdulhamidbatayhi/p3b-ref-a-primary-pilot-train-0-of-2-r3",
+  "abdulhamidbatayhi/p3b-ref-a-primary-pilot-train-1-of-2-r3",
+  "abdulhamidbatayhi/p3b-ref-a-primary-pilot-val-0-of-4-r3",
+  "abdulhamidbatayhi/p3b-ref-a-primary-pilot-val-1-of-4-r3",
+  "abdulhamidbatayhi/p3b-ref-a-primary-pilot-val-2-of-4-r3",
+  "abdulhamidbatayhi/p3b-ref-a-primary-pilot-val-3-of-4-r3",
+  "abdulhamidbatayhi/p3b-ref-a-replication-pilot-0-of-2-r3",
+  "abdulhamidbatayhi/p3b-ref-a-replication-pilot-1-of-2-r3",
+  "abdulhamidbatayhi/p3b-ref-b-pilot-0-of-1-r3",
+  "abdulhamidbatayhi/p3b-env-fa681caa",
+  "abdulhamidbatayhi/p3b-pilot-ae-amof-303-s0-r4-1341b8-e1caa"
+ ]
+}

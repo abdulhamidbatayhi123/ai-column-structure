@@ -590,7 +590,9 @@ The pilot uses its own trajectories (Section 2) and is never reused. Every choic
 a committed, hashed script (`scripts/pilot_rules.py`) that prints only the chosen values, so
 no error value is seen by arm (blinding). It sets exactly the following, and nothing else:
 - **learning rate per arm:** the best of {3×10⁻⁴, 10⁻³, 3×10⁻³} on 2,000-iteration runs (one
-  seed), by validation rollout loss over one cycle;
+  seed), by validation rollout loss over one cycle. Every pilot training run before h is chosen (these
+  runs, the iteration curves and S's training before its h check) uses a provisional h of 2 RK4 steps per
+  snapshot interval (pre-freeze revision R5);
 - **iterations:** one value for every arm, the smallest at which every arm's pooled
   validation loss improves by less than 2 % per 1,000 iterations;
 - **h:** the largest of 1, 2 and 4 RK4 steps per snapshot interval (T_half/100, /200, /400 within
@@ -772,6 +774,20 @@ Revisions after the pilot and before the freeze, decided by the author blind to 
   Both changes were decided on the reference data only, before any arm was trained or evaluated on the R3
   data (phase 1 was stopped before any of its results were collected or seen). The pilot is redone under
   revision r4.
+
+- **R5 (2026-11-25), the pilot's step size before h is chosen.** The pilot chooses h in phase 3, but its
+  earlier runs trained at h = 1 RK4 step per snapshot interval: the learning-rate sweep, the iteration curves
+  and S's own training before its h check. In the R4 pilot every structured arm (S, S-L, S−M, S−Π) finished
+  none of its learning-rate runs, and the pilot stopped at stage 1 by its own rule. A diagnostic of S alone
+  (pilot data, 200 iterations, learning rate 3 × 10⁻⁴; only failure counts were read, no loss) found the cause:
+  at h = 1, 18 of 200 training windows were skipped (above the 5 % limit) and 5 of 16 validation rollouts
+  failed (the projection's SVD did not converge); at h = 2 and h = 4, none. R2 had found the same for h = 1 in
+  the timing runs. Every pilot training run before h is chosen now uses a provisional h = 2, the value the
+  ceiling was sized on (R2), for every arm alike; the h check still evaluates 1, 2 and 4 by its registered
+  rule. The wall-clock per iteration, which sets U-long's iterations, is now measured at each h of the grid,
+  and U-long uses A-primary's chosen h (it was measured at h = 1, not at the h the study runs). Decided from
+  failure counts only, with no arm's error seen. Phase 0's results stand; phases 1 to 4 are redone under
+  revision r5.
 
 AI declaration for the paper: "During the preparation of this work the author used a
 generative AI assistant (Claude, Anthropic) as a tool to assist with drafting and language

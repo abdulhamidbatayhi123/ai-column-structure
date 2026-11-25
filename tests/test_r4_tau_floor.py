@@ -34,7 +34,3 @@ def test_reference_noise_keeps_every_interval_and_gives_the_floor(b_paths):
     assert len(rn["ref_production"]) == 2 * (20 * 2 - 1)
     assert rn["tau_floor"] > 0 and rn["tau_ref"] >= rn["tau_floor"]
 
-
-def test_pilot_revision_is_r4():
-    from p3b.pilot.pieces import PILOT_REVISION
-    assert PILOT_REVISION == "r4"

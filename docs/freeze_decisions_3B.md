@@ -191,6 +191,30 @@ reversal, which no exclusion can fix. The two-end outlet removes the cause, so n
 noted that the evidence was not reproducible from the repository: the script and both outputs are now in
 `results/r4_diag/`.
 
+## 1d. The pilot's step size before h is chosen (R5, 2026-11-25)
+
+**What.** Stage 1 of the R4 pilot stopped by its own rule ("an arm finished none of its learning-rate runs"). Only
+the finished-or-not status of each run was read, never a loss: S, S-L, S−M and S−Π finished none of their three
+learning-rate runs, U+F one of three, P two of three, U, FNO and C+L all three.
+
+**Diagnostic** (`results/r5_diag/`: kernel script and output; S on A-primary pilot data, 200 iterations at
+learning rate 3 × 10⁻⁴, one seed; failure counts only):
+
+| h (RK4 steps per snapshot interval) | windows skipped of 200 | validation rollouts failed of 16 | loss finite |
+|---|---|---|---|
+| 1 | 18 (above the 5 % limit) | 5 (projection SVD did not converge) | no |
+| 2 | 0 | 0 | yes |
+| 4 | 0 | 0 | yes |
+
+The pilot trained everything at h = 1 before choosing h in phase 3 (`p3b/pilot/pieces.py`: the learning-rate
+sweep, the curves and S's training in its own h-check piece), and measured the wall-clock per iteration at h = 1.
+
+**Decision (R5; PREREG Sections 10 and 12).** Every pilot training run before h is chosen uses PILOT_H_STEPS = 2
+(R2's sizing value), for every arm alike. The h check is unchanged (1, 2 and 4, registered rule). The wall-clock is
+measured at each h of the grid and U-long uses A-primary's chosen h. Phase 0 stands (its stage hash excludes the
+revision); phases 1 to 4 are redone under r5. Whether U+F's and P's unfinished runs at the larger learning rates
+were divergences of the rate itself is not looked into: the rule picks among the finished runs.
+
 ## 2. The compute ceiling: needed at the freeze
 
 **What.** PREREG Section 11: a hard ceiling of 700 CPU-equivalent hours, with a reduction order that
