@@ -502,7 +502,8 @@ What the reference stores per snapshot, and why:
   entropy turnover rate. Φ_S uses cumulative entropy ports carried as ODE states, so output
   quadrature never enters (a trapezoid on 200 snapshots gave −0.017 on an exact solve).
   `p3b/gates.py::entropy_gate`. It is a property of the data. Arm S's tolerance τ_S is a
-  separate quantity. It is 10 × the 99.9th percentile of the negative part of the model-style production on
+  separate quantity. It is 10 × the 99.9th percentile of the negative values (the intervals with negative production
+  only; τ_ref instead takes the percentile of max(0, −x) over all intervals) of the model-style production on
   the stored pilot data, with the floor τ_ref has (10 × rtol × the median entropy turnover rate), so it is
   never exactly 0 (pre-freeze revision R4).
 - **Reference constants are fixed at e_0 = 0 and s_0 = 0** in all code. Their values cancel

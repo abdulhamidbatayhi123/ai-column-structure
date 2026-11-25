@@ -128,7 +128,7 @@ thresholds, and the paper must be ready to report that honestly.
 ## 1c. System B's outlet channels and the floor of τ_S (R4, 2026-11-23)
 
 **What.** The R3 pilot's phase 0 (pinned environment, kernels `*-r3-bca4ed-e1caa`) gave τ_S = 0 (MOF-303),
-2.70 (Al-fumarate) and 8,661 (B). τ_S is 10 × the 99.9th percentile of the negative part of the model-style
+2.70 (Al-fumarate) and 8,661 (B). τ_S is 10 × the 99.9th percentile of the negative values (intervals with negative production only) of the model-style
 entropy production on the stored pilot data (`p3b/pilot/rules.py`, `p3b/pilot/runs.py::reference_noise`).
 
 **Diagnosis** (every pilot file, train and validation, model-style trapezoid residuals per snapshot interval;

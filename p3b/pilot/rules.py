@@ -73,10 +73,11 @@ def choose_h(viol_rates: dict, stiff_ok: dict):
 
 
 def tau_S_from(ref_production, floor: float) -> float:
-    """10 x the 99.9th percentile of the negative part of the reference's model-style production
-    rates (see thresholds), but at least `floor` (R4: the floor tau_ref has, 10 x rtol x the median
-    entropy turnover rate, so tau_S is never exactly 0); needed alone before S is trained (the
-    pilot's h check)."""
+    """tau_S: 10 x the 99.9th percentile of the negative VALUES of the reference's model-style production
+    rates, i.e. the magnitudes of the intervals with negative production only (the rule since 2026-11-09;
+    tau_ref instead takes the percentile of max(0, -x) over all intervals; see thresholds), but at least
+    `floor` (R4: the floor tau_ref has, 10 x rtol x the median entropy turnover rate), so tau_S is never
+    exactly 0. Needed alone before S is trained (the pilot's h check)."""
     prod = np.asarray(ref_production, dtype=float)
     if prod.size == 0:
         raise ValueError("tau_S needs the reference production rates; none given")
@@ -90,7 +91,7 @@ def thresholds(floors: dict, ref_production, g2, defects_per_step, tau_ref: floa
     per step, capped at 1e-3 of steps) and tau_ref (from the reference gate, passed through).
 
     tau_S is a noise floor independent of the arm under test: 10 x the 99.9th percentile of the
-    negative part of the production rate computed with the model-style functionals on the pilot's
+    negative values of the production rate computed with the model-style functionals on the pilot's
     stored reference data, whose production is non-negative by proof (any negative value is the
     quadrature and storage noise every arm also sees). Calibrating on S itself would make S's
     entropy check tautological and circular with h (plan 4 review)."""

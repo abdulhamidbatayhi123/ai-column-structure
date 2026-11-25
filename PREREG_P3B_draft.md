@@ -276,7 +276,8 @@ hyperparameters of Section 4.
   outlet channels are C's own and do not depend on the mapping. It runs on all systems and
   materials.
 - **C+L.** C at 32 cells, with learned non-negative multipliers on D_L,eff, k_z,eff and the
-  LDF coefficient (system B: on k_f,eff and the exchange coefficient h_v). Each multiplier is
+  LDF coefficient (defined for system B, on k_f,eff and the exchange coefficient h_v, but run on A-primary
+  only, as the design table says). Each multiplier is
   the softplus of an MLP (3 local inputs → 32 → 32 → 1) of the cell state, initialised at
   exactly 1 so that C+L starts as C. It is trained on the same coarse data and iteration
   budget, with gradients through implicit-Euler steps (K substeps per snapshot interval, K
@@ -502,6 +503,12 @@ proof lies on the claim that is printed, never on its competitor (cs-org1 review
 - the autoencoder-loss sensitivity (R1): U and S (3 seeds; H1 and H5 statistics) with a plain-MSE
   autoencoder of the same d, wherever that autoencoder passes the gate of 5.1. Where it does not, this is
   reported as not computable;
+- the sensitivity of the entropy-violation counts to τ_S (R4; T10 review M3), on every key: per arm and test
+  trajectory, the minimum entropy residual rate (production per second); the violation counts at τ_S as
+  registered and at the alternative "negative part" reading (10 × the 99.9th percentile of max(0, −x) over all
+  intervals, floored the same way); and the pilot τ_S with a bootstrap interval over the pilot trajectories
+  (2,000 resamples of trajectories). For Al-fumarate the two readings give 2.70 and 0.72 against a median
+  production of 0.127; MOF-303 and B are at the floor under both;
 - the 3A potential, when available.
 
 ## 7. Replication and generality words
@@ -740,8 +747,8 @@ Revisions after the pilot and before the freeze, decided by the author blind to 
     entropy residual of B lay on those intervals, and so did the whole top 0.1 % of its energy residual,
     whose 99.9th percentile was 255,000 against 280.5 on the other intervals. As registered, B's energy
     threshold would have been set by this artifact, about 900 times too loose, and its entropy check could
-    flag nothing. Worse, the same wrong balance would have driven S's port projection and P's penalty at
-    every reversal, while U is unconstrained: a bias in B's structured-against-unstructured comparison.
+    flag nothing. Worse, the same wrong balance would have driven the port projection of S and S-L and the
+    inputs of U+F and U+F+proj at every reversal, while U is unconstrained (P and C+L are not run on B): a bias in B's structured-against-unstructured comparison.
     B's outlet is now carried as both end temperatures (the stored T_f at z = 0 and z = L, continuous in
     time), and every port and metric takes the outflow end by the flow direction (Sections 4 and 5). At every
     snapshot the end chosen by the snapshot's own direction is the old outlet, so the registered outlet metrics
@@ -754,7 +761,11 @@ Revisions after the pilot and before the freeze, decided by the author blind to 
     segments, near the ends of the half-cycles, at the breakthrough fronts: the quadrature noise that τ_S is
     meant to absorb. MOF-303's long validation data had none at all, so τ_S was exactly 0.
   - **The floor of τ_S.** τ_S gets the floor τ_ref already has: τ_S = max(10 × the 99.9th percentile of the
-    negative values, 10 × rtol × the median entropy turnover rate), so it is never exactly 0. The floor does
+    negative values, 10 × rtol × the median entropy turnover rate), so it is never exactly 0. The rule has
+    taken the negative values only (the intervals with negative production) since 2026-11-09, before any
+    pilot value; τ_ref instead takes the percentile of max(0, −x) over all intervals. For Al-fumarate the
+    registered reading gives 2.70 (21 times its median production, from 119 of 95,992 intervals) and the other
+    reading 0.72; the rule is kept, and both are reported (Section 6). The floor does
     not make S's step check easier to pass: whether S's entropy residual stays above −τ_S at the chosen h is
     what the pilot's h check measures. With R4, B's τ_S is also the floor.
 

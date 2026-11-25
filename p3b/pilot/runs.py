@@ -3,7 +3,7 @@ only, written as JSON, never printed. This module holds the data-only inputs (Ta
 training-based inputs are added by Tasks 2 to 5.
 
 - reference_noise: the reference floors of the violation metric (p3b.eval.violations.reference_floor),
-  the reference's model-style production rates (the negative part sets tau_S, plan 4 review), and the
+  the reference's model-style production rates (their negative values set tau_S, plan 4 review), and the
   pilot-wide tau_ref: 10 x the 99.9th percentile of the negative part of the fine-level entropy
   statistic pooled over the pilot trajectories, floored at 10 x rtol x the median entropy turnover
   rate (PREREG 5.3, p3b.gates.entropy_gate per trajectory);
