@@ -62,8 +62,9 @@ def layout(system: str) -> tuple:
 
 def outflow_temperature(out, raw):
     """System B's outflow temperature from its two end channels (T_f at z = 0, T_f at z = L) and the raw
-    inputs whose first column is the signed velocity: z = L while v > 0, z = 0 while v < 0 (R4)."""
-    return torch.where(raw[..., 0] > 0, out[..., 1], out[..., 0])
+    inputs whose first column is the signed velocity: z = L while v >= 0, z = 0 while v < 0 (R4; v = 0 as in
+    the reference and the solvers)."""
+    return torch.where(raw[..., 0] >= 0, out[..., 1], out[..., 0])
 
 
 def load_set(paths) -> Dataset:
@@ -79,6 +80,13 @@ def load_set(paths) -> Dataset:
         nc, ns = ch.shape[:2]
         X.append(np.concatenate([ch.reshape(nc, ns, -1), out.reshape(nc, ns, -1)], axis=-1))
         r, f = _inputs(meta, nc, ns)
+        if meta["system"] == "B" and "ports_cum" in d.files:
+            # R4 assumes every flow reversal falls on a snapshot: the stored direction port must be the sign
+            # of the inputs' velocity at every snapshot (T10 review L3)
+            stored = d["ports_cum"][..., 3]
+            if not np.array_equal(np.sign(stored), np.where(r[..., 0] >= 0, 1.0, -1.0)):
+                raise ValueError(f"{p}: the stored flow direction disagrees with the inputs' direction at "
+                                 f"{int((np.sign(stored) != np.where(r[..., 0] >= 0, 1.0, -1.0)).sum())} snapshots")
         raw.append(r)
         feat.append(f)
         t.append(d["t"].astype(float))

@@ -61,6 +61,11 @@ os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 os.environ["P3B_PAPER1_DIR"] = os.path.join(kit, "paper1")
 out = "/kaggle/working/out"
 os.makedirs(out, exist_ok=True)
+ENV = {env!r}
+if ENV:     # the pinned environment, installed offline before anything is computed (p3b/envcheck.py; T10 M2)
+    sys.path.insert(0, kit)
+    from p3b import envcheck
+    envcheck.ensure(ENV, "/kaggle/input", out)
 args = {args!r}
 procs = [subprocess.Popen([sys.executable, os.path.join(kit, "kaggle", "generate_chunk.py"), *a, "--out", out], cwd=out)
          for a in args]
@@ -179,9 +184,10 @@ def write_kernels(spec: dict) -> list[dict]:
                      ",".join(str(i) for i in part), "--report", f"{chunk}_{s}", "--nz", str(job.get("nz", spec["nz"]))]
                     for s, part in enumerate(chunk_indices_list(members, sub))]
             with open(os.path.join(d, "run.py"), "w") as f:
-                f.write(RUN_PY.format(args=args, kit_name=spec["kit_slug"].split("/")[-1]))
+                f.write(RUN_PY.format(args=args, kit_name=spec["kit_slug"].split("/")[-1], env=spec.get("env")))
             with open(os.path.join(d, "kernel-metadata.json"), "w") as f:
-                json.dump(_metadata(name, spec["kit_slug"]), f, indent=1)
+                json.dump(_metadata(name, spec["kit_slug"], [spec["env"]["kernel"]] if spec.get("env") else []),
+                          f, indent=1)
             kernels.append({"name": name, "base": name, "dir": d, "system": job["system"], "set": job["set"],
                             "chunk": chunk, "expected_reports": len(args)})
     return kernels
@@ -405,6 +411,8 @@ def main(jobs_file: str) -> None:
     attention = set()                     # kernels left for a person to look at (logged once)
     attention_members = set()             # packed members left for a person (the rest of the pack goes on)
     misses = {}                           # COMPLETE polls of a kernel that left nothing usable
+    failed_downloads = {}                 # failed downloads of a kernel that ended with ERROR (T10 M1)
+    ended_badly = set()                   # kernels logged as ended with ERROR or cancelled
 
     def pack_complete(i, k):
         """A packed kernel's download: finished members are done; members that left a RESUME.json and
@@ -482,11 +490,22 @@ def main(jobs_file: str) -> None:
             s = status.get(k["name"])
             if s is None:
                 continue
-            if s == "COMPLETE":
+            if s in ("COMPLETE", "ERROR", "CANCEL_ACKNOWLEDGED"):
+                # a kernel that ended with ERROR or was cancelled (e.g. one crashed member of a pack, or a
+                # session limit) is collected like a COMPLETE one: finished members are kept, sessions that
+                # left a RESUME.json continue, and only what is missing is flagged, once (T10 review M1)
+                if s != "COMPLETE" and k["name"] not in ended_badly:
+                    ended_badly.add(k["name"])
+                    log(f"{k['name']} status {s}: collecting what it wrote")
                 os.makedirs(out_dir(k), exist_ok=True)
                 got = run("kernels", "output", f"{OWNER}/{k['name']}", "-p", out_dir(k))
                 empty = not any(fs for _, _, fs in os.walk(out_dir(k)))
                 if empty and download_failed(got):         # nothing learnt about the output: poll again
+                    if s != "COMPLETE":
+                        failed_downloads[k["name"]] = failed_downloads.get(k["name"], 0) + 1
+                        if failed_downloads[k["name"]] >= 3:
+                            flag(k, f"ended with status {s}, and its output could not be downloaded")
+                            continue
                     print(f"{k['name']}: download failed ({got[-120:]}), retried at the next poll", flush=True)
                     continue
                 if k.get("members"):
@@ -509,9 +528,9 @@ def main(jobs_file: str) -> None:
                 else:                                       # nothing to collect and nothing to continue
                     misses[k["name"]] = misses.get(k["name"], 0) + 1
                     if misses[k["name"]] >= 2:              # one more poll first: a download can be incomplete
-                        flag(k, "is COMPLETE without its expected output or a usable RESUME.json")
-            elif s in ("ERROR", "CANCEL_ACKNOWLEDGED"):
-                log(f"{k['name']} status {s}: needs attention")
+                        flag(k, f"is {s} without its expected output or a usable RESUME.json"
+                                if s == "COMPLETE" else
+                                f"ended with status {s} without its expected output or a usable RESUME.json")
             elif s == "ABSENT" and k["name"] not in pushed and busy < MAX_RUNNING and ready(k, done):
                 if "commands" in k:                         # mount the dependencies' final kernels (T8 RS-3)
                     point_sources(k, spec["kit_slug"], producer)

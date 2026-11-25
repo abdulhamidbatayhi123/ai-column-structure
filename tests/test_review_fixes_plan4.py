@@ -255,7 +255,7 @@ def test_chunk_kernels_also_run_read_only(tmp_path):
         "import sys, os\n"
         "out = sys.argv[sys.argv.index('--out') + 1]\n"
         "open(os.path.join(out, 'c.json'), 'w').write('{}')\n")
-    script = run_queue.RUN_PY.format(args=[["--system", "B"]], kit_name="p3b-reference-kit")
+    script = run_queue.RUN_PY.format(args=[["--system", "B"]], kit_name="p3b-reference-kit", env=None)
     base = str(tmp_path).replace("\\", "/")
     script = script.replace("/kaggle/input", base + "/input").replace("/kaggle/working", base + "/working")
     (tmp_path / "run.py").write_text(script)
