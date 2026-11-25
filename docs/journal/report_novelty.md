@@ -143,3 +143,28 @@ No direct scoop was found up to 2026-11-16. That rests on arXiv sweeps sorted by
 - **arXiv:2611.05031 (2026-11-03)** and **2608.30788** are new port-Hamiltonian learning comparisons. They are not threats, but should be cited if the related work discusses port-Hamiltonian models.
 
 Nothing was written to the repos.
+## Addendum 2026-11-25: Claude Science T11 refresh (window 2026-11-10 to 2026-11-24)
+
+Source: hub `projects/ai-column-structure/T11_novelty_refresh.md` (arXiv API 28 queries / 463 records, Crossref 14 queries /
+380 DOIs, 9 full texts). Verdict: no paper in the window separates constraint, information and projection in learned latent
+models of open dissipative systems, and none pre-registers such a comparison. Claim (b)1 survives but is narrowed:
+- arXiv:2610.05570 (Sulskis and Ravi, "Poisson-GENERIC Neural Operators", v5): closed periodic PDEs, a compute-matched
+  unconstrained arm, fixed vs learned energy, a projected-GENERIC comparator; structure loses at equal wall-clock but secures the
+  energy balance. Cite for "fixed vs learned potentials" and as a prior instance of H1/U-long's question.
+- arXiv:2611.27149 (Christou, Kar, Xhelollari et al., "Where Structure Enters a World Model", 2026-11-20): information- and
+  capacity-matched controls separating structure from supervision (closed mechanics). Methodological kin, with 2609.19674 and
+  2609.34012.
+- arXiv:2611.14574 (Cao and Song, "The norm, not the labels", 2026-11-09): T11 reports hash-gated pre-registered FE-surrogate
+  comparisons. **To verify in the full text before citing it for pre-registration** (the title does not say so).
+- Lower: 2509.19526v2 (rollout energy projection; cite where U+proj is motivated); 2611.22549 (terminal projection can hide a
+  collapsed distribution: a possible mechanism if U+proj differs from S); 2611.27393 (non-learned oblique-projection MOR, block C).
+
+IDs, titles and dates of the three main papers checked on the live arXiv API on 2026-11-25. Suggested wording of (b)1 (T11):
+"To our knowledge, the first pre-registered test of whether thermodynamic (metriplectic) structure improves learned latent
+models of open, advection-dominated dissipative systems, with arms that separate the constraint from the physical information
+(U+F) and from projection at rollout (U+proj, U+F+proj), alongside fixed-versus-learned potentials and compute- and
+solver-matched baselines. Matched-control designs exist for closed systems [2610.05570; 2611.27149; 2609.19674; 2609.34012],
+and pre-registration of surrogate comparisons exists in computational mechanics [2611.14574]."
+
+Not covered by T11 (to do right before submission): OpenReview (ICLR 2027 submissions), ChemRxiv/engrXiv, citation graphs
+(OpenAlex/Semantic Scholar), publisher tables of contents.
